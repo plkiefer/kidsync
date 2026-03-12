@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG } from "@/lib/types";
+import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
 import {
   isSameMonth,
   formatShortDate,
@@ -29,7 +29,10 @@ export default function ListView({
         new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
     );
 
-  const getKid = (kidId: string) => kids.find((k) => k.id === kidId);
+  const getEventKidsFor = (event: CalendarEvent) => {
+    const kidIds = getEventKidIds(event);
+    return kids.filter((k) => kidIds.includes(k.id));
+  };
   const getMember = (userId: string) => members.find((m) => m.id === userId);
 
   if (monthEvents.length === 0) {
@@ -47,7 +50,8 @@ export default function ListView({
   return (
     <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
       {monthEvents.map((evt, i) => {
-        const kid = getKid(evt.kid_id);
+        const evtKids = getEventKidsFor(evt);
+        const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
         const creator = getMember(evt.created_by);
         const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
 
@@ -62,7 +66,7 @@ export default function ListView({
             `}
           >
             {/* Type icon */}
-            <div className="text-xl shrink-0">{typeConfig.icon}</div>
+            <div className="text-xl shrink-0">{evt._virtual ? "🎂" : typeConfig.icon}</div>
 
             {/* Event info */}
             <div className="flex-1 min-w-0">
@@ -71,7 +75,7 @@ export default function ListView({
               </div>
               <div className="text-xs text-[var(--color-text-faint)]">
                 {formatShortDate(evt.starts_at)} ·{" "}
-                {formatTime(evt.starts_at)} – {formatTime(evt.ends_at)}
+                {evt.all_day ? "All day" : `${formatTime(evt.starts_at)} – ${formatTime(evt.ends_at)}`}
               </div>
               {evt.notes && (
                 <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5 truncate">
@@ -80,16 +84,21 @@ export default function ListView({
               )}
             </div>
 
-            {/* Kid badge + creator */}
+            {/* Kid badges + creator */}
             <div className="text-right shrink-0">
-              <div
-                className="text-[11px] font-semibold px-2.5 py-1 rounded-md mb-1 inline-block"
-                style={{
-                  backgroundColor: `${kid?.color || "var(--color-kid-2)"}22`,
-                  color: kid?.color || "var(--color-kid-2)",
-                }}
-              >
-                {kid?.name}
+              <div className="flex items-center gap-1 justify-end mb-1">
+                {evtKids.map((kid) => (
+                  <div
+                    key={kid.id}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md inline-block"
+                    style={{
+                      backgroundColor: `${kid.color}22`,
+                      color: kid.color,
+                    }}
+                  >
+                    {kid.name}
+                  </div>
+                ))}
               </div>
               <div className="text-[10px] text-[var(--color-text-faint)]">
                 by {creator?.full_name || "Unknown"}

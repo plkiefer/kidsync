@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
 import { getCalendarDays, isSameDay, isSameMonth, isToday } from "@/lib/dates";
 
 interface MonthViewProps {
@@ -31,8 +31,10 @@ export default function MonthView({
   const getEventsForDay = (date: Date) =>
     events.filter((e) => isSameDay(new Date(e.starts_at), date));
 
-  const getKidColor = (kidId: string) =>
-    kids.find((k) => k.id === kidId)?.color || "var(--color-kid-2)";
+  const getEventKids = (event: CalendarEvent) => {
+    const kidIds = getEventKidIds(event);
+    return kids.filter((k) => kidIds.includes(k.id));
+  };
 
   return (
     <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
@@ -85,8 +87,13 @@ export default function MonthView({
 
                 {/* Events */}
                 {dayEvents.slice(0, 3).map((evt) => {
-                  const kidColor = getKidColor(evt.kid_id);
+                  const evtKids = getEventKids(evt);
+                  const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
                   const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
+                  const borderStyle =
+                    evtKids.length > 1
+                      ? { borderImage: `linear-gradient(to bottom, ${evtKids.map((k) => k.color).join(", ")}) 1` }
+                      : {};
 
                   return (
                     <div
@@ -97,12 +104,13 @@ export default function MonthView({
                       }}
                       className="text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80"
                       style={{
-                        backgroundColor: `${kidColor}22`,
-                        borderLeft: `2.5px solid ${kidColor}`,
-                        color: kidColor,
+                        backgroundColor: `${primaryColor}22`,
+                        borderLeft: `2.5px solid ${primaryColor}`,
+                        color: primaryColor,
+                        ...borderStyle,
                       }}
                     >
-                      {typeConfig.icon} {evt.title}
+                      {evt._virtual ? "🎂" : typeConfig.icon} {evt.title}
                     </div>
                   );
                 })}

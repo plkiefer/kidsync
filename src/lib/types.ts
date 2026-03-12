@@ -9,7 +9,6 @@ export type EventType =
   | "school"
   | "sports"
   | "medical"
-  | "birthday"
   | "custody"
   | "activity"
   | "travel"
@@ -51,10 +50,19 @@ export interface Kid {
   created_at: string;
 }
 
+export interface EventAttachment {
+  name: string;
+  path: string;
+  size: number;
+  type: string;
+  uploaded_at: string;
+}
+
 export interface CalendarEvent {
   id: string;
   family_id: string;
   kid_id: string;
+  kid_ids?: string[];
   title: string;
   event_type: EventType;
   starts_at: string;
@@ -63,10 +71,13 @@ export interface CalendarEvent {
   location: string | null;
   notes: string | null;
   recurring_rule: string | null;
+  attachments?: EventAttachment[];
   created_by: string;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
+  // Virtual flag for auto-generated events (birthdays)
+  _virtual?: boolean;
   // Joined relations (optional)
   kid?: Kid;
   travel?: EventTravelDetails | null;
@@ -181,7 +192,7 @@ export interface EventChangeLog {
 
 export interface EventFormData {
   title: string;
-  kid_id: string;
+  kid_ids: string[];
   event_type: EventType;
   starts_at: string;
   ends_at: string;
@@ -189,6 +200,15 @@ export interface EventFormData {
   recurring_rule: string;
   location: string;
   notes: string;
+  // Inline travel fields (only used when event_type === "travel")
+  travel_departure_airport?: string;
+  travel_arrival_airport?: string;
+  travel_departure_time?: string;
+  travel_arrival_time?: string;
+  travel_lodging_name?: string;
+  travel_lodging_address?: string;
+  travel_lodging_phone?: string;
+  travel_lodging_confirmation?: string;
 }
 
 export interface TravelFormData {
@@ -221,7 +241,6 @@ export const EVENT_TYPE_CONFIG: Record<
   school: { label: "School", icon: "📚", color: "#8B5CF6" },
   sports: { label: "Sports", icon: "⚽", color: "#10B981" },
   medical: { label: "Medical", icon: "🏥", color: "#EF4444" },
-  birthday: { label: "Birthday", icon: "🎂", color: "#EC4899" },
   custody: { label: "Custody Exchange", icon: "🔄", color: "#6366F1" },
   activity: { label: "Activity", icon: "🎨", color: "#F59E0B" },
   travel: { label: "Travel", icon: "✈️", color: "#0EA5E9" },
@@ -237,3 +256,11 @@ export const DOCUMENT_TYPES = [
   { value: "custody_order", label: "Custody Order" },
   { value: "other", label: "Other" },
 ] as const;
+
+// ── Helpers ─────────────────────────────────────────────────
+
+/** Get the kid_ids for an event, falling back to [kid_id] for backward compat */
+export function getEventKidIds(event: CalendarEvent): string[] {
+  if (event.kid_ids && event.kid_ids.length > 0) return event.kid_ids;
+  return [event.kid_id];
+}

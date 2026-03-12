@@ -7,6 +7,7 @@ import {
   EventFormData,
   EventTravelDetails,
   TravelFormData,
+  EventAttachment,
 } from "@/lib/types";
 
 interface EventsState {
@@ -25,7 +26,49 @@ interface EventsState {
     data: TravelFormData
   ) => Promise<EventTravelDetails | null>;
   getTravelDetails: (eventId: string) => Promise<EventTravelDetails | null>;
+  uploadAttachment: (
+    eventId: string,
+    file: File
+  ) => Promise<EventAttachment | null>;
+  removeAttachment: (
+    eventId: string,
+    attachment: EventAttachment
+  ) => Promise<boolean>;
+  getAttachmentUrl: (path: string) => Promise<string | null>;
   refetch: () => Promise<void>;
+}
+
+/** Separate travel inline fields from the main event data */
+function extractTravelFields(data: EventFormData) {
+  const {
+    travel_departure_airport,
+    travel_arrival_airport,
+    travel_departure_time,
+    travel_arrival_time,
+    travel_lodging_name,
+    travel_lodging_address,
+    travel_lodging_phone,
+    travel_lodging_confirmation,
+    ...eventData
+  } = data;
+  return {
+    eventData,
+    travelFields: {
+      travel_departure_airport,
+      travel_arrival_airport,
+      travel_departure_time,
+      travel_arrival_time,
+      travel_lodging_name,
+      travel_lodging_address,
+      travel_lodging_phone,
+      travel_lodging_confirmation,
+    },
+  };
+}
+
+/** Check if any inline travel fields have values */
+function hasTravelData(fields: Record<string, string | undefined>): boolean {
+  return Object.values(fields).some((v) => v && v.trim());
 }
 
 export function useEvents(): EventsState {
@@ -52,9 +95,13 @@ export function useEvents(): EventsState {
 
       if (fetchErr) throw fetchErr;
 
-      // Normalize travel from array to single object
+      // Normalize travel from array to single object + normalize kid_ids
       const normalized = (data || []).map((evt: any) => ({
         ...evt,
+        kid_ids:
+          evt.kid_ids && evt.kid_ids.length > 0
+            ? evt.kid_ids
+            : [evt.kid_id],
         travel:
           evt.travel && evt.travel.length > 0 ? evt.travel[0] : null,
       }));
@@ -73,7 +120,7 @@ export function useEvents(): EventsState {
     fetchEvents();
   }, [fetchEvents]);
 
-  // Realtime subscription — live updates when the other parent makes changes
+  // Realtime subscription
   useEffect(() => {
     const channel = supabase
       .channel("calendar_events_changes")
@@ -85,7 +132,6 @@ export function useEvents(): EventsState {
           table: "calendar_events",
         },
         () => {
-          // Refetch all events on any change (simpler than patching)
           fetchEvents();
         }
       )
@@ -105,7 +151,6 @@ export function useEvents(): EventsState {
         } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
-        // Get family_id from profile
         const { data: profile } = await supabase
           .from("profiles")
           .select("family_id")
@@ -114,19 +159,22 @@ export function useEvents(): EventsState {
 
         if (!profile) throw new Error("Profile not found");
 
+        const { eventData, travelFields } = extractTravelFields(data);
+
         const { data: newEvent, error: createErr } = await supabase
           .from("calendar_events")
           .insert({
             family_id: profile.family_id,
-            kid_id: data.kid_id,
-            title: data.title,
-            event_type: data.event_type,
-            starts_at: data.starts_at,
-            ends_at: data.ends_at,
-            all_day: data.all_day,
-            location: data.location || null,
-            notes: data.notes || null,
-            recurring_rule: data.recurring_rule || null,
+            kid_id: eventData.kid_ids[0],
+            kid_ids: eventData.kid_ids,
+            title: eventData.title,
+            event_type: eventData.event_type,
+            starts_at: eventData.starts_at,
+            ends_at: eventData.ends_at,
+            all_day: eventData.all_day,
+            location: eventData.location || null,
+            notes: eventData.notes || null,
+            recurring_rule: eventData.recurring_rule || null,
             created_by: user.id,
           })
           .select(
@@ -139,6 +187,45 @@ export function useEvents(): EventsState {
           .single();
 
         if (createErr) throw createErr;
+
+        // If travel type with inline fields, upsert travel details
+        if (
+          eventData.event_type === "travel" &&
+          hasTravelData(travelFields) &&
+          newEvent
+        ) {
+          await supabase.from("event_travel_details").upsert(
+            {
+              event_id: newEvent.id,
+              lodging_name: travelFields.travel_lodging_name || null,
+              lodging_address: travelFields.travel_lodging_address || null,
+              lodging_phone: travelFields.travel_lodging_phone || null,
+              lodging_confirmation:
+                travelFields.travel_lodging_confirmation || null,
+              flights: travelFields.travel_departure_airport
+                ? [
+                    {
+                      leg: 1,
+                      direction: "outbound",
+                      carrier: "",
+                      flight_number: "",
+                      departure_airport:
+                        travelFields.travel_departure_airport || "",
+                      arrival_airport:
+                        travelFields.travel_arrival_airport || "",
+                      departure_time:
+                        travelFields.travel_departure_time || "",
+                      arrival_time: travelFields.travel_arrival_time || "",
+                      confirmation: "",
+                      seat: "",
+                      notes: "",
+                    },
+                  ]
+                : [],
+            },
+            { onConflict: "event_id" }
+          );
+        }
 
         return newEvent as CalendarEvent;
       } catch (err) {
@@ -164,12 +251,43 @@ export function useEvents(): EventsState {
         } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
+        // Separate travel fields if present
+        const {
+          travel_departure_airport,
+          travel_arrival_airport,
+          travel_departure_time,
+          travel_arrival_time,
+          travel_lodging_name,
+          travel_lodging_address,
+          travel_lodging_phone,
+          travel_lodging_confirmation,
+          kid_ids,
+          ...rest
+        } = data as any;
+
+        const updatePayload: any = {
+          ...rest,
+          updated_by: user.id,
+        };
+
+        if (kid_ids) {
+          updatePayload.kid_id = kid_ids[0];
+          updatePayload.kid_ids = kid_ids;
+        }
+
+        // Remove travel fields from update payload
+        delete updatePayload.travel_departure_airport;
+        delete updatePayload.travel_arrival_airport;
+        delete updatePayload.travel_departure_time;
+        delete updatePayload.travel_arrival_time;
+        delete updatePayload.travel_lodging_name;
+        delete updatePayload.travel_lodging_address;
+        delete updatePayload.travel_lodging_phone;
+        delete updatePayload.travel_lodging_confirmation;
+
         const { data: updated, error: updateErr } = await supabase
           .from("calendar_events")
-          .update({
-            ...data,
-            updated_by: user.id,
-          })
+          .update(updatePayload)
           .eq("id", id)
           .select(
             `
@@ -181,6 +299,51 @@ export function useEvents(): EventsState {
           .single();
 
         if (updateErr) throw updateErr;
+
+        // Upsert travel details if travel type
+        const travelFields = {
+          travel_departure_airport,
+          travel_arrival_airport,
+          travel_departure_time,
+          travel_arrival_time,
+          travel_lodging_name,
+          travel_lodging_address,
+          travel_lodging_phone,
+          travel_lodging_confirmation,
+        };
+
+        if (
+          rest.event_type === "travel" &&
+          hasTravelData(travelFields)
+        ) {
+          await supabase.from("event_travel_details").upsert(
+            {
+              event_id: id,
+              lodging_name: travel_lodging_name || null,
+              lodging_address: travel_lodging_address || null,
+              lodging_phone: travel_lodging_phone || null,
+              lodging_confirmation: travel_lodging_confirmation || null,
+              flights: travel_departure_airport
+                ? [
+                    {
+                      leg: 1,
+                      direction: "outbound",
+                      carrier: "",
+                      flight_number: "",
+                      departure_airport: travel_departure_airport || "",
+                      arrival_airport: travel_arrival_airport || "",
+                      departure_time: travel_departure_time || "",
+                      arrival_time: travel_arrival_time || "",
+                      confirmation: "",
+                      seat: "",
+                      notes: "",
+                    },
+                  ]
+                : [],
+            },
+            { onConflict: "event_id" }
+          );
+        }
 
         return updated as CalendarEvent;
       } catch (err) {
@@ -203,7 +366,6 @@ export function useEvents(): EventsState {
         } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
-        // Set updated_by before delete so the trigger knows who did it
         await supabase
           .from("calendar_events")
           .update({ updated_by: user.id })
@@ -268,7 +430,6 @@ export function useEvents(): EventsState {
       data: TravelFormData
     ): Promise<EventTravelDetails | null> => {
       try {
-        // Check if travel details already exist
         const { data: existing } = await supabase
           .from("event_travel_details")
           .select("id")
@@ -278,7 +439,6 @@ export function useEvents(): EventsState {
         let result;
 
         if (existing) {
-          // Update
           const { data: updated, error: updateErr } = await supabase
             .from("event_travel_details")
             .update({
@@ -295,7 +455,6 @@ export function useEvents(): EventsState {
           if (updateErr) throw updateErr;
           result = updated;
         } else {
-          // Insert
           const { data: inserted, error: insertErr } = await supabase
             .from("event_travel_details")
             .insert({
@@ -336,13 +495,121 @@ export function useEvents(): EventsState {
           .single();
 
         if (fetchErr) {
-          if (fetchErr.code === "PGRST116") return null; // No rows
+          if (fetchErr.code === "PGRST116") return null;
           throw fetchErr;
         }
 
         return data as EventTravelDetails;
       } catch (err) {
         console.error("Error fetching travel details:", err);
+        return null;
+      }
+    },
+    [supabase]
+  );
+
+  // Upload attachment
+  const uploadAttachment = useCallback(
+    async (
+      eventId: string,
+      file: File
+    ): Promise<EventAttachment | null> => {
+      try {
+        const path = `${eventId}/${Date.now()}-${file.name}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("event-attachments")
+          .upload(path, file);
+
+        if (uploadErr) throw uploadErr;
+
+        const attachment: EventAttachment = {
+          name: file.name,
+          path,
+          size: file.size,
+          type: file.type,
+          uploaded_at: new Date().toISOString(),
+        };
+
+        // Get current attachments
+        const { data: event } = await supabase
+          .from("calendar_events")
+          .select("attachments")
+          .eq("id", eventId)
+          .single();
+
+        const current = (event?.attachments as EventAttachment[]) || [];
+        const updated = [...current, attachment];
+
+        const { error: updateErr } = await supabase
+          .from("calendar_events")
+          .update({ attachments: updated as any })
+          .eq("id", eventId);
+
+        if (updateErr) throw updateErr;
+
+        await fetchEvents();
+        return attachment;
+      } catch (err) {
+        console.error("Error uploading attachment:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to upload attachment"
+        );
+        return null;
+      }
+    },
+    [supabase, fetchEvents]
+  );
+
+  // Remove attachment
+  const removeAttachment = useCallback(
+    async (
+      eventId: string,
+      attachment: EventAttachment
+    ): Promise<boolean> => {
+      try {
+        // Remove from storage
+        await supabase.storage
+          .from("event-attachments")
+          .remove([attachment.path]);
+
+        // Update event
+        const { data: event } = await supabase
+          .from("calendar_events")
+          .select("attachments")
+          .eq("id", eventId)
+          .single();
+
+        const current = (event?.attachments as EventAttachment[]) || [];
+        const updated = current.filter((a) => a.path !== attachment.path);
+
+        await supabase
+          .from("calendar_events")
+          .update({ attachments: updated as any })
+          .eq("id", eventId);
+
+        await fetchEvents();
+        return true;
+      } catch (err) {
+        console.error("Error removing attachment:", err);
+        return false;
+      }
+    },
+    [supabase, fetchEvents]
+  );
+
+  // Get signed URL for attachment download
+  const getAttachmentUrl = useCallback(
+    async (path: string): Promise<string | null> => {
+      try {
+        const { data, error } = await supabase.storage
+          .from("event-attachments")
+          .createSignedUrl(path, 3600);
+
+        if (error) throw error;
+        return data.signedUrl;
+      } catch (err) {
+        console.error("Error getting attachment URL:", err);
         return null;
       }
     },
@@ -359,6 +626,9 @@ export function useEvents(): EventsState {
     getEvent,
     saveTravelDetails,
     getTravelDetails,
+    uploadAttachment,
+    removeAttachment,
+    getAttachmentUrl,
     refetch: fetchEvents,
   };
 }

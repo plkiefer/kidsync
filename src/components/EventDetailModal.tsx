@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
-import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat } from "lucide-react";
+import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download } from "lucide-react";
 
 interface EventDetailModalProps {
   event: CalendarEvent;
@@ -12,6 +12,7 @@ interface EventDetailModalProps {
   onDelete: (id: string) => void;
   onOpenTravel?: (eventId: string) => void;
   onClose: () => void;
+  onDownloadAttachment?: (attachment: EventAttachment) => void;
 }
 
 export default function EventDetailModal({
@@ -22,16 +23,26 @@ export default function EventDetailModal({
   onDelete,
   onOpenTravel,
   onClose,
+  onDownloadAttachment,
 }: EventDetailModalProps) {
-  const kid = kids.find((k) => k.id === event.kid_id);
+  const kidIds = getEventKidIds(event);
+  const eventKids = kids.filter((k) => kidIds.includes(k.id));
   const creator = members.find((m) => m.id === event.created_by);
-  const typeConfig = EVENT_TYPE_CONFIG[event.event_type];
+  const typeConfig = EVENT_TYPE_CONFIG[event.event_type as keyof typeof EVENT_TYPE_CONFIG];
+  const travel = event.travel;
+  const firstFlight = travel?.flights?.[0];
 
   const handleDelete = () => {
     if (window.confirm("Delete this event? This cannot be undone.")) {
       onDelete(event.id);
     }
   };
+
+  // Color bar
+  const colorBarStyle =
+    eventKids.length > 1
+      ? { background: `linear-gradient(to right, ${eventKids.map((k) => k.color).join(", ")})` }
+      : { backgroundColor: eventKids[0]?.color || "var(--color-accent)" };
 
   return (
     <div
@@ -42,25 +53,21 @@ export default function EventDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        {/* Header bar with kid color */}
-        <div
-          className="h-2 rounded-t-2xl"
-          style={{ backgroundColor: kid?.color || "var(--color-accent)" }}
-        />
+        <div className="h-2 rounded-t-2xl" style={colorBarStyle} />
 
         <div className="p-6">
-          {/* Top row: type badge + close */}
+          {/* Top row */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">{typeConfig.icon}</span>
+              <span className="text-2xl">{typeConfig?.icon || "📌"}</span>
               <span
                 className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
                 style={{
-                  backgroundColor: `${kid?.color || "var(--color-accent)"}18`,
-                  color: kid?.color || "var(--color-accent)",
+                  backgroundColor: `${eventKids[0]?.color || "var(--color-accent)"}18`,
+                  color: eventKids[0]?.color || "var(--color-accent)",
                 }}
               >
-                {typeConfig.label}
+                {typeConfig?.label || "Event"}
               </span>
             </div>
             <button
@@ -76,22 +83,29 @@ export default function EventDetailModal({
             {event.title}
           </h2>
 
-          {/* Details grid */}
           <div className="space-y-3 mb-6">
-            {/* Kid */}
+            {/* Kids */}
             <div className="flex items-center gap-3">
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
                 style={{
-                  backgroundColor: `${kid?.color || "var(--color-accent)"}22`,
-                  color: kid?.color || "var(--color-accent)",
+                  backgroundColor: `${eventKids[0]?.color || "var(--color-accent)"}22`,
+                  color: eventKids[0]?.color || "var(--color-accent)",
                 }}
               >
-                {kid?.name?.charAt(0) || "?"}
+                {eventKids.length > 1 ? `${eventKids.length}` : eventKids[0]?.name?.charAt(0) || "?"}
               </div>
               <div>
-                <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Child</div>
-                <div className="text-sm font-medium text-[var(--color-text)]">{kid?.name || "Unknown"}</div>
+                <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">
+                  {eventKids.length > 1 ? "Children" : "Child"}
+                </div>
+                <div className="flex items-center gap-2">
+                  {eventKids.map((kid) => (
+                    <span key={kid.id} className="text-sm font-medium" style={{ color: kid.color }}>
+                      {kid.name}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -144,6 +158,46 @@ export default function EventDetailModal({
               </div>
             )}
 
+            {/* Inline travel info */}
+            {event.event_type === "travel" && travel && (
+              <>
+                {firstFlight && firstFlight.departure_airport && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600">
+                      <Plane size={14} />
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Flight</div>
+                      <div className="text-sm font-medium text-[var(--color-text)]">
+                        {firstFlight.departure_airport} → {firstFlight.arrival_airport}
+                        {firstFlight.departure_time && (
+                          <span className="text-[var(--color-text-faint)] ml-2 text-xs">
+                            {formatTime(firstFlight.departure_time)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {travel.lodging_name && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600">
+                      <Building2 size={14} />
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Lodging</div>
+                      <div className="text-sm font-medium text-[var(--color-text)]">
+                        {travel.lodging_name}
+                        {travel.lodging_address && (
+                          <div className="text-xs text-[var(--color-text-faint)]">{travel.lodging_address}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             {/* Notes */}
             {event.notes && (
               <div className="flex items-start gap-3">
@@ -154,6 +208,33 @@ export default function EventDetailModal({
                   <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Notes</div>
                   <div className="text-sm text-[var(--color-text)] leading-relaxed whitespace-pre-wrap">
                     {event.notes}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Attachments */}
+            {event.attachments && event.attachments.length > 0 && (
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                  <Paperclip size={14} />
+                </div>
+                <div className="flex-1">
+                  <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider mb-1">Attachments</div>
+                  <div className="space-y-1">
+                    {event.attachments.map((att, i) => (
+                      <button
+                        key={i}
+                        onClick={() => onDownloadAttachment?.(att)}
+                        className="flex items-center gap-2 text-xs text-[var(--color-accent)] bg-[var(--color-accent-soft)] rounded-lg px-2.5 py-1.5 w-full text-left hover:opacity-80 transition-opacity"
+                      >
+                        <Download size={10} />
+                        <span className="flex-1 truncate">{att.name}</span>
+                        <span className="text-[var(--color-text-faint)] shrink-0">
+                          {(att.size / 1024).toFixed(0)}KB
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>

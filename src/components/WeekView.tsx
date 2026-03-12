@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
 import {
   getWeekDays,
   isSameDay,
@@ -32,7 +32,10 @@ export default function WeekView({
           new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
       );
 
-  const getKid = (kidId: string) => kids.find((k) => k.id === kidId);
+  const getEventKidsFor = (event: CalendarEvent) => {
+    const kidIds = getEventKidIds(event);
+    return kids.filter((k) => kidIds.includes(k.id));
+  };
 
   return (
     <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
@@ -70,8 +73,13 @@ export default function WeekView({
             ) : (
               <div className="space-y-1.5">
                 {dayEvents.map((evt) => {
-                  const kid = getKid(evt.kid_id);
+                  const evtKids = getEventKidsFor(evt);
+                  const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
                   const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
+                  const borderStyle =
+                    evtKids.length > 1
+                      ? { borderImage: `linear-gradient(to bottom, ${evtKids.map((k) => k.color).join(", ")}) 1` }
+                      : {};
 
                   return (
                     <div
@@ -79,28 +87,34 @@ export default function WeekView({
                       onClick={() => onEventClick(evt)}
                       className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg"
                       style={{
-                        backgroundColor: `${kid?.color || "var(--color-kid-2)"}11`,
-                        borderLeft: `3px solid ${kid?.color || "var(--color-kid-2)"}`,
+                        backgroundColor: `${primaryColor}11`,
+                        borderLeft: `3px solid ${primaryColor}`,
+                        ...borderStyle,
                       }}
                     >
-                      <span className="text-base">{typeConfig.icon}</span>
+                      <span className="text-base">{evt._virtual ? "🎂" : typeConfig.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-[var(--color-text)] truncate">
                           {evt.title}
                         </div>
                         <div className="text-xs text-[var(--color-text-faint)] truncate">
-                          {formatTime(evt.starts_at)} — {kid?.name}
+                          {evt.all_day ? "All day" : formatTime(evt.starts_at)} — {evtKids.map((k) => k.name).join(", ")}
                           {evt.notes && ` · ${evt.notes}`}
                         </div>
                       </div>
-                      <div
-                        className="text-[10px] font-semibold px-2.5 py-1 rounded-md shrink-0"
-                        style={{
-                          backgroundColor: `${kid?.color || "var(--color-kid-2)"}22`,
-                          color: kid?.color || "var(--color-kid-2)",
-                        }}
-                      >
-                        {kid?.name}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {evtKids.map((kid) => (
+                          <div
+                            key={kid.id}
+                            className="text-[10px] font-semibold px-2.5 py-1 rounded-md"
+                            style={{
+                              backgroundColor: `${kid.color}22`,
+                              color: kid.color,
+                            }}
+                          >
+                            {kid.name}
+                          </div>
+                        ))}
                       </div>
                       {evt.event_type === "travel" && (
                         <span className="text-xs" title="Has travel details">

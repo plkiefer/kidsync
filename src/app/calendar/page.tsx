@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFamily } from "@/hooks/useFamily";
 import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
-import { CalendarEvent, EventFormData, TravelFormData } from "@/lib/types";
+import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds } from "@/lib/types";
 import {
   formatMonthYear,
   addMonths,
@@ -45,12 +45,19 @@ export default function CalendarPage() {
     deleteEvent,
     saveTravelDetails,
     getTravelDetails,
+    uploadAttachment,
+    removeAttachment,
+    getAttachmentUrl,
+    refetch,
   } = useEvents();
   const { logs, loading: logsLoading } = useActivityLog();
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
   const [filterKid, setFilterKid] = useState("all");
+
+  // Pending files for new events (uploaded after save)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
   // Modal state
   const [showEventModal, setShowEventModal] = useState(false);
@@ -68,11 +75,49 @@ export default function CalendarPage() {
     }
   }, [authLoading, user, router]);
 
-  // Filter events
+  // Generate virtual birthday events for kids with birth_date
+  const birthdayEvents: CalendarEvent[] = kids
+    .filter((k) => k.birth_date)
+    .flatMap((kid) => {
+      const bd = new Date(kid.birth_date!);
+      const thisYear = currentDate.getFullYear();
+      // Generate for previous, current, and next year to cover navigation
+      return [-1, 0, 1].map((offset): CalendarEvent => {
+        const year = thisYear + offset;
+        const dateStr = `${year}-${String(bd.getMonth() + 1).padStart(2, "0")}-${String(bd.getDate()).padStart(2, "0")}`;
+        const age = year - bd.getFullYear();
+        return {
+          id: `birthday-${kid.id}-${year}`,
+          family_id: kid.family_id,
+          kid_id: kid.id,
+          kid_ids: [kid.id],
+          title: `${kid.name}'s Birthday${age > 0 ? ` (${age})` : ""}`,
+          event_type: "other",
+          starts_at: `${dateStr}T00:00:00`,
+          ends_at: `${dateStr}T23:59:59`,
+          all_day: true,
+          location: null,
+          notes: null,
+          recurring_rule: null,
+          created_by: "",
+          updated_by: null,
+          created_at: "",
+          updated_at: "",
+          _virtual: true,
+        };
+      });
+    });
+
+  const allEvents = [...events, ...birthdayEvents];
+
+  // Filter events — multi-kid aware
   const filteredEvents =
     filterKid === "all"
-      ? events
-      : events.filter((e) => e.kid_id === filterKid);
+      ? allEvents
+      : allEvents.filter((e) => {
+          const kidIds = getEventKidIds(e);
+          return kidIds.includes(filterKid);
+        });
 
   // Navigation
   const goBack = () => {
@@ -107,11 +152,20 @@ export default function CalendarPage() {
     setShowEventModal(true);
   };
 
-  const handleSaveEvent = async (data: EventFormData) => {
+  const handleSaveEvent = async (data: EventFormData, files?: File[]) => {
+    let savedEvent: CalendarEvent | null = null;
     if (editingEvent) {
-      await updateEvent(editingEvent.id, data);
+      savedEvent = await updateEvent(editingEvent.id, data);
     } else {
-      await createEvent(data);
+      savedEvent = await createEvent(data);
+    }
+    // Upload any pending files
+    const filesToUpload = files || pendingFiles;
+    if (savedEvent && filesToUpload.length > 0) {
+      for (const file of filesToUpload) {
+        await uploadAttachment(savedEvent.id, file);
+      }
+      setPendingFiles([]);
     }
     setShowEventModal(false);
     setEditingEvent(null);
@@ -140,6 +194,13 @@ export default function CalendarPage() {
     setShowTravelModal(false);
     setTravelEventId(null);
     setExistingTravel(null);
+  };
+
+  const handleDownloadAttachment = async (attachment: EventAttachment) => {
+    const url = await getAttachmentUrl(attachment.path);
+    if (url) {
+      window.open(url, "_blank");
+    }
   };
 
   const handleExportICal = () => {
@@ -310,6 +371,7 @@ export default function CalendarPage() {
           onEdit={handleEditFromDetail}
           onDelete={handleDeleteEvent}
           onOpenTravel={handleOpenTravel}
+          onDownloadAttachment={handleDownloadAttachment}
           onClose={() => {
             setShowDetailModal(false);
             setEditingEvent(null);
