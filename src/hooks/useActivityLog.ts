@@ -17,14 +17,11 @@ export function useActivityLog(limit = 20): ActivityState {
 
   const fetchLogs = useCallback(async () => {
     try {
+      // changed_by references auth.users, not profiles directly.
+      // Fetch logs first, then resolve names from profiles by matching IDs.
       const { data, error } = await supabase
         .from("event_change_log")
-        .select(
-          `
-          *,
-          changer:profiles!event_change_log_changed_by_fkey(full_name, email)
-        `
-        )
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(limit);
 

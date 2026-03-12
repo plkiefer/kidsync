@@ -366,6 +366,13 @@ export function useEvents(): EventsState {
         } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
+        // The DB trigger (handle_event_change) reads updated_by as changed_by
+        // for DELETE actions, so we must set it before deleting.
+        await supabase
+          .from("calendar_events")
+          .update({ updated_by: user.id })
+          .eq("id", id);
+
         const { error: deleteErr, status, statusText } = await supabase
           .from("calendar_events")
           .delete()
