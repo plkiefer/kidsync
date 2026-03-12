@@ -42,57 +42,40 @@ export function useAuth(): AuthState {
     [supabase]
   );
 
-  // Initialize: check existing session
+  // Initialize: use onAuthStateChange as the primary mechanism.
+  // getSession() can hang during token refresh on hard reload,
+  // so we don't block on it.
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      try {
-        console.log("[useAuth] init: calling getSession...");
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        console.log("[useAuth] init: getSession returned, session:", !!session);
-
-        if (session?.user && mounted) {
-          setUser(session.user);
-          console.log("[useAuth] init: fetching profile...");
-          const p = await fetchProfile(session.user.id);
-          console.log("[useAuth] init: profile fetched:", !!p);
-          if (mounted) setProfile(p);
-        }
-      } catch (err) {
-        console.error("[useAuth] init error:", err);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    init();
-
-    // Safety timeout: if getSession hangs, unblock the page
-    const timeout = setTimeout(() => {
-      if (mounted) {
-        console.warn("[useAuth] safety timeout: forcing loading=false");
-        setLoading(false);
-      }
-    }, 4000);
-
-    // Listen for auth changes
+    // onAuthStateChange fires immediately with current session state
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("[useAuth] onAuthStateChange:", event);
+      if (!mounted) return;
+
       if (session?.user) {
         setUser(session.user);
-        const p = await fetchProfile(session.user.id);
-        if (mounted) setProfile(p);
+        // Unblock the page immediately — profile loads in background
+        setLoading(false);
+        // Fetch profile without blocking
+        try {
+          const p = await fetchProfile(session.user.id);
+          if (mounted) setProfile(p);
+        } catch {
+          // Profile fetch failed, page still works
+        }
       } else {
         setUser(null);
         setProfile(null);
+        setLoading(false);
       }
-      if (mounted) setLoading(false);
     });
+
+    // Safety timeout in case onAuthStateChange never fires
+    const timeout = setTimeout(() => {
+      if (mounted) setLoading(false);
+    }, 3000);
 
     return () => {
       mounted = false;
