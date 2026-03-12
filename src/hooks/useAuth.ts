@@ -48,23 +48,43 @@ export function useAuth(): AuthState {
   useEffect(() => {
     let mounted = true;
 
-    // onAuthStateChange fires immediately with current session state
+    const init = async () => {
+      try {
+        // getUser() validates token server-side and refreshes if needed.
+        // This is what the / page does implicitly via getSession() and it works.
+        console.log("[auth] checking session...");
+        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+        console.log("[auth] session:", !!session, sessionErr?.message || "ok");
+
+        if (session?.user && mounted) {
+          setUser(session.user);
+          setLoading(false);
+          // Profile in background
+          const p = await fetchProfile(session.user.id);
+          if (mounted) setProfile(p);
+        } else if (mounted) {
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error("[auth] init error:", err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    init();
+
+    // Listen for auth changes (sign in, sign out, token refresh)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+      console.log("[auth] stateChange:", event);
 
       if (session?.user) {
         setUser(session.user);
-        // Unblock the page immediately — profile loads in background
         setLoading(false);
-        // Fetch profile without blocking
-        try {
-          const p = await fetchProfile(session.user.id);
-          if (mounted) setProfile(p);
-        } catch {
-          // Profile fetch failed, page still works
-        }
+        const p = await fetchProfile(session.user.id);
+        if (mounted) setProfile(p);
       } else {
         setUser(null);
         setProfile(null);
@@ -72,14 +92,8 @@ export function useAuth(): AuthState {
       }
     });
 
-    // Safety timeout in case onAuthStateChange never fires
-    const timeout = setTimeout(() => {
-      if (mounted) setLoading(false);
-    }, 3000);
-
     return () => {
       mounted = false;
-      clearTimeout(timeout);
       subscription.unsubscribe();
     };
   }, [supabase, fetchProfile]);
