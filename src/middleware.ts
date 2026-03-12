@@ -1,25 +1,40 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  let res = NextResponse.next({ request: req });
 
-  try {
-    // This refreshes the auth session cookies on every matched request.
-    // Without this, hard refresh on /calendar gets stale cookies and
-    // the client-side getSession() never resolves.
-    const supabase = createMiddlewareClient({ req, res });
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    // Redirect authenticated users away from /login
-    if (session && req.nextUrl.pathname === "/login") {
-      return NextResponse.redirect(new URL("/calendar", req.url));
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            req.cookies.set(name, value)
+          );
+          res = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options)
+          );
+        },
+      },
     }
-  } catch {
-    // If middleware auth fails, let the page handle it client-side
+  );
+
+  // Refresh the session — this updates cookies on the response
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Redirect authenticated users away from /login
+  if (user && req.nextUrl.pathname === "/login") {
+    const calendarUrl = new URL("/calendar", req.url);
+    return NextResponse.redirect(calendarUrl);
   }
 
   return res;
