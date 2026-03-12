@@ -366,12 +366,15 @@ export function useEvents(): EventsState {
         } = await supabase.auth.getUser();
         if (!user) throw new Error("Not authenticated");
 
-        const { error: deleteErr } = await supabase
+        const { error: deleteErr, status, statusText } = await supabase
           .from("calendar_events")
           .delete()
           .eq("id", id);
 
-        if (deleteErr) throw deleteErr;
+        if (deleteErr) {
+          console.error("Delete error details:", { deleteErr, status, statusText, eventId: id, userId: user.id });
+          throw deleteErr;
+        }
 
         setEvents((prev) => prev.filter((e) => e.id !== id));
         return true;

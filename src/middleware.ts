@@ -6,6 +6,9 @@ export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
   try {
+    // This refreshes the auth session cookies on every matched request.
+    // Without this, hard refresh on /calendar gets stale cookies and
+    // the client-side getSession() never resolves.
     const supabase = createMiddlewareClient({ req, res });
     const {
       data: { session },
@@ -23,5 +26,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login"],
+  matcher: ["/calendar/:path*", "/login"],
 };

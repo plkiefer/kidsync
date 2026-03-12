@@ -177,9 +177,11 @@ export default function CalendarPage() {
     // Virtual events (birthdays) can't be deleted
     if (id.startsWith("birthday-")) return;
     const success = await deleteEvent(id);
-    if (success) {
-      await refetch();
+    if (!success) {
+      window.alert("Failed to delete event. Check browser console for details.");
+      return;
     }
+    await refetch();
     setShowEventModal(false);
     setShowDetailModal(false);
     setEditingEvent(null);
