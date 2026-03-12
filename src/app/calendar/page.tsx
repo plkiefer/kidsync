@@ -221,8 +221,8 @@ export default function CalendarPage() {
     router.replace("/login");
   };
 
-  // Loading state
-  if (authLoading || familyLoading) {
+  // Only block on auth loading — let calendar render while data loads
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -233,7 +233,7 @@ export default function CalendarPage() {
     );
   }
 
-  if (!authLoading && (!user || !profile)) return null;
+  if (!user || !profile) return null;
 
   return (
     <div className="min-h-screen">

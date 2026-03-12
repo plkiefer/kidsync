@@ -44,37 +44,61 @@ export function useAuth(): AuthState {
 
   // Initialize: check existing session
   useEffect(() => {
-    const init = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let mounted = true;
 
-      if (session?.user) {
-        setUser(session.user);
-        const p = await fetchProfile(session.user.id);
-        setProfile(p);
+    const init = async () => {
+      try {
+        console.log("[useAuth] init: calling getSession...");
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        console.log("[useAuth] init: getSession returned, session:", !!session);
+
+        if (session?.user && mounted) {
+          setUser(session.user);
+          console.log("[useAuth] init: fetching profile...");
+          const p = await fetchProfile(session.user.id);
+          console.log("[useAuth] init: profile fetched:", !!p);
+          if (mounted) setProfile(p);
+        }
+      } catch (err) {
+        console.error("[useAuth] init error:", err);
+      } finally {
+        if (mounted) setLoading(false);
       }
-      setLoading(false);
     };
 
     init();
+
+    // Safety timeout: if getSession hangs, unblock the page
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        console.warn("[useAuth] safety timeout: forcing loading=false");
+        setLoading(false);
+      }
+    }, 4000);
 
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[useAuth] onAuthStateChange:", event);
       if (session?.user) {
         setUser(session.user);
         const p = await fetchProfile(session.user.id);
-        setProfile(p);
+        if (mounted) setProfile(p);
       } else {
         setUser(null);
         setProfile(null);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, [supabase, fetchProfile]);
 
   const signInWithEmail = useCallback(
