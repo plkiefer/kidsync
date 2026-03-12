@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Mulish:wght@400;500;600;700&display=swap');
+
+/* ─── Gunmetal & Gold ─────────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds */
+  --color-bg:           #F4F4F2;
+  --color-surface:      #FAFAF8;
+  --color-surface-alt:  #F0F0EE;
+  --color-input:        #ECECE8;
+
+  /* Borders & Dividers */
+  --color-border:       #DCDAD4;
+  --color-divider:      #E8E6E0;
+
+  /* Text */
+  --color-text:         #1C1C1C;
+  --color-text-muted:   #686460;
+  --color-text-faint:   #AAAA9A;
+
+  /* Accent — Gunmetal */
+  --color-accent:       #383838;
+  --color-accent-text:  #F8F8F6;
+  --color-accent-soft:  #EEECEA;
+
+  /* Kid colors */
+  --color-kid-1:        #C4A040;   /* warm gold  — Ethan */
+  --color-kid-2:        #607080;   /* steel blue — Liam  */
+
+  /* Status tags */
+  --color-tag-created-bg:   #E4EEE0;
+  --color-tag-created-text: #284020;
+  --color-tag-updated-bg:   #F4ECD8;
+  --color-tag-updated-text: #604010;
+  --color-tag-deleted-bg:   #F4E4E0;
+  --color-tag-deleted-text: #601010;
+
+  /* Shadows */
+  --shadow-card:  0 1px 4px rgba(28,28,28,0.06), 0 4px 16px rgba(28,28,28,0.04);
+  --shadow-modal: 0 8px 40px rgba(28,28,28,0.16);
+}
+
+/* ─── Base ────────────────────────────────────────────────────────────────── */
+body {
+  font-family: 'Mulish', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+}
+
+/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-faint); }
+
+/* ─── Form elements ───────────────────────────────────────────────────────── */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.4);
+}
+
+select {
+  background-color: var(--color-input);
+}
+
+select option {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* ─── Tailwind CSS variable overrides ────────────────────────────────────── */
+@layer base {
+  /* Map the old dark slate palette to Gunmetal & Gold variables */
+
+  .bg-slate-900\/50  { background-color: var(--color-input) !important; }
+  .bg-slate-800      { background-color: var(--color-surface) !important; }
+  .bg-slate-800\/30  { background-color: color-mix(in srgb, var(--color-surface) 30%, transparent) !important; }
+  .bg-slate-700\/20  { background-color: color-mix(in srgb, var(--color-surface-alt) 60%, transparent) !important; }
+  .bg-slate-700\/30  { background-color: var(--color-surface-alt) !important; }
+  .bg-slate-700\/50  { background-color: var(--color-input) !important; }
+
+  .border-slate-700\/50  { border-color: var(--color-border) !important; }
+  .border-slate-700\/30  { border-color: var(--color-divider) !important; }
+  .border-slate-700\/20  { border-color: var(--color-divider) !important; }
+
+  .text-slate-100    { color: var(--color-text) !important; }
+  .text-slate-200    { color: var(--color-text) !important; }
+  .text-slate-300    { color: var(--color-text-muted) !important; }
+  .text-slate-400    { color: var(--color-text-muted) !important; }
+  .text-slate-500    { color: var(--color-text-faint) !important; }
+  .text-slate-600    { color: var(--color-text-faint) !important; }
+
+  .text-blue-400     { color: var(--color-accent) !important; }
+  .text-blue-300     { color: var(--color-accent) !important; }
+  .bg-blue-500\/15   { background-color: var(--color-accent-soft) !important; }
+  .bg-blue-500\/\[0\.06\] { background-color: var(--color-accent-soft) !important; }
+  .bg-blue-500\/\[0\.04\] { background-color: var(--color-accent-soft) !important; }
+  .bg-blue-500\/25   { background-color: var(--color-accent-soft) !important; }
+  .border-blue-500   { border-color: var(--color-accent) !important; }
+  .border-blue-500\/50 { border-color: var(--color-accent) !important; }
+  .shadow-blue-500\/25 { --tw-shadow-color: rgba(56,56,56,0.15) !important; }
+  .shadow-blue-500\/40 { --tw-shadow-color: rgba(56,56,56,0.25) !important; }
+
+  .bg-emerald-500\/15  { background-color: var(--color-tag-created-bg) !important; }
+  .text-emerald-400    { color: var(--color-tag-created-text) !important; }
+  .bg-amber-500\/15    { background-color: var(--color-tag-updated-bg) !important; }
+  .text-amber-400      { color: var(--color-tag-updated-text) !important; }
+  .bg-red-500\/15      { background-color: var(--color-tag-deleted-bg) !important; }
+  .text-red-400        { color: var(--color-tag-deleted-text) !important; }
+
+  .focus\:border-blue-500\/50:focus { border-color: var(--color-accent) !important; }
+  .focus\:ring-blue-500\/20:focus   { --tw-ring-color: rgba(56,56,56,0.12) !important; }
+  .placeholder-slate-600::placeholder { color: var(--color-text-faint) !important; }
+}
+
+/* ─── Animations (unchanged from original) ───────────────────────────────── */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.animate-slide-up  { animation: slide-up  0.2s ease forwards; }
+.animate-scale-in  { animation: scale-in  0.18s ease forwards; }
+
+/* ─── Typography helpers ──────────────────────────────────────────────────── */
+.font-display { font-family: 'Libre Baskerville', serif; }
