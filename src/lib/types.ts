@@ -266,3 +266,124 @@ export function getEventKidIds(event: CalendarEvent): string[] {
   if (event.kid_ids && event.kid_ids.length > 0) return event.kid_ids;
   return [event.kid_id];
 }
+
+// ── Sport-specific emoji lookup ────────────────────────────
+
+const SPORT_EMOJIS: [RegExp, string][] = [
+  [/basketball/i, "🏀"],
+  [/baseball|softball/i, "⚾"],
+  [/football/i, "🏈"],
+  [/soccer|futbol|fútbol/i, "⚽"],
+  [/tennis/i, "🎾"],
+  [/golf/i, "⛳"],
+  [/swim/i, "🏊"],
+  [/hockey/i, "🏒"],
+  [/volleyball/i, "🏐"],
+  [/lacrosse/i, "🥍"],
+  [/bowling/i, "🎳"],
+  [/boxing|martial|karate|taekwondo|judo/i, "🥊"],
+  [/gymnast/i, "🤸"],
+  [/ski/i, "⛷️"],
+  [/snowboard/i, "🏂"],
+  [/surf/i, "🏄"],
+  [/skateboard|skating/i, "🛹"],
+  [/wrestling/i, "🤼"],
+  [/rugby/i, "🏉"],
+  [/ping.?pong|table.?tennis/i, "🏓"],
+  [/badminton/i, "🏸"],
+  [/cricket/i, "🏏"],
+  [/fenc/i, "🤺"],
+  [/climb/i, "🧗"],
+  [/cycling|bike|biking/i, "🚴"],
+  [/run|track|marathon|cross.?country/i, "🏃"],
+  [/cheer/i, "📣"],
+  [/dance|ballet/i, "💃"],
+  [/yoga/i, "🧘"],
+  [/fish/i, "🎣"],
+  [/horse|equestrian|riding/i, "🏇"],
+  [/archery/i, "🏹"],
+  [/water.?polo/i, "🤽"],
+  [/rowing|crew/i, "🚣"],
+  [/sail/i, "⛵"],
+];
+
+/**
+ * Get the display icon for an event.
+ * Birthday virtual events → 🎂
+ * Sports events → sport-specific emoji based on title, fallback ⚽
+ * Other types → default from EVENT_TYPE_CONFIG
+ */
+export function getEventIcon(event: CalendarEvent): string {
+  // Birthday virtual events
+  if (event.id.startsWith("birthday-")) return "🎂";
+
+  const config = EVENT_TYPE_CONFIG[event.event_type as keyof typeof EVENT_TYPE_CONFIG];
+
+  if (event.event_type === "sports") {
+    for (const [pattern, emoji] of SPORT_EMOJIS) {
+      if (pattern.test(event.title)) return emoji;
+    }
+  }
+
+  return config?.icon || "📌";
+}
+
+// ── Human-readable RRULE description ───────────────────────
+
+const DAY_NAMES_SHORT: Record<string, string> = {
+  SU: "Sun", MO: "Mon", TU: "Tue", WE: "Wed", TH: "Thu", FR: "Fri", SA: "Sat",
+};
+
+export function describeRRule(rrule: string): string {
+  if (!rrule) return "Does not repeat";
+
+  const parts: Record<string, string> = {};
+  rrule.split(";").forEach((p) => {
+    const [k, v] = p.split("=");
+    if (k && v) parts[k] = v;
+  });
+
+  const freq = parts.FREQ || "WEEKLY";
+  const interval = parseInt(parts.INTERVAL || "1", 10);
+  const byDay = parts.BYDAY ? parts.BYDAY.split(",") : [];
+  const count = parts.COUNT ? parseInt(parts.COUNT, 10) : 0;
+  const until = parts.UNTIL || "";
+
+  let desc = "Every ";
+  if (interval > 1) desc += `${interval} `;
+
+  switch (freq) {
+    case "DAILY":
+      desc += interval > 1 ? "days" : "day";
+      break;
+    case "WEEKLY": {
+      desc += interval > 1 ? "weeks" : "week";
+      if (byDay.length > 0 && byDay.length < 7) {
+        const weekdays = ["MO", "TU", "WE", "TH", "FR"];
+        if (byDay.length === 5 && weekdays.every((d) => byDay.includes(d))) {
+          desc = "Every weekday";
+        } else {
+          desc += " on " + byDay.map((d) => DAY_NAMES_SHORT[d] || d).join(", ");
+        }
+      }
+      break;
+    }
+    case "MONTHLY":
+      desc += interval > 1 ? "months" : "month";
+      break;
+    case "YEARLY":
+      desc += interval > 1 ? "years" : "year";
+      break;
+  }
+
+  if (count) desc += `, ${count} times`;
+  if (until) {
+    const m = until.match(/(\d{4})(\d{2})(\d{2})/);
+    if (m) {
+      const uDate = new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+      desc += `, until ${uDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    }
+  }
+
+  return desc;
+}

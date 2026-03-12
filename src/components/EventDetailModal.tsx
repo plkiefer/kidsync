@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds, getEventIcon, describeRRule } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
 import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download } from "lucide-react";
 
@@ -59,7 +59,7 @@ export default function EventDetailModal({
           {/* Top row */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">{typeConfig?.icon || "📌"}</span>
+              <span className="text-2xl">{getEventIcon(event)}</span>
               <span
                 className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
                 style={{
@@ -139,7 +139,7 @@ export default function EventDetailModal({
                 <div>
                   <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Repeats</div>
                   <div className="text-sm font-medium text-[var(--color-text)]">
-                    {event.recurring_rule}
+                    {describeRRule(event.recurring_rule)}
                   </div>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
 import {
   getWeekDays,
   isSameDay,
@@ -92,7 +92,7 @@ export default function WeekView({
                         ...borderStyle,
                       }}
                     >
-                      <span className="text-base">{evt._virtual ? "🎂" : typeConfig.icon}</span>
+                      <span className="text-base">{getEventIcon(evt)}</span>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-[var(--color-text)] truncate">
                           {evt.title}

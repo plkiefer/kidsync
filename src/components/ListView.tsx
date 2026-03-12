@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
+import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
 import {
   isSameMonth,
   formatShortDate,
@@ -66,7 +66,7 @@ export default function ListView({
             `}
           >
             {/* Type icon */}
-            <div className="text-xl shrink-0">{evt._virtual ? "🎂" : typeConfig.icon}</div>
+            <div className="text-xl shrink-0">{getEventIcon(evt)}</div>
 
             {/* Event info */}
             <div className="flex-1 min-w-0">

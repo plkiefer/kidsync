@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
 import { getCalendarDays, isSameDay, isSameMonth, isToday } from "@/lib/dates";
 
 interface MonthViewProps {
@@ -110,7 +110,7 @@ export default function MonthView({
                         ...borderStyle,
                       }}
                     >
-                      {evt._virtual ? "🎂" : typeConfig.icon} {evt.title}
+                      {getEventIcon(evt)} {evt.title}
                     </div>
                   );
                 })}
