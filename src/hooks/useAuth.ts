@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
+import { manualTokenRefresh } from "@/lib/refreshToken";
 import { Profile } from "@/lib/types";
 
 interface AuthState {
@@ -47,37 +48,42 @@ export function useAuth(): AuthState {
   // so we don't block on it.
   useEffect(() => {
     let mounted = true;
+    let initializing = true;
 
     const init = async () => {
-      try {
-        // getUser() validates token server-side and refreshes if needed.
-        // This is what the / page does implicitly via getSession() and it works.
-        console.log("[auth] checking session...");
-        const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-        console.log("[auth] session:", !!session, sessionErr?.message || "ok");
+      console.log("[auth] manually refreshing token...");
+      // Bypass the Supabase client's getSession() which hangs on
+      // expired tokens. Call the token refresh API directly.
+      const freshSession = await manualTokenRefresh();
 
-        if (session?.user && mounted) {
-          setUser(session.user);
-          setLoading(false);
-          // Profile in background
-          const p = await fetchProfile(session.user.id);
-          if (mounted) setProfile(p);
-        } else if (mounted) {
-          setLoading(false);
-        }
-      } catch (err) {
-        console.error("[auth] init error:", err);
-        if (mounted) setLoading(false);
+      if (freshSession && mounted) {
+        console.log("[auth] token refreshed, setting session...");
+        // Update the Supabase client with fresh tokens
+        await supabase.auth.setSession({
+          access_token: freshSession.access_token,
+          refresh_token: freshSession.refresh_token,
+        });
+        setUser(freshSession.user as User);
+        setLoading(false);
+        initializing = false;
+        // Fetch profile in background (with fresh token, this won't hang)
+        const p = await fetchProfile(freshSession.user.id);
+        if (mounted) setProfile(p);
+      } else if (mounted) {
+        console.log("[auth] no valid session");
+        setLoading(false);
+        initializing = false;
       }
     };
 
     init();
 
-    // Listen for auth changes (sign in, sign out, token refresh)
+    // Listen for ongoing auth changes (sign in, sign out)
+    // Ignore during init to prevent race conditions
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+      if (!mounted || initializing) return;
       console.log("[auth] stateChange:", event);
 
       if (session?.user) {
