@@ -231,7 +231,7 @@ export default function CalendarPage() {
     );
   }
 
-  if (!user || !profile) return null;
+  if (!authLoading && (!user || !profile)) return null;
 
   return (
     <div className="min-h-screen">
@@ -244,7 +244,7 @@ export default function CalendarPage() {
               KidSync
             </h1>
             <p className="text-[11px] text-[var(--color-text-faint)]">
-              Logged in as {profile.full_name}
+              Logged in as {profile?.full_name}
             </p>
           </div>
         </div>
@@ -350,8 +350,8 @@ export default function CalendarPage() {
         <ActivityFeed
           logs={logs}
           loading={logsLoading}
-          currentUserId={user.id}
-          icalToken={profile.ical_token}
+          currentUserId={user?.id ?? ""}
+          icalToken={profile?.ical_token ?? null}
         />
       </div>
 
