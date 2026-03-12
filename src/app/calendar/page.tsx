@@ -15,6 +15,7 @@ import {
   subWeeks,
 } from "@/lib/dates";
 import { downloadICal } from "@/lib/ical";
+import { expandRecurringEvents } from "@/lib/recurrence";
 import MonthView from "@/components/MonthView";
 import WeekView from "@/components/WeekView";
 import ListView from "@/components/ListView";
@@ -112,7 +113,8 @@ export default function CalendarPage() {
       });
     });
 
-  const allEvents = [...events, ...birthdayEvents];
+  const expandedEvents = expandRecurringEvents(events);
+  const allEvents = [...expandedEvents, ...birthdayEvents];
 
   // Filter events — multi-kid aware
   const filteredEvents =
@@ -153,6 +155,13 @@ export default function CalendarPage() {
 
   const handleEditFromDetail = () => {
     setShowDetailModal(false);
+    // For recurrence occurrences, edit the parent (master) event
+    if (editingEvent?._recurrence_parent) {
+      const parent = events.find(
+        (e) => e.id === editingEvent._recurrence_parent
+      );
+      if (parent) setEditingEvent(parent);
+    }
     setShowEventModal(true);
   };
 
@@ -180,7 +189,9 @@ export default function CalendarPage() {
   const handleDeleteEvent = async (id: string) => {
     // Virtual events (birthdays) can't be deleted
     if (id.startsWith("birthday-")) return;
-    const success = await deleteEvent(id);
+    // For recurrence occurrences, delete the entire series (parent)
+    const actualId = id.includes("_rec_") ? id.split("_rec_")[0] : id;
+    const success = await deleteEvent(actualId);
     if (!success) {
       window.alert("Failed to delete event. Check browser console for details.");
       return;

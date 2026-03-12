@@ -76,8 +76,10 @@ export interface CalendarEvent {
   updated_by: string | null;
   created_at: string;
   updated_at: string;
-  // Virtual flag for auto-generated events (birthdays)
+  // Virtual flag for auto-generated events (birthdays, recurrence instances)
   _virtual?: boolean;
+  // Parent event ID for recurrence instances
+  _recurrence_parent?: string;
   // Joined relations (optional)
   kid?: Kid;
   travel?: EventTravelDetails | null;
