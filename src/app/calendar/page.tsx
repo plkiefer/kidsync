@@ -167,12 +167,15 @@ export default function CalendarPage() {
       }
       setPendingFiles([]);
     }
+    // Immediately refresh events so the calendar reflects the change
+    await refetch();
     setShowEventModal(false);
     setEditingEvent(null);
   };
 
   const handleDeleteEvent = async (id: string) => {
     await deleteEvent(id);
+    await refetch();
     setShowEventModal(false);
     setShowDetailModal(false);
     setEditingEvent(null);
