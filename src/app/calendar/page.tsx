@@ -19,6 +19,7 @@ import MonthView from "@/components/MonthView";
 import WeekView from "@/components/WeekView";
 import ListView from "@/components/ListView";
 import EventModal from "@/components/EventModal";
+import EventDetailModal from "@/components/EventDetailModal";
 import TravelModal from "@/components/TravelModal";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -53,6 +54,7 @@ export default function CalendarPage() {
 
   // Modal state
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [initialDate, setInitialDate] = useState<Date | undefined>(undefined);
   const [showTravelModal, setShowTravelModal] = useState(false);
@@ -97,6 +99,11 @@ export default function CalendarPage() {
   const handleEventClick = (event: CalendarEvent) => {
     setEditingEvent(event);
     setInitialDate(undefined);
+    setShowDetailModal(true);
+  };
+
+  const handleEditFromDetail = () => {
+    setShowDetailModal(false);
     setShowEventModal(true);
   };
 
@@ -113,11 +120,13 @@ export default function CalendarPage() {
   const handleDeleteEvent = async (id: string) => {
     await deleteEvent(id);
     setShowEventModal(false);
+    setShowDetailModal(false);
     setEditingEvent(null);
   };
 
   const handleOpenTravel = async (eventId: string) => {
     setShowEventModal(false);
+    setShowDetailModal(false);
     setTravelEventId(eventId);
     const existing = await getTravelDetails(eventId);
     setExistingTravel(existing);
@@ -293,6 +302,21 @@ export default function CalendarPage() {
       </button>
 
       {/* ── MODALS ── */}
+      {showDetailModal && editingEvent && (
+        <EventDetailModal
+          event={editingEvent}
+          kids={kids}
+          members={members}
+          onEdit={handleEditFromDetail}
+          onDelete={handleDeleteEvent}
+          onOpenTravel={handleOpenTravel}
+          onClose={() => {
+            setShowDetailModal(false);
+            setEditingEvent(null);
+          }}
+        />
+      )}
+
       {showEventModal && (
         <EventModal
           event={editingEvent}
