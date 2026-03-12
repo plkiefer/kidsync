@@ -9,7 +9,15 @@ import {
   EVENT_TYPE_CONFIG,
 } from "@/lib/types";
 import { toDateTimeLocal } from "@/lib/dates";
-import { X } from "lucide-react";
+import RecurrencePicker from "@/components/RecurrencePicker";
+import {
+  X,
+  Clock,
+  MapPin,
+  FileText,
+  Plane,
+  Trash2,
+} from "lucide-react";
 
 interface EventModalProps {
   event?: CalendarEvent | null;
@@ -23,7 +31,7 @@ interface EventModalProps {
 
 const EVENT_TYPES = Object.entries(EVENT_TYPE_CONFIG) as [
   EventType,
-  (typeof EVENT_TYPE_CONFIG)[EventType]
+  (typeof EVENT_TYPE_CONFIG)[EventType],
 ][];
 
 export default function EventModal({
@@ -52,6 +60,7 @@ export default function EventModal({
       ? toDateTimeLocal(new Date(event.ends_at))
       : toDateTimeLocal(defaultEnd),
     all_day: event?.all_day || false,
+    recurring_rule: event?.recurring_rule || "",
     location: event?.location || "",
     notes: event?.notes || "",
   });
@@ -69,6 +78,8 @@ export default function EventModal({
     });
   };
 
+  const selectedKid = kids.find((k) => k.id === form.kid_id);
+
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -76,197 +87,224 @@ export default function EventModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-xl text-[var(--color-text)]">
-            {isNew ? "New Event" : "Edit Event"}
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        {/* Color bar */}
+        <div
+          className="h-2 rounded-t-2xl shrink-0"
+          style={{
+            backgroundColor: selectedKid?.color || "var(--color-accent)",
+          }}
+        />
 
-        <div className="space-y-5">
-          {/* Title */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-              Event Title
-            </label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => update("title", e.target.value)}
-              placeholder="e.g. Soccer Practice"
-              className="w-full px-3.5 py-2.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[rgba(56,56,56,0.12)] transition-all"
-            />
-          </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Title — large, clean input */}
+          <input
+            type="text"
+            value={form.title}
+            onChange={(e) => update("title", e.target.value)}
+            placeholder="Add title"
+            autoFocus
+            className="w-full text-xl font-display text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent border-0 border-b-2 border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none pb-2 mb-5 transition-colors"
+          />
 
-          {/* Kid selection */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-              Child
-            </label>
-            <div className="flex gap-2">
-              {kids.map((kid) => (
-                <button
-                  key={kid.id}
-                  type="button"
-                  onClick={() => update("kid_id", kid.id)}
-                  className="flex-1 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                  style={{
-                    border: `1.5px solid ${
-                      form.kid_id === kid.id
-                        ? kid.color
-                        : "var(--color-border)"
-                    }`,
-                    backgroundColor:
-                      form.kid_id === kid.id ? `${kid.color}22` : "transparent",
-                    color:
-                      form.kid_id === kid.id ? kid.color : "var(--color-text-muted)",
-                  }}
-                >
-                  {kid.name}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Event type */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-              Type
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {EVENT_TYPES.map(([type, config]) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => update("event_type", type)}
-                  className={`
-                    px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all
-                    ${
-                      form.event_type === type
-                        ? "bg-[var(--color-accent-soft)] border-[var(--color-accent)] text-[var(--color-accent)]"
-                        : "bg-transparent border-[var(--color-border)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)]"
-                    }
-                  `}
-                  style={{
-                    border: `1.5px solid ${
-                      form.event_type === type
-                        ? "#3B82F6"
-                        : "var(--color-border)"
-                    }`,
-                  }}
-                >
-                  {config.icon} {config.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* All day toggle */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => update("all_day", !form.all_day)}
-              className={`
-                w-10 h-6 rounded-full relative transition-colors
-                ${form.all_day ? "bg-[var(--color-accent)]" : "bg-[var(--color-input)]"}
-              `}
-            >
-              <span
+          {/* Event type pills */}
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {EVENT_TYPES.map(([type, config]) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => update("event_type", type)}
                 className={`
-                  absolute top-1 w-4 h-4 rounded-full bg-white transition-transform
-                  ${form.all_day ? "left-5" : "left-1"}
+                  px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all
+                  ${
+                    form.event_type === type
+                      ? "bg-[var(--color-accent)] text-white"
+                      : "bg-[var(--color-input)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]"
+                  }
                 `}
-              />
-            </button>
-            <span className="text-xs text-[var(--color-text-muted)] font-medium">
-              All day event
-            </span>
+              >
+                {config.icon} {config.label}
+              </button>
+            ))}
           </div>
 
-          {/* Date/time */}
-          {!form.all_day && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-                  Start
-                </label>
-                <input
-                  type="datetime-local"
-                  value={form.starts_at}
-                  onChange={(e) => update("starts_at", e.target.value)}
-                  className="w-full px-3 py-2.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all"
+          {/* Kid selector chips */}
+          <div className="flex gap-2 mb-5">
+            {kids.map((kid) => (
+              <button
+                key={kid.id}
+                type="button"
+                onClick={() => update("kid_id", kid.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor:
+                    form.kid_id === kid.id ? `${kid.color}22` : "var(--color-input)",
+                  color:
+                    form.kid_id === kid.id
+                      ? kid.color
+                      : "var(--color-text-faint)",
+                  border: `1.5px solid ${
+                    form.kid_id === kid.id ? kid.color : "transparent"
+                  }`,
+                }}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: kid.color }}
                 />
+                {kid.name}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-[var(--color-divider)] mb-4" />
+
+          {/* Icon rows */}
+          <div className="space-y-1">
+            {/* All-day + Date/Time row */}
+            <div className="py-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                  <Clock size={14} />
+                </div>
+                <span className="text-sm text-[var(--color-text)] flex-1">
+                  All-day
+                </span>
+                <button
+                  type="button"
+                  onClick={() => update("all_day", !form.all_day)}
+                  className={`
+                    w-11 h-6 rounded-full relative transition-colors shrink-0
+                    ${form.all_day ? "bg-[var(--color-accent)]" : "bg-[var(--color-input)] border border-[var(--color-border)]"}
+                  `}
+                >
+                  <span
+                    className={`
+                      absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform
+                      ${form.all_day ? "left-[22px]" : "left-0.5"}
+                    `}
+                  />
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-                  End
-                </label>
-                <input
-                  type="datetime-local"
-                  value={form.ends_at}
-                  onChange={(e) => update("ends_at", e.target.value)}
-                  className="w-full px-3 py-2.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all"
-                />
+
+              {/* Date/time inputs */}
+              <div className="ml-10 space-y-2">
+                <div className="flex items-center gap-3">
+                  <input
+                    type={form.all_day ? "date" : "datetime-local"}
+                    value={
+                      form.all_day
+                        ? form.starts_at.split("T")[0]
+                        : form.starts_at
+                    }
+                    onChange={(e) => {
+                      if (form.all_day) {
+                        update("starts_at", e.target.value + "T00:00");
+                      } else {
+                        update("starts_at", e.target.value);
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type={form.all_day ? "date" : "datetime-local"}
+                    value={
+                      form.all_day
+                        ? form.ends_at.split("T")[0]
+                        : form.ends_at
+                    }
+                    onChange={(e) => {
+                      if (form.all_day) {
+                        update("ends_at", e.target.value + "T23:59");
+                      } else {
+                        update("ends_at", e.target.value);
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Location */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-              Location
-            </label>
-            <input
-              type="text"
-              value={form.location}
-              onChange={(e) => update("location", e.target.value)}
-              placeholder="Address or place name"
-              className="w-full px-3.5 py-2.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
-            />
-          </div>
+            {/* Recurrence row */}
+            <div className="py-2">
+              <RecurrencePicker
+                value={form.recurring_rule}
+                startDate={form.starts_at}
+                onChange={(rrule) => update("recurring_rule", rrule)}
+              />
+            </div>
 
-          {/* Notes */}
-          <div>
-            <label className="block text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-              Notes
-            </label>
-            <textarea
-              value={form.notes}
-              onChange={(e) => update("notes", e.target.value)}
-              placeholder="Any details for the other parent..."
-              rows={3}
-              className="w-full px-3.5 py-2.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all resize-y"
-            />
+            {/* Divider */}
+            <div className="border-t border-[var(--color-divider)] my-1" />
+
+            {/* Location row */}
+            <div className="flex items-center gap-2 py-2">
+              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <MapPin size={14} />
+              </div>
+              <input
+                type="text"
+                value={form.location}
+                onChange={(e) => update("location", e.target.value)}
+                placeholder="Add location"
+                className="flex-1 text-sm text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent focus:outline-none border-0 py-1"
+              />
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-[var(--color-divider)] my-1" />
+
+            {/* Notes row */}
+            <div className="flex items-start gap-2 py-2">
+              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <FileText size={14} />
+              </div>
+              <textarea
+                value={form.notes}
+                onChange={(e) => update("notes", e.target.value)}
+                placeholder="Add description or notes for the other parent"
+                rows={2}
+                className="flex-1 text-sm text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent focus:outline-none border-0 py-1 resize-y"
+              />
+            </div>
+
+            {/* Travel details row — only for existing travel events */}
+            {!isNew && form.event_type === "travel" && onOpenTravel && (
+              <>
+                <div className="border-t border-[var(--color-divider)] my-1" />
+                <button
+                  type="button"
+                  onClick={() => onOpenTravel(event!.id)}
+                  className="flex items-center gap-2 py-2 w-full text-left group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600 shrink-0">
+                    <Plane size={14} />
+                  </div>
+                  <span className="text-sm text-cyan-600 font-medium group-hover:text-cyan-700 transition-colors">
+                    Travel Details
+                  </span>
+                </button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[var(--color-divider)]">
+        {/* Footer actions */}
+        <div className="flex items-center gap-3 px-6 py-4 border-t border-[var(--color-divider)] shrink-0">
           {!isNew && onDelete && (
             <button
               type="button"
               onClick={() => onDelete(event!.id)}
-              className="px-4 py-2.5 rounded-xl border border-[var(--color-tag-deleted-bg)] bg-red-500/10 text-[var(--color-tag-deleted-text)] text-xs font-semibold hover:bg-red-500/20 transition-colors"
+              className="p-2.5 rounded-xl text-[var(--color-tag-deleted-text)] hover:bg-red-500/10 transition-colors"
+              title="Delete event"
             >
-              Delete
-            </button>
-          )}
-
-          {!isNew && form.event_type === "travel" && onOpenTravel && (
-            <button
-              type="button"
-              onClick={() => onOpenTravel(event!.id)}
-              className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] bg-cyan-500/10 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-cyan-500/20 transition-colors"
-            >
-              ✈️ Travel Details
+              <Trash2 size={16} />
             </button>
           )}
 
@@ -275,7 +313,7 @@ export default function EventModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="px-4 py-2.5 rounded-xl text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
           >
             Cancel
           </button>
@@ -286,7 +324,7 @@ export default function EventModal({
             disabled={!form.title.trim()}
             className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {isNew ? "Add Event" : "Save Changes"}
+            {isNew ? "Save" : "Save Changes"}
           </button>
         </div>
       </div>

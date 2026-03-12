@@ -2,7 +2,7 @@
 
 import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
-import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane } from "lucide-react";
+import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat } from "lucide-react";
 
 interface EventDetailModalProps {
   event: CalendarEvent;
@@ -115,6 +115,21 @@ export default function EventDetailModal({
                 </div>
               </div>
             </div>
+
+            {/* Recurrence */}
+            {event.recurring_rule && (
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)]">
+                  <Repeat size={14} />
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">Repeats</div>
+                  <div className="text-sm font-medium text-[var(--color-text)]">
+                    {event.recurring_rule}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Location */}
             {event.location && (

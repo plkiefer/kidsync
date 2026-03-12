@@ -126,6 +126,7 @@ export function useEvents(): EventsState {
             all_day: data.all_day,
             location: data.location || null,
             notes: data.notes || null,
+            recurring_rule: data.recurring_rule || null,
             created_by: user.id,
           })
           .select(

@@ -186,6 +186,7 @@ export interface EventFormData {
   starts_at: string;
   ends_at: string;
   all_day: boolean;
+  recurring_rule: string;
   location: string;
   notes: string;
 }
