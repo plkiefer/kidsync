@@ -174,8 +174,12 @@ export default function CalendarPage() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    await deleteEvent(id);
-    await refetch();
+    // Virtual events (birthdays) can't be deleted
+    if (id.startsWith("birthday-")) return;
+    const success = await deleteEvent(id);
+    if (success) {
+      await refetch();
+    }
     setShowEventModal(false);
     setShowDetailModal(false);
     setEditingEvent(null);
