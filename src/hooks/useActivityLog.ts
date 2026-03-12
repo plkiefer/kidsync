@@ -9,7 +9,7 @@ interface ActivityState {
   loading: boolean;
 }
 
-export function useActivityLog(limit = 20): ActivityState {
+export function useActivityLog(limit = 20, ready = true): ActivityState {
   const [logs, setLogs] = useState<EventChangeLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +35,11 @@ export function useActivityLog(limit = 20): ActivityState {
   }, [supabase, limit]);
 
   useEffect(() => {
+    if (!ready) {
+      setLoading(false);
+      return;
+    }
+
     fetchLogs();
 
     // Subscribe to new log entries
@@ -56,7 +61,7 @@ export function useActivityLog(limit = 20): ActivityState {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, fetchLogs]);
+  }, [supabase, fetchLogs, ready]);
 
   return { logs, loading };
 }

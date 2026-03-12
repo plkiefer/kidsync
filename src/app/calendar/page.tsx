@@ -36,7 +36,11 @@ type ViewMode = "month" | "week" | "list";
 export default function CalendarPage() {
   const router = useRouter();
   const { user, profile, loading: authLoading, signOut } = useAuth();
-  const { kids, members, loading: familyLoading } = useFamily();
+
+  // Data hooks only query AFTER auth resolves — prevents deadlock
+  // where simultaneous Supabase calls all try to refresh the token
+  const dataReady = !authLoading && !!user;
+  const { kids, members, loading: familyLoading } = useFamily(dataReady);
   const {
     events,
     loading: eventsLoading,
@@ -49,8 +53,8 @@ export default function CalendarPage() {
     removeAttachment,
     getAttachmentUrl,
     refetch,
-  } = useEvents();
-  const { logs, loading: logsLoading } = useActivityLog();
+  } = useEvents(dataReady);
+  const { logs, loading: logsLoading } = useActivityLog(20, dataReady);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");

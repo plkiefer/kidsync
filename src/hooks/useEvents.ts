@@ -71,7 +71,7 @@ function hasTravelData(fields: Record<string, string | undefined>): boolean {
   return Object.values(fields).some((v) => v && v.trim());
 }
 
-export function useEvents(): EventsState {
+export function useEvents(ready = true): EventsState {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,13 +115,19 @@ export function useEvents(): EventsState {
     }
   }, [supabase]);
 
-  // Initial fetch
+  // Initial fetch — only after auth is ready
   useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+    if (ready) {
+      fetchEvents();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchEvents, ready]);
 
-  // Realtime subscription
+  // Realtime subscription — only after auth is ready
   useEffect(() => {
+    if (!ready) return;
+
     const channel = supabase
       .channel("calendar_events_changes")
       .on(
@@ -140,7 +146,7 @@ export function useEvents(): EventsState {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [supabase, fetchEvents]);
+  }, [supabase, fetchEvents, ready]);
 
   // Create event
   const createEvent = useCallback(

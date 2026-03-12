@@ -11,7 +11,7 @@ interface FamilyState {
   error: string | null;
 }
 
-export function useFamily(): FamilyState {
+export function useFamily(ready = true): FamilyState {
   const [kids, setKids] = useState<Kid[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,8 +49,12 @@ export function useFamily(): FamilyState {
   }, [supabase]);
 
   useEffect(() => {
-    fetchFamily();
-  }, [fetchFamily]);
+    if (ready) {
+      fetchFamily();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchFamily, ready]);
 
   return { kids, members, loading, error };
 }
