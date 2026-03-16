@@ -41,6 +41,8 @@ export function useCustody(ready = true): CustodyState {
       if (overRes.error) {
         console.warn("[custody] overrides fetch:", overRes.error.message);
       } else {
+        console.log("[custody] fetched", overRes.data.length, "overrides:",
+          overRes.data.map((o: any) => `${o.start_date} ${o.status} kid:${o.kid_id?.slice(0,6)}`));
         setOverrides(overRes.data as CustodyOverride[]);
       }
 

@@ -144,6 +144,8 @@ export default function CalendarPage() {
   const visibleEnd = endOfWeek(endOfMonth(currentDate));
 
   // Generate custody turnover events
+  console.log("[calendar] generating turnovers with", overrides.length, "overrides:",
+    overrides.map(o => `${o.kid_id.slice(0,6)} ${o.start_date} ${o.status}`));
   const turnoverEvents = generateTurnoverEvents(
     visibleStart,
     visibleEnd,
@@ -153,6 +155,8 @@ export default function CalendarPage() {
     kids,
     members
   );
+  console.log("[calendar] generated", turnoverEvents.length, "turnovers:",
+    turnoverEvents.map(t => `${t.title} on ${t.starts_at.split('T')[0]} ${t._tentative ? '(tentative)' : ''}`));
 
   // Generate holiday events
   const holidayEvents = generateHolidayEvents(
