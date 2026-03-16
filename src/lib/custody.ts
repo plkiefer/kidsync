@@ -21,13 +21,16 @@ export function computeCustodyForDate(
   const result: DayCustodyInfo = {};
 
   for (const schedule of schedules) {
-    // Check overrides first
-    const override = overrides.find((o) => {
-      if (o.kid_id !== schedule.kid_id) return false;
-      const start = parseLocalDate(o.start_date);
-      const end = parseLocalDate(o.end_date);
-      return date >= start && date <= end;
-    });
+    // Check overrides first — use the most recent one if multiple match
+    const matchingOverrides = overrides
+      .filter((o) => {
+        if (o.kid_id !== schedule.kid_id) return false;
+        const start = parseLocalDate(o.start_date);
+        const end = parseLocalDate(o.end_date);
+        return date >= start && date <= end;
+      })
+      .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    const override = matchingOverrides[0] || null;
 
     if (override) {
       result[schedule.kid_id] = {

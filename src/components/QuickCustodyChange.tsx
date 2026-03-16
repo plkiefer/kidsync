@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
+import { getSupabase } from "@/lib/supabase";
 import { CalendarEvent, Kid, Profile, CustodyOverride, OverrideStatus } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
 
@@ -81,6 +82,18 @@ export default function QuickCustodyChange({
     const description = `${isPickup ? "Pickup" : "Drop-off"} for ${kidNames} moved from ${currentDate} to ${newDate} at ${newTime}${note ? ` — ${note}` : ""}`;
 
     try {
+      const supabase = getSupabase();
+
+      // Withdraw any existing overrides for the same kids+date to prevent stale duplicates
+      for (const kidId of selectedKids) {
+        await supabase
+          .from("custody_overrides")
+          .update({ status: "withdrawn" })
+          .eq("kid_id", kidId)
+          .eq("start_date", newDate)
+          .in("status", ["pending", "approved"]);
+      }
+
       // Submit one override per kid (required by schema) but with same note
       // so they appear as a grouped request
       for (const kidId of selectedKids) {
