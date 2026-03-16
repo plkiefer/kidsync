@@ -32,19 +32,35 @@ export {
   parseISO,
 };
 
+/**
+ * Parse a Supabase timestamptz string. Supabase may return bare ISO strings
+ * (no Z or offset) which JS interprets as local time. Since Supabase stores
+ * in UTC, we append Z if no timezone indicator is present.
+ */
+export function parseTimestamp(dateStr: string): Date {
+  if (
+    !dateStr.endsWith("Z") &&
+    !/[+-]\d{2}:\d{2}$/.test(dateStr) &&
+    !/[+-]\d{4}$/.test(dateStr)
+  ) {
+    return new Date(dateStr + "Z");
+  }
+  return new Date(dateStr);
+}
+
 /** Format a datetime string to readable time: "4:00 PM" */
 export function formatTime(dateStr: string): string {
-  return format(parseISO(dateStr), "h:mm a");
+  return format(parseTimestamp(dateStr), "h:mm a");
 }
 
 /** Format a datetime string to readable date: "Mon, Mar 10" */
 export function formatShortDate(dateStr: string): string {
-  return format(parseISO(dateStr), "EEE, MMM d");
+  return format(parseTimestamp(dateStr), "EEE, MMM d");
 }
 
 /** Format for display in event cards: "Mar 10, 4:00 PM" */
 export function formatEventDateTime(dateStr: string): string {
-  return format(parseISO(dateStr), "MMM d, h:mm a");
+  return format(parseTimestamp(dateStr), "MMM d, h:mm a");
 }
 
 /** Format for month header: "March 2026" */
@@ -74,4 +90,10 @@ export function getWeekDays(date: Date): Date[] {
   const weekStart = startOfWeek(date);
   const weekEnd = endOfWeek(date);
   return eachDayOfInterval({ start: weekStart, end: weekEnd });
+}
+
+/** Get fractional hour from a datetime string (e.g., 5:30 PM = 17.5) */
+export function getHourFromDateStr(dateStr: string): number {
+  const d = parseTimestamp(dateStr);
+  return d.getHours() + d.getMinutes() / 60;
 }

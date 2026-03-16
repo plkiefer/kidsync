@@ -1,4 +1,5 @@
 import { CalendarEvent } from "./types";
+import { parseTimestamp } from "./dates";
 
 // ── RRULE Parser ─────────────────────────────────────────────
 
@@ -53,13 +54,17 @@ function parseRRule(rrule: string): ParsedRRule {
 
 // ── Date helpers ─────────────────────────────────────────────
 
-/** Replace the date portion of a datetime string, keeping the time. */
+/** Replace the date portion of a datetime string, keeping the time and timezone. */
 function replaceDate(originalDateTime: string, newDate: Date): string {
   let timePart = "00:00:00";
+  let tzSuffix = "";
   const tIdx = originalDateTime.indexOf("T");
   if (tIdx !== -1) {
-    timePart = originalDateTime
-      .substring(tIdx + 1)
+    const afterT = originalDateTime.substring(tIdx + 1);
+    // Extract timezone suffix before stripping it from the time part
+    const tzMatch = afterT.match(/([Z]|[+-]\d{2}:?\d{2})$/);
+    if (tzMatch) tzSuffix = tzMatch[1];
+    timePart = afterT
       .replace(/Z.*$/, "")
       .replace(/[+-]\d{2}:?\d{2}$/, "")
       .replace(/\.\d+$/, "");
@@ -67,7 +72,7 @@ function replaceDate(originalDateTime: string, newDate: Date): string {
   const y = newDate.getFullYear();
   const m = String(newDate.getMonth() + 1).padStart(2, "0");
   const d = String(newDate.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}T${timePart}`;
+  return `${y}-${m}-${d}T${timePart}${tzSuffix}`;
 }
 
 // ── Main expansion ───────────────────────────────────────────
@@ -91,8 +96,8 @@ export function expandRecurringEvents(
     if (!event.recurring_rule || event._virtual) continue;
 
     const rule = parseRRule(event.recurring_rule);
-    const startDate = new Date(event.starts_at);
-    const endDate = new Date(event.ends_at);
+    const startDate = parseTimestamp(event.starts_at);
+    const endDate = parseTimestamp(event.ends_at);
     const durationMs = endDate.getTime() - startDate.getTime();
 
     // Hard cap for rules with no end

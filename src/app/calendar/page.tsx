@@ -6,7 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFamily } from "@/hooks/useFamily";
 import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
-import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds } from "@/lib/types";
+import { useCustody } from "@/hooks/useCustody";
+import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds, OverrideStatus } from "@/lib/types";
 import {
   formatMonthYear,
   addMonths,
@@ -24,12 +25,16 @@ import EventDetailModal from "@/components/EventDetailModal";
 import TravelModal from "@/components/TravelModal";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
+import CustodySettings from "@/components/CustodySettings";
+import CustodyOverrides from "@/components/CustodyOverrides";
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
   Download,
   LogOut,
+  Shield,
+  AlertCircle,
 } from "lucide-react";
 
 type ViewMode = "month" | "week" | "list";
@@ -56,6 +61,14 @@ export default function CalendarPage() {
     refetch,
   } = useEvents(dataReady);
   const { logs, loading: logsLoading } = useActivityLog(20, dataReady);
+  const {
+    getCustodyForDate,
+    overrides,
+    agreements,
+    createOverride,
+    respondToOverride,
+    refetchCustody,
+  } = useCustody(dataReady);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
@@ -72,6 +85,8 @@ export default function CalendarPage() {
   const [showTravelModal, setShowTravelModal] = useState(false);
   const [travelEventId, setTravelEventId] = useState<string | null>(null);
   const [existingTravel, setExistingTravel] = useState<any>(null);
+  const [showCustodySettings, setShowCustodySettings] = useState(false);
+  const [showCustodyOverrides, setShowCustodyOverrides] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -249,6 +264,11 @@ export default function CalendarPage() {
     );
   }
 
+  // Count pending overrides that need current user's response
+  const pendingOverrideCount = overrides.filter(
+    (o) => o.status === "pending" && o.created_by !== user?.id
+  ).length;
+
   if (!user) return null;
 
   return (
@@ -268,6 +288,25 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCustodyOverrides(true)}
+            className="relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
+          >
+            <AlertCircle size={13} />
+            Changes
+            {pendingOverrideCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
+                {pendingOverrideCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setShowCustodySettings(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-xs font-semibold hover:bg-indigo-500/20 transition-colors"
+          >
+            <Shield size={13} />
+            Custody
+          </button>
           <button
             onClick={handleExportICal}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
@@ -341,6 +380,8 @@ export default function CalendarPage() {
                   kids={kids}
                   onDayClick={handleDayClick}
                   onEventClick={handleEventClick}
+                  getCustodyForDate={getCustodyForDate}
+                  currentUserId={user?.id}
                 />
               )}
               {view === "week" && (
@@ -350,6 +391,8 @@ export default function CalendarPage() {
                   kids={kids}
                   onDayClick={handleDayClick}
                   onEventClick={handleEventClick}
+                  getCustodyForDate={getCustodyForDate}
+                  currentUserId={user?.id}
                 />
               )}
               {view === "list" && (
@@ -427,6 +470,33 @@ export default function CalendarPage() {
             setShowTravelModal(false);
             setTravelEventId(null);
             setExistingTravel(null);
+          }}
+        />
+      )}
+
+      {showCustodySettings && profile?.family_id && (
+        <CustodySettings
+          familyId={profile.family_id}
+          kids={kids}
+          members={members}
+          currentUserId={user?.id ?? ""}
+          onClose={() => setShowCustodySettings(false)}
+        />
+      )}
+
+      {showCustodyOverrides && profile?.family_id && (
+        <CustodyOverrides
+          familyId={profile.family_id}
+          kids={kids}
+          members={members}
+          overrides={overrides}
+          agreements={agreements}
+          currentUserId={user?.id ?? ""}
+          onCreateOverride={createOverride}
+          onRespondToOverride={respondToOverride}
+          onClose={() => {
+            setShowCustodyOverrides(false);
+            refetchCustody();
           }}
         />
       )}

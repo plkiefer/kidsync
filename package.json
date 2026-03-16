@@ -10,11 +10,14 @@
     "types:supabase": "npx supabase gen types typescript --project-id YOUR_PROJECT_ID > src/lib/database.types.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.45.0",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.383.0",
+    "mammoth": "^1.12.0",
     "next": "14.2.5",
+    "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sonner": "^1.5.0"

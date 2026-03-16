@@ -9,7 +9,7 @@ import {
   EVENT_TYPE_CONFIG,
   getEventKidIds,
 } from "@/lib/types";
-import { toDateTimeLocal } from "@/lib/dates";
+import { toDateTimeLocal, parseTimestamp } from "@/lib/dates";
 import RecurrencePicker from "@/components/RecurrencePicker";
 import {
   X,
@@ -66,10 +66,10 @@ export default function EventModal({
     kid_ids: event ? getEventKidIds(event) : kids[0] ? [kids[0].id] : [],
     event_type: event?.event_type || "other",
     starts_at: event?.starts_at
-      ? toDateTimeLocal(new Date(event.starts_at))
+      ? toDateTimeLocal(parseTimestamp(event.starts_at))
       : toDateTimeLocal(defaultStart),
     ends_at: event?.ends_at
-      ? toDateTimeLocal(new Date(event.ends_at))
+      ? toDateTimeLocal(parseTimestamp(event.ends_at))
       : toDateTimeLocal(defaultEnd),
     all_day: event?.all_day || false,
     recurring_rule: event?.recurring_rule || "",
@@ -79,10 +79,10 @@ export default function EventModal({
     travel_departure_airport: existingFlight?.departure_airport || "",
     travel_arrival_airport: existingFlight?.arrival_airport || "",
     travel_departure_time: existingFlight?.departure_time
-      ? toDateTimeLocal(new Date(existingFlight.departure_time))
+      ? toDateTimeLocal(parseTimestamp(existingFlight.departure_time))
       : "",
     travel_arrival_time: existingFlight?.arrival_time
-      ? toDateTimeLocal(new Date(existingFlight.arrival_time))
+      ? toDateTimeLocal(parseTimestamp(existingFlight.arrival_time))
       : "",
     travel_lodging_name: existingTravel?.lodging_name || "",
     travel_lodging_address: existingTravel?.lodging_address || "",

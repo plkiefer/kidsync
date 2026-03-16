@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
-import { getCalendarDays, isSameDay, isSameMonth, isToday } from "@/lib/dates";
+import { getCalendarDays, isSameDay, isSameMonth, isToday, parseTimestamp } from "@/lib/dates";
 
 interface MonthViewProps {
   currentDate: Date;
@@ -9,6 +9,8 @@ interface MonthViewProps {
   kids: Kid[];
   onDayClick: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
+  getCustodyForDate?: (date: Date) => Record<string, { parentId: string; isParentA: boolean }>;
+  currentUserId?: string;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -19,6 +21,8 @@ export default function MonthView({
   kids,
   onDayClick,
   onEventClick,
+  getCustodyForDate,
+  currentUserId,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
 
@@ -29,7 +33,7 @@ export default function MonthView({
   }
 
   const getEventsForDay = (date: Date) =>
-    events.filter((e) => isSameDay(new Date(e.starts_at), date));
+    events.filter((e) => isSameDay(parseTimestamp(e.starts_at), date));
 
   const getEventKids = (event: CalendarEvent) => {
     const kidIds = getEventKidIds(event);
@@ -59,6 +63,26 @@ export default function MonthView({
             const today = isToday(day);
             const inMonth = isSameMonth(day, currentDate);
 
+            // Custody underlay
+            let custodyBg: string | undefined;
+            if (getCustodyForDate && !today) {
+              const custody = getCustodyForDate(day);
+              const kidIds = Object.keys(custody);
+              if (kidIds.length > 0) {
+                const allSame = kidIds.every(
+                  (k) => custody[k].isParentA === custody[kidIds[0]].isParentA
+                );
+                if (allSame) {
+                  custodyBg = custody[kidIds[0]].isParentA
+                    ? "rgba(59, 130, 246, 0.07)"
+                    : "rgba(249, 115, 22, 0.07)";
+                } else {
+                  custodyBg =
+                    "repeating-linear-gradient(135deg, rgba(59,130,246,0.05) 0px, rgba(59,130,246,0.05) 4px, rgba(249,115,22,0.05) 4px, rgba(249,115,22,0.05) 8px)";
+                }
+              }
+            }
+
             return (
               <div
                 key={di}
@@ -69,6 +93,7 @@ export default function MonthView({
                   ${di === 6 ? "border-r-0" : ""}
                   ${wi === weeks.length - 1 ? "border-b-0" : ""}
                 `}
+                style={custodyBg ? { background: custodyBg } : undefined}
               >
                 {/* Day number */}
                 <div

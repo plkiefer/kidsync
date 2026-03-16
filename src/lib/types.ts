@@ -190,6 +190,92 @@ export interface EventChangeLog {
   changer?: Profile;
 }
 
+// ── Custody ─────────────────────────────────────────────────
+
+export interface CustodySchedule {
+  id: string;
+  family_id: string;
+  kid_id: string;
+  pattern_type: "alternating_weeks" | "fixed_days";
+  parent_a_id: string; // e.g., Dad
+  parent_b_id: string; // e.g., Mom
+  anchor_date: string; // DATE — a known date when parent_a's period starts
+  pattern_days: number[]; // day-of-week (0=Sun, 5=Fri, 6=Sat)
+  fixed_day_map: Record<number, string> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type OverrideStatus = "pending" | "approved" | "disputed" | "withdrawn";
+export type ComplianceStatus = "unchecked" | "compliant" | "flagged";
+
+export interface CustodyOverride {
+  id: string;
+  family_id: string;
+  kid_id: string;
+  start_date: string;
+  end_date: string;
+  parent_id: string;
+  note: string | null;
+  reason: string | null;
+  // Compliance
+  compliance_status: ComplianceStatus;
+  compliance_issues: string[] | null;
+  compliance_checked_at: string | null;
+  // Approval workflow
+  status: OverrideStatus;
+  created_by: string | null;
+  responded_by: string | null;
+  responded_at: string | null;
+  response_note: string | null;
+  created_at: string;
+}
+
+export interface CustodyAgreement {
+  id: string;
+  family_id: string;
+  file_name: string;
+  file_path: string;
+  parsed_terms: ParsedCustodyTerms | null;
+  raw_text: string | null;
+  parsed_at: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
+export interface ParsedCustodyTerms {
+  // Regular schedule
+  primary_custodian: string; // "mother" or "father"
+  alternating_weekends: {
+    enabled: boolean;
+    parent: string; // who gets alternating weekends
+    days: string[]; // e.g., ["Friday", "Saturday", "Sunday"]
+    pickup_time?: string;
+    dropoff_time?: string;
+  };
+  weekday_schedule?: {
+    monday?: string;
+    tuesday?: string;
+    wednesday?: string;
+    thursday?: string;
+    friday?: string;
+  };
+  // Holiday/vacation provisions
+  holidays: Array<{
+    name: string;
+    rule: string; // e.g., "alternating years", "always with father", etc.
+  }>;
+  summer_schedule?: string;
+  spring_break?: string;
+  winter_break?: string;
+  // Constraints
+  restrictions: string[];
+  // Right of first refusal, notification requirements, etc.
+  provisions: string[];
+  // Raw summary for display
+  summary: string;
+}
+
 // ── UI / Form Types ─────────────────────────────────────────
 
 export interface EventFormData {

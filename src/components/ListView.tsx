@@ -5,6 +5,7 @@ import {
   isSameMonth,
   formatShortDate,
   formatTime,
+  parseTimestamp,
 } from "@/lib/dates";
 
 interface ListViewProps {
@@ -23,10 +24,10 @@ export default function ListView({
   onEventClick,
 }: ListViewProps) {
   const monthEvents = events
-    .filter((e) => isSameMonth(new Date(e.starts_at), currentDate))
+    .filter((e) => isSameMonth(parseTimestamp(e.starts_at), currentDate))
     .sort(
       (a, b) =>
-        new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime()
+        parseTimestamp(a.starts_at).getTime() - parseTimestamp(b.starts_at).getTime()
     );
 
   const getEventKidsFor = (event: CalendarEvent) => {
