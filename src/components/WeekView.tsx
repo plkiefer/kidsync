@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
 import {
   getWeekDays,
   isSameDay,
@@ -93,8 +93,7 @@ export default function WeekView({
               <div className="space-y-1">
                 {dayEvents.map((evt) => {
                   const evtKids = getEventKidsFor(evt);
-                  const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
-                  const isMultiKid = evtKids.length > 1;
+                  const typeColor = getEventTypeColor(evt);
 
                   return (
                     <div
@@ -105,28 +104,26 @@ export default function WeekView({
                       }}
                       className="text-[11px] px-1.5 py-1 rounded cursor-pointer font-semibold transition-opacity hover:opacity-80"
                       style={{
-                        backgroundColor: isMultiKid
-                          ? `${primaryColor}15`
-                          : `${primaryColor}22`,
-                        borderLeft: isMultiKid
-                          ? undefined
-                          : `2.5px solid ${primaryColor}`,
-                        color: primaryColor,
+                        backgroundColor: `${typeColor}20`,
+                        borderLeft: `2.5px solid ${typeColor}`,
+                        color: typeColor,
                       }}
                     >
-                      {isMultiKid && (
-                        <span className="inline-flex mr-0.5 align-middle -ml-0.5">
-                          {evtKids.map((k) => (
-                            <span
-                              key={k.id}
-                              className="inline-block w-[4px] h-[10px] first:rounded-l-sm last:rounded-r-sm"
-                              style={{ backgroundColor: k.color }}
-                            />
-                          ))}
+                      <div className="flex items-center gap-0.5">
+                        {evtKids.map((k) => (
+                          <span
+                            key={k.id}
+                            className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[7px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: k.color }}
+                            title={k.name}
+                          >
+                            {k.name.charAt(0)}
+                          </span>
+                        ))}
+                        <span className="truncate ml-0.5">
+                          {getEventIcon(evt)} {evt.title}
                         </span>
-                      )}
-                      <span>{getEventIcon(evt)}</span>{" "}
-                      <span className="truncate">{evt.title}</span>
+                      </div>
                       <div className="text-[9px] font-normal opacity-70 truncate">
                         {evt.all_day ? "All day" : formatTime(evt.starts_at)}
                       </div>

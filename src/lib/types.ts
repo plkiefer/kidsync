@@ -328,6 +328,16 @@ export function getEventIcon(event: CalendarEvent): string {
   return config?.icon || "📌";
 }
 
+/**
+ * Get the display color for an event based on its type.
+ * Birthday events get a festive pink. Everything else uses EVENT_TYPE_CONFIG.
+ */
+export function getEventTypeColor(event: CalendarEvent): string {
+  if (event.id.startsWith("birthday-")) return "#E91E8F";
+  const config = EVENT_TYPE_CONFIG[event.event_type as keyof typeof EVENT_TYPE_CONFIG];
+  return config?.color || "#607080";
+}
+
 // ── Human-readable RRULE description ───────────────────────
 
 const DAY_NAMES_SHORT: Record<string, string> = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
+import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
 import {
   isSameMonth,
   formatShortDate,
@@ -51,8 +51,8 @@ export default function ListView({
     <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
       {monthEvents.map((evt, i) => {
         const evtKids = getEventKidsFor(evt);
-        const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
         const creator = getMember(evt.created_by);
+        const typeColor = getEventTypeColor(evt);
         const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
 
         return (
@@ -64,14 +64,26 @@ export default function ListView({
               hover:bg-[var(--color-surface-alt)]/60
               ${i < monthEvents.length - 1 ? "border-b border-[var(--color-divider)]" : ""}
             `}
+            style={{ borderLeft: `4px solid ${typeColor}` }}
           >
             {/* Type icon */}
             <div className="text-xl shrink-0">{getEventIcon(evt)}</div>
 
             {/* Event info */}
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-[var(--color-text)] truncate">
-                {evt.title}
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-[var(--color-text)] truncate">
+                  {evt.title}
+                </span>
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0"
+                  style={{
+                    backgroundColor: `${typeColor}20`,
+                    color: typeColor,
+                  }}
+                >
+                  {typeConfig?.label || "Event"}
+                </span>
               </div>
               <div className="text-xs text-[var(--color-text-faint)]">
                 {formatShortDate(evt.starts_at)} ·{" "}
@@ -86,16 +98,22 @@ export default function ListView({
 
             {/* Kid badges + creator */}
             <div className="text-right shrink-0">
-              <div className="flex items-center gap-1 justify-end mb-1">
+              <div className="flex items-center gap-1.5 justify-end mb-1">
                 {evtKids.map((kid) => (
                   <div
                     key={kid.id}
-                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md inline-block"
+                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md"
                     style={{
                       backgroundColor: `${kid.color}22`,
                       color: kid.color,
                     }}
                   >
+                    <span
+                      className="inline-flex items-center justify-center w-[16px] h-[16px] rounded-full text-[8px] font-bold text-white"
+                      style={{ backgroundColor: kid.color }}
+                    >
+                      {kid.name.charAt(0)}
+                    </span>
                     {kid.name}
                   </div>
                 ))}
@@ -104,13 +122,6 @@ export default function ListView({
                 by {creator?.full_name || "Unknown"}
               </div>
             </div>
-
-            {/* Travel indicator */}
-            {evt.event_type === "travel" && (
-              <div className="text-xs" title="Travel event">
-                ✈️
-              </div>
-            )}
           </div>
         );
       })}

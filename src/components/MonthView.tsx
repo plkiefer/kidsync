@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
 import { getCalendarDays, isSameDay, isSameMonth, isToday } from "@/lib/dates";
 
 interface MonthViewProps {
@@ -88,8 +88,7 @@ export default function MonthView({
                 {/* Events */}
                 {dayEvents.slice(0, 3).map((evt) => {
                   const evtKids = getEventKids(evt);
-                  const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
-                  const isMultiKid = evtKids.length > 1;
+                  const typeColor = getEventTypeColor(evt);
 
                   return (
                     <div
@@ -100,27 +99,24 @@ export default function MonthView({
                       }}
                       className="text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-0.5"
                       style={{
-                        backgroundColor: isMultiKid
-                          ? `${primaryColor}15`
-                          : `${primaryColor}22`,
-                        borderLeft: isMultiKid
-                          ? undefined
-                          : `2.5px solid ${primaryColor}`,
-                        color: primaryColor,
+                        backgroundColor: `${typeColor}20`,
+                        borderLeft: `2.5px solid ${typeColor}`,
+                        color: typeColor,
                       }}
                     >
-                      {isMultiKid && (
-                        <span className="flex shrink-0 -ml-0.5 mr-0.5">
-                          {evtKids.map((k) => (
-                            <span
-                              key={k.id}
-                              className="inline-block w-[5px] h-[12px] first:rounded-l-sm last:rounded-r-sm"
-                              style={{ backgroundColor: k.color }}
-                            />
-                          ))}
+                      {evtKids.map((k) => (
+                        <span
+                          key={k.id}
+                          className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[7px] font-bold text-white shrink-0"
+                          style={{ backgroundColor: k.color }}
+                          title={k.name}
+                        >
+                          {k.name.charAt(0)}
                         </span>
-                      )}
-                      {getEventIcon(evt)} {evt.title}
+                      ))}
+                      <span className="truncate ml-0.5">
+                        {getEventIcon(evt)} {evt.title}
+                      </span>
                     </div>
                   );
                 })}

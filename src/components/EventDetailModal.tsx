@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds, getEventIcon, describeRRule } from "@/lib/types";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds, getEventIcon, getEventTypeColor, describeRRule } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
 import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download } from "lucide-react";
 
@@ -38,11 +38,9 @@ export default function EventDetailModal({
     }
   };
 
-  // Color bar
-  const colorBarStyle =
-    eventKids.length > 1
-      ? { background: `linear-gradient(to right, ${eventKids.map((k) => k.color).join(", ")})` }
-      : { backgroundColor: eventKids[0]?.color || "var(--color-accent)" };
+  // Color bar — driven by event type
+  const typeColor = getEventTypeColor(event);
+  const colorBarStyle = { backgroundColor: typeColor };
 
   return (
     <div
@@ -63,8 +61,8 @@ export default function EventDetailModal({
               <span
                 className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
                 style={{
-                  backgroundColor: `${eventKids[0]?.color || "var(--color-accent)"}18`,
-                  color: eventKids[0]?.color || "var(--color-accent)",
+                  backgroundColor: `${typeColor}20`,
+                  color: typeColor,
                 }}
               >
                 {typeConfig?.label || "Event"}
@@ -86,14 +84,17 @@ export default function EventDetailModal({
           <div className="space-y-3 mb-6">
             {/* Kids */}
             <div className="flex items-center gap-3">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0"
-                style={{
-                  backgroundColor: `${eventKids[0]?.color || "var(--color-accent)"}22`,
-                  color: eventKids[0]?.color || "var(--color-accent)",
-                }}
-              >
-                {eventKids.length > 1 ? `${eventKids.length}` : eventKids[0]?.name?.charAt(0) || "?"}
+              <div className="flex items-center gap-1 shrink-0">
+                {eventKids.map((kid) => (
+                  <div
+                    key={kid.id}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ backgroundColor: kid.color }}
+                    title={kid.name}
+                  >
+                    {kid.name.charAt(0)}
+                  </div>
+                ))}
               </div>
               <div>
                 <div className="text-xs text-[var(--color-text-faint)] uppercase tracking-wider">
