@@ -39,14 +39,14 @@ export default function QuickCustodyChange({
   const currentTime = turnoverEvent.starts_at.split("T")[1]?.slice(0, 5) || "15:00";
   const eventKidIds = turnoverEvent.kid_ids || [turnoverEvent.kid_id];
 
-  // Determine which parent receives custody
-  // For pickup events, the current user (Father) picks up → parent_id = currentUserId
-  // For dropoff events, the other parent receives → parent_id = other parent
+  // Determine override parent:
+  // For PICKUP change: extend/shift when Father picks up → override assigns Father
+  // For DROPOFF change: extend/shift when Father drops off → override assigns Father
+  //   (extending Father's custody to the new date so the dropoff moves)
+  // In both cases for the current user, the override parent is the current user
   const otherParent = members.find((m) => m.id !== currentUserId);
-  const receivingParentId = isPickup ? currentUserId : (otherParent?.id || "");
-  const receivingParentName = isPickup
-    ? members.find((m) => m.id === currentUserId)?.full_name?.split(" ")[0]
-    : otherParent?.full_name?.split(" ")[0];
+  const overrideParentId = currentUserId; // Father's custody is being modified
+  const currentUserName = members.find((m) => m.id === currentUserId)?.full_name?.split(" ")[0];
 
   // Form state — only the things that can change
   const [newDate, setNewDate] = useState(currentDate);
@@ -74,16 +74,23 @@ export default function QuickCustodyChange({
     setSubmitting(true);
     setError("");
 
+    const kidNames = selectedKids
+      .map((id) => kids.find((k) => k.id === id)?.name)
+      .filter(Boolean)
+      .join(" & ");
+    const description = `${isPickup ? "Pickup" : "Drop-off"} for ${kidNames} moved from ${currentDate} to ${newDate} at ${newTime}${note ? ` — ${note}` : ""}`;
+
     try {
-      // Create one override per selected kid
+      // Submit one override per kid (required by schema) but with same note
+      // so they appear as a grouped request
       for (const kidId of selectedKids) {
         await onSubmit({
           family_id: familyId,
           kid_id: kidId,
           start_date: newDate,
           end_date: newDate,
-          parent_id: receivingParentId,
-          note: `${isPickup ? "Pickup" : "Drop-off"} moved from ${currentDate} ${currentTime} to ${newDate} ${newTime}${note ? `: ${note}` : ""}`,
+          parent_id: overrideParentId,
+          note: description,
           reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}`,
           compliance_status: "unchecked" as const,
           compliance_issues: null,
@@ -138,7 +145,7 @@ export default function QuickCustodyChange({
                 </h2>
                 <p className="text-[10px] text-[var(--color-text-faint)] mt-0.5">
                   Currently: {formatShortDate(turnoverEvent.starts_at)} at{" "}
-                  {formatTime(turnoverEvent.starts_at)} → {receivingParentName}
+                  {formatTime(turnoverEvent.starts_at)}
                 </p>
               </div>
               <button

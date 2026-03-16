@@ -194,17 +194,19 @@ export default function CustodyOverrides({
   };
 
   const handleRespond = async (
-    overrideId: string,
+    overrideIds: string[],
     status: OverrideStatus
   ) => {
     setRespondLoading(true);
     try {
-      await onRespondToOverride(
-        overrideId,
-        status,
-        responseNote,
-        currentUserId
-      );
+      for (const id of overrideIds) {
+        await onRespondToOverride(
+          id,
+          status,
+          responseNote,
+          currentUserId
+        );
+      }
       setRespondingTo(null);
       setResponseNote("");
     } catch (err) {
@@ -214,17 +216,47 @@ export default function CustodyOverrides({
     }
   };
 
+  // Group overrides with same note+date+status+parent (quick changes for multiple kids)
+  interface OverrideGroup {
+    primary: CustodyOverride;
+    all: CustodyOverride[];
+    kidIds: string[];
+  }
+  const groupedOverrides: OverrideGroup[] = [];
+  const seen = new Set<string>();
+  for (const o of overrides) {
+    if (seen.has(o.id)) continue;
+    // Find matching overrides (same note, date, status, parent)
+    const matches = overrides.filter(
+      (other) =>
+        other.id !== o.id &&
+        !seen.has(other.id) &&
+        other.note === o.note &&
+        other.start_date === o.start_date &&
+        other.end_date === o.end_date &&
+        other.parent_id === o.parent_id &&
+        other.status === o.status
+    );
+    const all = [o, ...matches];
+    all.forEach((m) => seen.add(m.id));
+    groupedOverrides.push({
+      primary: o,
+      all,
+      kidIds: all.map((m) => m.kid_id),
+    });
+  }
+
   // Sort: pending first, then by date
-  const sortedOverrides = [...overrides].sort((a, b) => {
+  const sortedOverrides = [...groupedOverrides].sort((a, b) => {
     const statusOrder: Record<OverrideStatus, number> = {
       pending: 0,
       disputed: 1,
       approved: 2,
       withdrawn: 3,
     };
-    const sDiff = statusOrder[a.status] - statusOrder[b.status];
+    const sDiff = statusOrder[a.primary.status] - statusOrder[b.primary.status];
     if (sDiff !== 0) return sDiff;
-    return a.start_date.localeCompare(b.start_date);
+    return a.primary.start_date.localeCompare(b.primary.start_date);
   });
 
   const pendingCount = overrides.filter(
@@ -500,7 +532,10 @@ export default function CustodyOverrides({
             </div>
           ) : (
             <div className="space-y-2">
-              {sortedOverrides.map((override) => {
+              {sortedOverrides.map((group) => {
+                const override = group.primary;
+                const allIds = group.all.map((o) => o.id);
+                const kidNamesStr = group.kidIds.map(getKidName).join(" & ");
                 const statusCfg = STATUS_CONFIG[override.status];
                 const compCfg =
                   COMPLIANCE_CONFIG[override.compliance_status];
@@ -544,7 +579,7 @@ export default function CustodyOverrides({
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-faint)]">
-                          <span>{getKidName(override.kid_id)}</span>
+                          <span>{kidNamesStr}</span>
                           <span>-</span>
                           <span>
                             {override.start_date} to {override.end_date}
@@ -707,7 +742,7 @@ export default function CustodyOverrides({
                                   <button
                                     onClick={() =>
                                       handleRespond(
-                                        override.id,
+                                        allIds,
                                         "approved"
                                       )
                                     }
@@ -727,7 +762,7 @@ export default function CustodyOverrides({
                                   <button
                                     onClick={() =>
                                       handleRespond(
-                                        override.id,
+                                        allIds,
                                         "disputed"
                                       )
                                     }
@@ -765,7 +800,7 @@ export default function CustodyOverrides({
                           <button
                             onClick={() =>
                               handleRespond(
-                                override.id,
+                                allIds,
                                 "withdrawn"
                               )
                             }
