@@ -199,7 +199,12 @@ export default function CalendarPage() {
     setShowDetailModal(true);
   };
 
+  const isVirtualEvent = (id: string) =>
+    id.startsWith("birthday-") || id.startsWith("turnover-") || id.startsWith("holiday-");
+
   const handleEditFromDetail = () => {
+    // Virtual events (birthdays, turnovers, holidays) can't be edited
+    if (editingEvent && isVirtualEvent(editingEvent.id)) return;
     setShowDetailModal(false);
     // For recurrence occurrences, edit the parent (master) event
     if (editingEvent?._recurrence_parent) {

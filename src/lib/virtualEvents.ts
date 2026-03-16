@@ -1,22 +1,18 @@
 import { CalendarEvent, CustodySchedule, CustodyOverride, CustodyAgreement, ParsedCustodyTerms, Kid } from "./types";
 import { computeCustodyForDate, DayCustodyInfo } from "./custody";
-import { getHolidaysForYear, getHolidayIcon, getHolidayColor, HolidayTier } from "./holidays";
+import { getHolidaysForYear } from "./holidays";
 import { eachDayOfInterval, addDays, format } from "date-fns";
 
 // ── Custody Turnover Events ─────────────────────────────────
 
-interface TurnoverInfo {
-  kidId: string;
-  kidName: string;
-  date: Date;
-  fromParentId: string;
-  toParentId: string;
-  isParentAPickup: boolean; // true if parent A is picking up
-}
-
 /**
  * Detect custody turnovers by comparing custody parent on consecutive days.
- * Returns turnover events within the given date range.
+ *
+ * Key logic:
+ *  - PICKUP (primary→weekend parent): event on the day the weekend parent STARTS,
+ *    at pickup time (e.g., Friday 3 PM — Father picks up).
+ *  - DROPOFF (weekend→primary parent): event on the LAST day the weekend parent HAS
+ *    custody, at dropoff time (e.g., Sunday 5 PM — Father drops off).
  */
 export function generateTurnoverEvents(
   rangeStart: Date,
@@ -37,15 +33,22 @@ export function generateTurnoverEvents(
   const latestAgreement = agreements.length > 0 ? agreements[0] : null;
   const terms = latestAgreement?.parsed_terms as ParsedCustodyTerms | null;
   const pickupTime = terms?.alternating_weekends?.pickup_time || "3:00 PM";
-  const dropoffTime = terms?.alternating_weekends?.dropoff_time || "6:00 PM";
+  const dropoffTime = terms?.alternating_weekends?.dropoff_time || "5:00 PM";
 
   // Extend range by 1 day on each side to detect boundary transitions
   const extStart = addDays(rangeStart, -1);
-  const days = eachDayOfInterval({ start: extStart, end: rangeEnd });
+  const extEnd = addDays(rangeEnd, 1);
+  const days = eachDayOfInterval({ start: extStart, end: extEnd });
 
-  // Collect transitions per date, grouped by receiving parent
-  // Key: "dateStr|toParentId|isParentA"
-  const transitionMap = new Map<string, { dateStr: string; toParentId: string; isParentA: boolean; kidIds: string[]; familyId: string }>();
+  // Key: "eventDate|toParentId" → merged transition info
+  const transitionMap = new Map<string, {
+    eventDate: Date;
+    dateStr: string;
+    toParentId: string;
+    isPickup: boolean; // true = pickup (going TO weekend parent), false = dropoff
+    kidIds: string[];
+    familyId: string;
+  }>();
 
   let prevCustody: DayCustodyInfo = {};
 
@@ -53,29 +56,41 @@ export function generateTurnoverEvents(
     const day = days[i];
     const custody = computeCustodyForDate(day, schedules, approvedOverrides);
 
-    if (i > 0 && day >= rangeStart && day <= rangeEnd) {
+    if (i > 0) {
       for (const schedule of schedules) {
         const kidId = schedule.kid_id;
         const prev = prevCustody[kidId];
         const curr = custody[kidId];
 
         if (prev && curr && prev.parentId !== curr.parentId) {
-          const dateStr = format(day, "yyyy-MM-dd");
-          const key = `${dateStr}|${curr.parentId}|${curr.isParentA}`;
+          // Determine if this is a pickup or dropoff
+          const isPickup = curr.isParentA; // transitioning TO the weekend parent = pickup
 
-          const existing = transitionMap.get(key);
-          if (existing) {
-            if (!existing.kidIds.includes(kidId)) {
-              existing.kidIds.push(kidId);
+          // Pickup: event goes on current day (the day weekend parent starts)
+          // Dropoff: event goes on PREVIOUS day (last day weekend parent has custody)
+          const eventDate = isPickup ? day : days[i - 1];
+
+          // Only include events within the visible range
+          if (eventDate >= rangeStart && eventDate <= rangeEnd) {
+            const receivingParentId = isPickup ? curr.parentId : prev.parentId;
+            const dateStr = format(eventDate, "yyyy-MM-dd");
+            const key = `${dateStr}|${receivingParentId}|${isPickup}`;
+
+            const existing = transitionMap.get(key);
+            if (existing) {
+              if (!existing.kidIds.includes(kidId)) {
+                existing.kidIds.push(kidId);
+              }
+            } else {
+              transitionMap.set(key, {
+                eventDate,
+                dateStr,
+                toParentId: isPickup ? curr.parentId : curr.parentId,
+                isPickup,
+                kidIds: [kidId],
+                familyId: schedule.family_id,
+              });
             }
-          } else {
-            transitionMap.set(key, {
-              dateStr,
-              toParentId: curr.parentId,
-              isParentA: curr.isParentA,
-              kidIds: [kidId],
-              familyId: schedule.family_id,
-            });
           }
         }
       }
@@ -87,21 +102,27 @@ export function generateTurnoverEvents(
   // Build one event per unique transition (merged across kids)
   const events: CalendarEvent[] = [];
   for (const t of transitionMap.values()) {
-    const toParent = members.find((m) => m.id === t.toParentId);
-    const toName = toParent?.full_name?.split(" ")[0] || "Other Parent";
-
-    const timeStr = t.isParentA ? pickupTime : dropoffTime;
+    const timeStr = t.isPickup ? pickupTime : dropoffTime;
     const hour = parseTimeToHour(timeStr);
 
+    // For pickup: "Patrick picks up" (weekend parent receives)
+    // For dropoff: "Drop-off to Danielle" (primary parent receives)
+    const receivingParent = members.find((m) => m.id === t.toParentId);
+    const receivingName = receivingParent?.full_name?.split(" ")[0] || "Other Parent";
+
+    const title = t.isPickup
+      ? `Pickup — ${receivingName}`
+      : `Drop-off — ${receivingName}`;
+
     events.push({
-      id: `turnover-${t.dateStr}-${t.toParentId.slice(0, 8)}`,
+      id: `turnover-${t.dateStr}-${t.isPickup ? "pickup" : "dropoff"}`,
       family_id: t.familyId,
       kid_id: t.kidIds[0],
       kid_ids: t.kidIds,
-      title: `Custody Exchange — ${toName} picks up`,
+      title,
       event_type: "custody",
       starts_at: `${t.dateStr}T${formatHour(hour)}:00`,
-      ends_at: `${t.dateStr}T${formatHour(hour + 0.5)}:00`,
+      ends_at: `${t.dateStr}T${formatHour(hour)}:00`, // point-in-time, not a block
       all_day: false,
       location: null,
       notes: null,
@@ -143,7 +164,6 @@ export function generateHolidayEvents(
 
   return inRange.map((holiday) => {
     const dateStr = format(holiday.date, "yyyy-MM-dd");
-    const icon = getHolidayIcon(holiday.name);
     const tierLabel = holiday.tier === "federal"
       ? "Federal Holiday"
       : holiday.tier === "state"
@@ -176,7 +196,6 @@ export function generateHolidayEvents(
 
 /** Parse "3:00 PM" or "15:00" to a fractional hour (e.g., 15.0) */
 function parseTimeToHour(timeStr: string): number {
-  // Try "H:MM AM/PM" format
   const ampm = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
   if (ampm) {
     let h = parseInt(ampm[1], 10);
@@ -186,7 +205,6 @@ function parseTimeToHour(timeStr: string): number {
     if (period === "AM" && h === 12) h = 0;
     return h + m / 60;
   }
-  // Try "HH:MM" 24-hour format
   const mil = timeStr.match(/(\d{1,2}):(\d{2})/);
   if (mil) {
     return parseInt(mil[1], 10) + parseInt(mil[2], 10) / 60;

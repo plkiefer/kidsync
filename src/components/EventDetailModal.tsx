@@ -255,36 +255,44 @@ export default function EventDetailModal({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-divider)]">
-            <button
-              onClick={handleDelete}
-              className="px-3.5 py-2.5 rounded-xl border border-[var(--color-tag-deleted-bg)] bg-red-500/10 text-[var(--color-tag-deleted-text)] text-xs font-semibold hover:bg-red-500/20 transition-colors flex items-center gap-1.5"
-            >
-              <Trash2 size={12} />
-              Delete
-            </button>
-
-            {event.event_type === "travel" && onOpenTravel && (
+          {/* Actions — hide edit/delete for virtual events */}
+          {event._virtual ? (
+            <div className="pt-4 border-t border-[var(--color-divider)]">
+              <p className="text-[10px] text-[var(--color-text-faint)] text-center">
+                Auto-generated event — cannot be edited
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-divider)]">
               <button
-                onClick={() => onOpenTravel(event.id)}
-                className="px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-cyan-500/10 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-cyan-500/20 transition-colors flex items-center gap-1.5"
+                onClick={handleDelete}
+                className="px-3.5 py-2.5 rounded-xl border border-[var(--color-tag-deleted-bg)] bg-red-500/10 text-[var(--color-tag-deleted-text)] text-xs font-semibold hover:bg-red-500/20 transition-colors flex items-center gap-1.5"
               >
-                <Plane size={12} />
-                Travel Details
+                <Trash2 size={12} />
+                Delete
               </button>
-            )}
 
-            <div className="flex-1" />
+              {event.event_type === "travel" && onOpenTravel && (
+                <button
+                  onClick={() => onOpenTravel(event.id)}
+                  className="px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-cyan-500/10 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-cyan-500/20 transition-colors flex items-center gap-1.5"
+                >
+                  <Plane size={12} />
+                  Travel Details
+                </button>
+              )}
 
-            <button
-              onClick={onEdit}
-              className="px-5 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all flex items-center gap-1.5"
-            >
-              <Pencil size={12} />
-              Edit Event
-            </button>
-          </div>
+              <div className="flex-1" />
+
+              <button
+                onClick={onEdit}
+                className="px-5 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all flex items-center gap-1.5"
+              >
+                <Pencil size={12} />
+                Edit Event
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
