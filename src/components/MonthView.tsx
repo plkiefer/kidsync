@@ -89,11 +89,7 @@ export default function MonthView({
                 {dayEvents.slice(0, 3).map((evt) => {
                   const evtKids = getEventKids(evt);
                   const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
-                  const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
-                  const borderStyle =
-                    evtKids.length > 1
-                      ? { borderImage: `linear-gradient(to bottom, ${evtKids.map((k) => k.color).join(", ")}) 1` }
-                      : {};
+                  const isMultiKid = evtKids.length > 1;
 
                   return (
                     <div
@@ -102,14 +98,28 @@ export default function MonthView({
                         e.stopPropagation();
                         onEventClick(evt);
                       }}
-                      className="text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80"
+                      className="text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-0.5"
                       style={{
-                        backgroundColor: `${primaryColor}22`,
-                        borderLeft: `2.5px solid ${primaryColor}`,
+                        backgroundColor: isMultiKid
+                          ? `${primaryColor}15`
+                          : `${primaryColor}22`,
+                        borderLeft: isMultiKid
+                          ? undefined
+                          : `2.5px solid ${primaryColor}`,
                         color: primaryColor,
-                        ...borderStyle,
                       }}
                     >
+                      {isMultiKid && (
+                        <span className="flex shrink-0 -ml-0.5 mr-0.5">
+                          {evtKids.map((k) => (
+                            <span
+                              key={k.id}
+                              className="inline-block w-[5px] h-[12px] first:rounded-l-sm last:rounded-r-sm"
+                              style={{ backgroundColor: k.color }}
+                            />
+                          ))}
+                        </span>
+                      )}
                       {getEventIcon(evt)} {evt.title}
                     </div>
                   );

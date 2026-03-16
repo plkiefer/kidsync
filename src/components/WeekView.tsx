@@ -13,13 +13,17 @@ interface WeekViewProps {
   currentDate: Date;
   events: CalendarEvent[];
   kids: Kid[];
+  onDayClick?: (date: Date) => void;
   onEventClick: (event: CalendarEvent) => void;
 }
+
+const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function WeekView({
   currentDate,
   events,
   kids,
+  onDayClick,
   onEventClick,
 }: WeekViewProps) {
   const days = getWeekDays(currentDate);
@@ -39,96 +43,101 @@ export default function WeekView({
 
   return (
     <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
-      {days.map((date, i) => {
-        const dayEvents = getEventsForDay(date);
-        const today = isToday(date);
-
-        return (
-          <div
-            key={i}
-            className={`
-              px-4 py-3 border-b border-[var(--color-divider)] last:border-b-0
-              ${today ? "bg-[var(--color-accent-soft)]" : ""}
-            `}
-          >
-            {/* Day header */}
-            <div className="flex items-center gap-2 mb-2">
-              <span
-                className={`text-sm font-medium ${
-                  today ? "text-[var(--color-accent)] font-bold" : "text-[var(--color-text-muted)]"
-                }`}
+      {/* Day headers */}
+      <div className="grid grid-cols-7">
+        {days.map((date, i) => {
+          const today = isToday(date);
+          return (
+            <div
+              key={i}
+              className={`
+                px-2 py-3 text-center border-b border-[var(--color-divider)]
+                ${i < 6 ? "border-r border-r-[var(--color-divider)]" : ""}
+              `}
+            >
+              <div className="text-xs font-bold text-[var(--color-text-faint)] uppercase tracking-wider">
+                {DAY_HEADERS[i]}
+              </div>
+              <div
+                className={`
+                  inline-flex items-center justify-center w-8 h-8 rounded-full text-lg font-semibold mt-0.5
+                  ${today
+                    ? "bg-[var(--color-accent)] text-white"
+                    : "text-[var(--color-text)]"
+                  }
+                `}
               >
-                {format(date, "EEE, MMM d")}
-              </span>
-              {today && (
-                <span className="text-[10px] font-bold text-blue-400/70 uppercase tracking-wider">
-                  Today
-                </span>
-              )}
+                {date.getDate()}
+              </div>
             </div>
+          );
+        })}
+      </div>
 
-            {/* Events */}
-            {dayEvents.length === 0 ? (
-              <div className="text-xs text-[var(--color-text-faint)] py-1">No events</div>
-            ) : (
-              <div className="space-y-1.5">
+      {/* Events grid */}
+      <div className="grid grid-cols-7 min-h-[420px]">
+        {days.map((date, i) => {
+          const dayEvents = getEventsForDay(date);
+          const today = isToday(date);
+
+          return (
+            <div
+              key={i}
+              onClick={() => onDayClick?.(date)}
+              className={`
+                p-1.5 cursor-pointer border-[var(--color-divider)]
+                ${i < 6 ? "border-r" : ""}
+                ${today ? "bg-[var(--color-accent-soft)]" : "hover:bg-[var(--color-surface-alt)]/60"}
+              `}
+            >
+              <div className="space-y-1">
                 {dayEvents.map((evt) => {
                   const evtKids = getEventKidsFor(evt);
                   const primaryColor = evtKids[0]?.color || "var(--color-kid-2)";
-                  const typeConfig = EVENT_TYPE_CONFIG[evt.event_type];
-                  const borderStyle =
-                    evtKids.length > 1
-                      ? { borderImage: `linear-gradient(to bottom, ${evtKids.map((k) => k.color).join(", ")}) 1` }
-                      : {};
+                  const isMultiKid = evtKids.length > 1;
 
                   return (
                     <div
                       key={evt.id}
-                      onClick={() => onEventClick(evt)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:scale-[1.01] hover:shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEventClick(evt);
+                      }}
+                      className="text-[11px] px-1.5 py-1 rounded cursor-pointer font-semibold transition-opacity hover:opacity-80"
                       style={{
-                        backgroundColor: `${primaryColor}11`,
-                        borderLeft: `3px solid ${primaryColor}`,
-                        ...borderStyle,
+                        backgroundColor: isMultiKid
+                          ? `${primaryColor}15`
+                          : `${primaryColor}22`,
+                        borderLeft: isMultiKid
+                          ? undefined
+                          : `2.5px solid ${primaryColor}`,
+                        color: primaryColor,
                       }}
                     >
-                      <span className="text-base">{getEventIcon(evt)}</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-[var(--color-text)] truncate">
-                          {evt.title}
-                        </div>
-                        <div className="text-xs text-[var(--color-text-faint)] truncate">
-                          {evt.all_day ? "All day" : formatTime(evt.starts_at)} — {evtKids.map((k) => k.name).join(", ")}
-                          {evt.notes && ` · ${evt.notes}`}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {evtKids.map((kid) => (
-                          <div
-                            key={kid.id}
-                            className="text-[10px] font-semibold px-2.5 py-1 rounded-md"
-                            style={{
-                              backgroundColor: `${kid.color}22`,
-                              color: kid.color,
-                            }}
-                          >
-                            {kid.name}
-                          </div>
-                        ))}
-                      </div>
-                      {evt.event_type === "travel" && (
-                        <span className="text-xs" title="Has travel details">
-                          ✈️
+                      {isMultiKid && (
+                        <span className="inline-flex mr-0.5 align-middle -ml-0.5">
+                          {evtKids.map((k) => (
+                            <span
+                              key={k.id}
+                              className="inline-block w-[4px] h-[10px] first:rounded-l-sm last:rounded-r-sm"
+                              style={{ backgroundColor: k.color }}
+                            />
+                          ))}
                         </span>
                       )}
+                      <span>{getEventIcon(evt)}</span>{" "}
+                      <span className="truncate">{evt.title}</span>
+                      <div className="text-[9px] font-normal opacity-70 truncate">
+                        {evt.all_day ? "All day" : formatTime(evt.starts_at)}
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
-        );
-      })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

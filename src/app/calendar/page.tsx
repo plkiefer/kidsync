@@ -84,13 +84,14 @@ export default function CalendarPage() {
   const birthdayEvents: CalendarEvent[] = kids
     .filter((k) => k.birth_date)
     .flatMap((kid) => {
-      const bd = new Date(kid.birth_date!);
+      // Parse date string directly to avoid UTC→local timezone shift
+      const [bYear, bMonth, bDay] = kid.birth_date!.split("-").map(Number);
       const thisYear = currentDate.getFullYear();
       // Generate for previous, current, and next year to cover navigation
       return [-1, 0, 1].map((offset): CalendarEvent => {
         const year = thisYear + offset;
-        const dateStr = `${year}-${String(bd.getMonth() + 1).padStart(2, "0")}-${String(bd.getDate()).padStart(2, "0")}`;
-        const age = year - bd.getFullYear();
+        const dateStr = `${year}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
+        const age = year - bYear;
         return {
           id: `birthday-${kid.id}-${year}`,
           family_id: kid.family_id,
@@ -347,6 +348,7 @@ export default function CalendarPage() {
                   currentDate={currentDate}
                   events={filteredEvents}
                   kids={kids}
+                  onDayClick={handleDayClick}
                   onEventClick={handleEventClick}
                 />
               )}
