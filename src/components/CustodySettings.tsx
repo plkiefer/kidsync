@@ -118,6 +118,7 @@ export default function CustodySettings({
   const handleApplySchedule = async () => {
     if (!terms) return;
     setSaving(true);
+    setError("");
 
     try {
       // Map "mother"/"father" to actual parent IDs
@@ -147,9 +148,12 @@ export default function CustodySettings({
         .map((d) => dayMap[d.toLowerCase()])
         .filter((d) => d !== undefined);
 
+      console.log("[custody] applying schedule:", { parentAId, parentBId, patternDays, kidsCount: kids.length });
+
       // Create/upsert custody schedules for each kid
       for (const kid of kids) {
-        await supabase.from("custody_schedules").upsert(
+        console.log("[custody] upserting for kid:", kid.name);
+        const { error: upsertErr } = await supabase.from("custody_schedules").upsert(
           {
             family_id: familyId,
             kid_id: kid.id,
@@ -167,13 +171,19 @@ export default function CustodySettings({
           },
           { onConflict: "family_id,kid_id" }
         );
+
+        if (upsertErr) {
+          throw new Error(`Failed to save schedule for ${kid.name}: ${upsertErr.message}`);
+        }
       }
 
+      console.log("[custody] schedule applied successfully");
       setStep("done");
     } catch (err: any) {
       console.error("[custody] apply error:", err);
       setError(err.message || "Failed to apply schedule");
       setStep("error");
+      return;
     } finally {
       setSaving(false);
     }
