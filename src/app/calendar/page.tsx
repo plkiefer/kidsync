@@ -252,7 +252,7 @@ export default function CalendarPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* ── HEADER ── */}
       <header className="px-6 py-4 border-b border-[var(--color-divider)] flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
@@ -323,9 +323,9 @@ export default function CalendarPage() {
       </div>
 
       {/* ── MAIN CONTENT ── */}
-      <div className="px-6 pb-6 flex gap-5">
+      <div className="px-6 pb-4 flex gap-5 flex-1 min-h-0">
         {/* Calendar area */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col">
           {eventsLoading ? (
             <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-12 text-center">
               <div className="animate-pulse text-[var(--color-text-faint)] text-sm">
@@ -370,7 +370,6 @@ export default function CalendarPage() {
           logs={logs}
           loading={logsLoading}
           currentUserId={user?.id ?? ""}
-          icalToken={profile?.ical_token ?? null}
         />
       </div>
 

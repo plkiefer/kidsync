@@ -28,18 +28,21 @@ function ActionBadge({ action }: { action: string }) {
   );
 }
 
+const MAX_VISIBLE_LOGS = 8;
+
 export default function ActivityFeed({
   logs,
   loading,
   currentUserId,
   icalToken,
 }: ActivityFeedProps) {
+  const visibleLogs = logs.slice(0, MAX_VISIBLE_LOGS);
+
   return (
     <div className="w-72 shrink-0 self-start sticky top-4">
-      {/* Notification log */}
-      <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-5 mb-4">
+      <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-5">
         <h3 className="font-display text-sm text-[var(--color-text)] mb-3">
-          📧 Recent Activity
+          Recent Activity
         </h3>
 
         {loading ? (
@@ -52,14 +55,13 @@ export default function ActivityFeed({
               </div>
             ))}
           </div>
-        ) : logs.length === 0 ? (
+        ) : visibleLogs.length === 0 ? (
           <p className="text-xs text-[var(--color-text-faint)] leading-relaxed">
-            No activity yet. Changes to events will appear here with email
-            notifications sent to the other parent.
+            No activity yet. Changes to events will appear here.
           </p>
         ) : (
           <div className="space-y-0.5">
-            {logs.map((log) => {
+            {visibleLogs.map((log) => {
               const changer = log.changer as any;
               const snapshot = log.event_snapshot as any;
               const isMe = log.changed_by === currentUserId;
@@ -80,35 +82,16 @@ export default function ActivityFeed({
                   </div>
                   <div className="text-[10px] text-[var(--color-text-faint)] mt-0.5">
                     {isMe ? "You" : changer?.full_name || "Co-parent"}
-                    {!isMe && " → email notification sent"}
+                    {!isMe && " — email notification sent"}
                   </div>
                 </div>
               );
             })}
-          </div>
-        )}
-      </div>
-
-      {/* iCal subscribe info */}
-      <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-5">
-        <h3 className="font-display text-sm text-[var(--color-text)] mb-2">
-          📤 iCal Feed
-        </h3>
-        <p className="text-[11px] text-[var(--color-text-faint)] leading-relaxed mb-3">
-          Subscribe from Apple Calendar, Google Calendar, or Outlook to see
-          events in your preferred app.
-        </p>
-        {icalToken ? (
-          <div className="p-2.5 bg-[var(--color-input)] rounded-lg">
-            <code className="text-[9px] text-[var(--color-text-faint)] break-all font-mono leading-relaxed">
-              {typeof window !== "undefined"
-                ? `${window.location.origin}/api/ical?token=${icalToken}`
-                : `/api/ical?token=${icalToken}`}
-            </code>
-          </div>
-        ) : (
-          <div className="text-[10px] text-[var(--color-text-faint)] italic">
-            iCal token not configured yet
+            {logs.length > MAX_VISIBLE_LOGS && (
+              <div className="pt-2 text-[10px] text-[var(--color-text-faint)] text-center">
+                +{logs.length - MAX_VISIBLE_LOGS} older entries
+              </div>
+            )}
           </div>
         )}
       </div>

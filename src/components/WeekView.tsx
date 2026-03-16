@@ -42,9 +42,9 @@ export default function WeekView({
   };
 
   return (
-    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
+    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden flex flex-col flex-1">
       {/* Day headers */}
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-7 shrink-0">
         {days.map((date, i) => {
           const today = isToday(date);
           return (
@@ -75,7 +75,7 @@ export default function WeekView({
       </div>
 
       {/* Events grid */}
-      <div className="grid grid-cols-7 min-h-[420px]">
+      <div className="grid grid-cols-7 flex-1">
         {days.map((date, i) => {
           const dayEvents = getEventsForDay(date);
           const today = isToday(date);

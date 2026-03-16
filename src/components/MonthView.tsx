@@ -37,9 +37,9 @@ export default function MonthView({
   };
 
   return (
-    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
+    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden flex flex-col flex-1">
       {/* Day headers */}
-      <div className="grid grid-cols-7">
+      <div className="grid grid-cols-7 shrink-0">
         {DAY_HEADERS.map((d) => (
           <div
             key={d}
@@ -51,8 +51,9 @@ export default function MonthView({
       </div>
 
       {/* Weeks */}
+      <div className="flex-1 flex flex-col">
       {weeks.map((week, wi) => (
-        <div key={wi} className="grid grid-cols-7">
+        <div key={wi} className="grid grid-cols-7 flex-1">
           {week.map((day, di) => {
             const dayEvents = getEventsForDay(day);
             const today = isToday(day);
@@ -63,7 +64,7 @@ export default function MonthView({
                 key={di}
                 onClick={() => onDayClick(day)}
                 className={`
-                  min-h-[100px] p-1.5 cursor-pointer transition-colors border-r border-b border-[var(--color-divider)]
+                  min-h-0 p-1.5 cursor-pointer transition-colors border-r border-b border-[var(--color-divider)]
                   ${today ? "bg-[var(--color-accent-soft)]" : "hover:bg-[var(--color-surface-alt)]/60"}
                   ${di === 6 ? "border-r-0" : ""}
                   ${wi === weeks.length - 1 ? "border-b-0" : ""}
@@ -131,6 +132,7 @@ export default function MonthView({
           })}
         </div>
       ))}
+      </div>
     </div>
   );
 }
