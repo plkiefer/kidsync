@@ -62,6 +62,7 @@ export default function CalendarPage() {
   } = useEvents(dataReady);
   const { logs, loading: logsLoading } = useActivityLog(20, dataReady);
   const {
+    schedules,
     getCustodyForDate,
     overrides,
     agreements,
@@ -114,8 +115,8 @@ export default function CalendarPage() {
           kid_ids: [kid.id],
           title: `${kid.name}'s Birthday${age > 0 ? ` (${age})` : ""}`,
           event_type: "other",
-          starts_at: `${dateStr}T00:00:00`,
-          ends_at: `${dateStr}T23:59:59`,
+          starts_at: `${dateStr}T12:00:00`,
+          ends_at: `${dateStr}T12:00:00`,
           all_day: true,
           location: null,
           notes: null,
@@ -480,7 +481,12 @@ export default function CalendarPage() {
           kids={kids}
           members={members}
           currentUserId={user?.id ?? ""}
-          onClose={() => setShowCustodySettings(false)}
+          agreements={agreements}
+          schedules={schedules}
+          onClose={() => {
+            setShowCustodySettings(false);
+            refetchCustody();
+          }}
         />
       )}
 
