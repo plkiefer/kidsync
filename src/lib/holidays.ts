@@ -69,7 +69,7 @@ export function getHolidaysForYear(year: number): Holiday[] {
   holidays.push(
     { name: "New Year's Day", date: new Date(year, 0, 1), tier: "federal" },
     { name: "Martin Luther King Jr. Day", date: nthWeekdayOfMonth(year, 0, 1, 3), tier: "federal" },
-    { name: "Presidents' Day", date: nthWeekdayOfMonth(year, 1, 1, 3), tier: "federal" },
+    { name: "Washington's Birthday", date: nthWeekdayOfMonth(year, 1, 1, 3), tier: "federal" },
     { name: "Memorial Day", date: lastWeekdayOfMonth(year, 4, 1), tier: "federal" },
     { name: "Juneteenth", date: new Date(year, 5, 19), tier: "federal" },
     { name: "Independence Day", date: new Date(year, 6, 4), tier: "federal" },
@@ -122,7 +122,7 @@ export function getHolidayIcon(name: string): string {
   const icons: [RegExp, string][] = [
     [/new year/i, "🎆"],
     [/mlk|martin luther king/i, "✊"],
-    [/president/i, "🏛️"],
+    [/washington.*birthday/i, "🏛️"],
     [/memorial/i, "🇺🇸"],
     [/juneteenth/i, "✊"],
     [/independence|july 4/i, "🎇"],
