@@ -186,14 +186,40 @@ export default function WeekView({
               const kidIds = Object.keys(custody);
               if (kidIds.length > 0) {
                 const allSameParent = kidIds.every((k) => custody[k].isParentA === custody[kidIds[0]].isParentA);
-                if (allSameParent) {
-                  const isParentA = custody[kidIds[0]].isParentA;
-                  custodyBg = isParentA
-                    ? "rgba(59, 130, 246, 0.05)"
-                    : "rgba(249, 115, 22, 0.05)";
-                } else {
-                  // Split custody — use a subtle diagonal stripe
-                  custodyBg = "repeating-linear-gradient(135deg, rgba(59,130,246,0.04) 0px, rgba(59,130,246,0.04) 4px, rgba(249,115,22,0.04) 4px, rgba(249,115,22,0.04) 8px)";
+
+                // Check for turnover event to create a time-based split
+                const turnoverEvt = timedEvents.find((e) => e.id.startsWith("turnover-"));
+                if (turnoverEvt && allSameParent) {
+                  const prevDay = new Date(date);
+                  prevDay.setDate(prevDay.getDate() - 1);
+                  const prevCustody = getCustodyForDate(prevDay);
+                  const prevKids = Object.keys(prevCustody);
+                  if (prevKids.length > 0) {
+                    const prevSame = prevKids.every((k) => prevCustody[k].isParentA === prevCustody[prevKids[0]].isParentA);
+                    if (prevSame && prevCustody[prevKids[0]].isParentA !== custody[kidIds[0]].isParentA) {
+                      // Split at turnover time
+                      const turnoverHour = getHourFromDateStr(turnoverEvt.starts_at);
+                      const splitPct = ((turnoverHour - startHour) / totalHours) * 100;
+                      const topColor = prevCustody[prevKids[0]].isParentA
+                        ? "rgba(59, 130, 246, 0.08)"
+                        : "rgba(249, 115, 22, 0.08)";
+                      const bottomColor = custody[kidIds[0]].isParentA
+                        ? "rgba(59, 130, 246, 0.08)"
+                        : "rgba(249, 115, 22, 0.08)";
+                      custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} ${splitPct}%, transparent ${splitPct}%, transparent ${splitPct + 1}%, ${bottomColor} ${splitPct + 1}%, ${bottomColor} 100%)`;
+                    }
+                  }
+                }
+
+                if (!custodyBg) {
+                  if (allSameParent) {
+                    const isParentA = custody[kidIds[0]].isParentA;
+                    custodyBg = isParentA
+                      ? "rgba(59, 130, 246, 0.05)"
+                      : "rgba(249, 115, 22, 0.05)";
+                  } else {
+                    custodyBg = "repeating-linear-gradient(135deg, rgba(59,130,246,0.04) 0px, rgba(59,130,246,0.04) 4px, rgba(249,115,22,0.04) 4px, rgba(249,115,22,0.04) 8px)";
+                  }
                 }
               }
             }

@@ -15,6 +15,11 @@ interface MonthViewProps {
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+const PARENT_A_COLOR = "rgba(59, 130, 246, 0.07)";
+const PARENT_B_COLOR = "rgba(249, 115, 22, 0.07)";
+const PARENT_A_COLOR_STRONG = "rgba(59, 130, 246, 0.12)";
+const PARENT_B_COLOR_STRONG = "rgba(249, 115, 22, 0.12)";
+
 export default function MonthView({
   currentDate,
   events,
@@ -38,6 +43,17 @@ export default function MonthView({
   const getEventKids = (event: CalendarEvent) => {
     const kidIds = getEventKidIds(event);
     return kids.filter((k) => kidIds.includes(k.id));
+  };
+
+  /** Check if a day has a custody turnover event */
+  const isTurnoverDay = (dayEvents: CalendarEvent[]) =>
+    dayEvents.some((e) => e.id.startsWith("turnover-"));
+
+  /** Get the previous calendar day */
+  const getPrevDay = (date: Date): Date => {
+    const prev = new Date(date);
+    prev.setDate(prev.getDate() - 1);
+    return prev;
   };
 
   return (
@@ -65,20 +81,48 @@ export default function MonthView({
 
             // Custody underlay
             let custodyBg: string | undefined;
+            let isSplitDay = false;
+
             if (getCustodyForDate && !today) {
               const custody = getCustodyForDate(day);
               const kidIds = Object.keys(custody);
+              const hasTurnover = isTurnoverDay(dayEvents);
+
               if (kidIds.length > 0) {
                 const allSame = kidIds.every(
                   (k) => custody[k].isParentA === custody[kidIds[0]].isParentA
                 );
-                if (allSame) {
-                  custodyBg = custody[kidIds[0]].isParentA
-                    ? "rgba(59, 130, 246, 0.07)"
-                    : "rgba(249, 115, 22, 0.07)";
-                } else {
-                  custodyBg =
-                    "repeating-linear-gradient(135deg, rgba(59,130,246,0.05) 0px, rgba(59,130,246,0.05) 4px, rgba(249,115,22,0.05) 4px, rgba(249,115,22,0.05) 8px)";
+
+                if (hasTurnover && allSame) {
+                  // Split-day: get previous day's custody to determine "from" color
+                  const prevCustody = getCustodyForDate(getPrevDay(day));
+                  const prevKids = Object.keys(prevCustody);
+                  if (prevKids.length > 0) {
+                    const prevAllSame = prevKids.every(
+                      (k) => prevCustody[k].isParentA === prevCustody[prevKids[0]].isParentA
+                    );
+                    if (prevAllSame && prevCustody[prevKids[0]].isParentA !== custody[kidIds[0]].isParentA) {
+                      isSplitDay = true;
+                      const topColor = prevCustody[prevKids[0]].isParentA
+                        ? PARENT_A_COLOR_STRONG
+                        : PARENT_B_COLOR_STRONG;
+                      const bottomColor = custody[kidIds[0]].isParentA
+                        ? PARENT_A_COLOR_STRONG
+                        : PARENT_B_COLOR_STRONG;
+                      custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
+                    }
+                  }
+                }
+
+                if (!isSplitDay) {
+                  if (allSame) {
+                    custodyBg = custody[kidIds[0]].isParentA
+                      ? PARENT_A_COLOR
+                      : PARENT_B_COLOR;
+                  } else {
+                    custodyBg =
+                      "repeating-linear-gradient(135deg, rgba(59,130,246,0.05) 0px, rgba(59,130,246,0.05) 4px, rgba(249,115,22,0.05) 4px, rgba(249,115,22,0.05) 8px)";
+                  }
                 }
               }
             }

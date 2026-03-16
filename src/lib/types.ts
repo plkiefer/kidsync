@@ -12,6 +12,7 @@ export type EventType =
   | "custody"
   | "activity"
   | "travel"
+  | "holiday"
   | "other";
 
 export type UserRole = "parent" | "viewer";
@@ -332,6 +333,7 @@ export const EVENT_TYPE_CONFIG: Record<
   custody: { label: "Custody Exchange", icon: "🔄", color: "#6366F1" },
   activity: { label: "Activity", icon: "🎨", color: "#F59E0B" },
   travel: { label: "Travel", icon: "✈️", color: "#0EA5E9" },
+  holiday: { label: "Holiday", icon: "🎉", color: "#DC2626" },
   other: { label: "Other", icon: "📌", color: "var(--color-kid-2)" },
 };
 
@@ -402,6 +404,15 @@ const SPORT_EMOJIS: [RegExp, string][] = [
 export function getEventIcon(event: CalendarEvent): string {
   // Birthday virtual events
   if (event.id.startsWith("birthday-")) return "🎂";
+
+  // Holiday events have the icon embedded as the first character(s) of the title
+  if (event.id.startsWith("holiday-")) {
+    const match = event.title.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F?)/u);
+    return match ? match[0] : "🎉";
+  }
+
+  // Custody turnover events
+  if (event.id.startsWith("turnover-")) return "🔄";
 
   const config = EVENT_TYPE_CONFIG[event.event_type as keyof typeof EVENT_TYPE_CONFIG];
 

@@ -14,9 +14,14 @@ import {
   subMonths,
   addWeeks,
   subWeeks,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
 } from "@/lib/dates";
 import { downloadICal } from "@/lib/ical";
 import { expandRecurringEvents } from "@/lib/recurrence";
+import { generateTurnoverEvents, generateHolidayEvents } from "@/lib/virtualEvents";
 import MonthView from "@/components/MonthView";
 import WeekView from "@/components/WeekView";
 import ListView from "@/components/ListView";
@@ -131,7 +136,31 @@ export default function CalendarPage() {
     });
 
   const expandedEvents = expandRecurringEvents(events);
-  const allEvents = [...expandedEvents, ...birthdayEvents];
+
+  // Compute visible date range for virtual event generation
+  const visibleStart = startOfWeek(startOfMonth(currentDate));
+  const visibleEnd = endOfWeek(endOfMonth(currentDate));
+
+  // Generate custody turnover events
+  const turnoverEvents = generateTurnoverEvents(
+    visibleStart,
+    visibleEnd,
+    schedules,
+    overrides,
+    agreements,
+    kids,
+    members
+  );
+
+  // Generate holiday events
+  const holidayEvents = generateHolidayEvents(
+    visibleStart,
+    visibleEnd,
+    kids,
+    profile?.family_id || ""
+  );
+
+  const allEvents = [...expandedEvents, ...birthdayEvents, ...turnoverEvents, ...holidayEvents];
 
   // Filter events — multi-kid aware
   const filteredEvents =
@@ -204,8 +233,8 @@ export default function CalendarPage() {
   };
 
   const handleDeleteEvent = async (id: string) => {
-    // Virtual events (birthdays) can't be deleted
-    if (id.startsWith("birthday-")) return;
+    // Virtual events can't be deleted
+    if (id.startsWith("birthday-") || id.startsWith("turnover-") || id.startsWith("holiday-")) return;
     // For recurrence occurrences, delete the entire series (parent)
     const actualId = id.includes("_rec_") ? id.split("_rec_")[0] : id;
     const success = await deleteEvent(actualId);
