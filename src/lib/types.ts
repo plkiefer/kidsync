@@ -253,6 +253,7 @@ export interface ParsedCustodyTerms {
     days: string[]; // e.g., ["Friday", "Saturday", "Sunday"]
     pickup_time?: string;
     dropoff_time?: string;
+    start_date?: string; // anchor date, e.g. "2026-01-02"
   };
   weekday_schedule?: {
     monday?: string;
@@ -405,10 +406,9 @@ export function getEventIcon(event: CalendarEvent): string {
   // Birthday virtual events
   if (event.id.startsWith("birthday-")) return "🎂";
 
-  // Holiday events have the icon embedded as the first character(s) of the title
+  // Holiday events — look up icon by name (title has no embedded emoji)
   if (event.id.startsWith("holiday-")) {
-    const match = event.title.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F?)/u);
-    return match ? match[0] : "🎉";
+    return getHolidayIconForEvent(event.title);
   }
 
   // Custody turnover events
@@ -493,4 +493,38 @@ export function describeRRule(rrule: string): string {
   }
 
   return desc;
+}
+
+// ── Holiday icon lookup (inline to avoid circular imports) ──
+
+const HOLIDAY_ICONS: [RegExp, string][] = [
+  [/new year.*eve/i, "🥂"],
+  [/new year/i, "🎆"],
+  [/mlk|martin luther king/i, "✊"],
+  [/washington/i, "🏛️"],
+  [/memorial/i, "🇺🇸"],
+  [/juneteenth/i, "✊"],
+  [/independence/i, "🎇"],
+  [/labor day/i, "⚒️"],
+  [/columbus/i, "🗺️"],
+  [/veteran/i, "🎖️"],
+  [/thanksgiving/i, "🦃"],
+  [/christmas eve/i, "🌟"],
+  [/christmas/i, "🎄"],
+  [/valentine/i, "💝"],
+  [/st\. patrick/i, "☘️"],
+  [/good friday/i, "✝️"],
+  [/easter/i, "🐣"],
+  [/mother/i, "💐"],
+  [/father/i, "👔"],
+  [/grandparent/i, "👴"],
+  [/halloween/i, "🎃"],
+  [/election/i, "🗳️"],
+];
+
+function getHolidayIconForEvent(title: string): string {
+  for (const [pattern, emoji] of HOLIDAY_ICONS) {
+    if (pattern.test(title)) return emoji;
+  }
+  return "🎉";
 }

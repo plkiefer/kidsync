@@ -152,7 +152,7 @@ export default function CustodySettings({
               : "fixed_days",
             parent_a_id: parentAId,
             parent_b_id: parentBId,
-            anchor_date: getNextFriday(),
+            anchor_date: terms.alternating_weekends?.start_date || getNextFriday(),
             pattern_days: patternDays.length > 0 ? patternDays : [5, 6, 0],
             fixed_day_map: terms.weekday_schedule
               ? buildFixedDayMap(terms.weekday_schedule, parentMap)

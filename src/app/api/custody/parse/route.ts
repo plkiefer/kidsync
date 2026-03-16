@@ -11,8 +11,9 @@ Return ONLY valid JSON with this exact structure (no markdown, no explanation):
     "enabled": true/false,
     "parent": "father" or "mother" (who gets alternating weekends),
     "days": ["Friday", "Saturday", "Sunday"],
-    "pickup_time": "6:00 PM" or null,
-    "dropoff_time": "6:00 PM Sunday" or null
+    "pickup_time": "3:00 PM" or null,
+    "dropoff_time": "5:00 PM" or null,
+    "start_date": "2026-01-02" or null (the anchor date when the alternating pattern begins, in YYYY-MM-DD format)
   },
   "weekday_schedule": {
     "monday": "mother" or "father",

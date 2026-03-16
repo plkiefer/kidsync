@@ -43,53 +43,38 @@ export function generateTurnoverEvents(
   const extStart = addDays(rangeStart, -1);
   const days = eachDayOfInterval({ start: extStart, end: rangeEnd });
 
-  const events: CalendarEvent[] = [];
+  // Collect transitions per date, grouped by receiving parent
+  // Key: "dateStr|toParentId|isParentA"
+  const transitionMap = new Map<string, { dateStr: string; toParentId: string; isParentA: boolean; kidIds: string[]; familyId: string }>();
+
   let prevCustody: DayCustodyInfo = {};
 
   for (let i = 0; i < days.length; i++) {
     const day = days[i];
     const custody = computeCustodyForDate(day, schedules, approvedOverrides);
 
-    if (i > 0 && i < days.length) {
-      // Compare each kid's custody parent with previous day
+    if (i > 0 && day >= rangeStart && day <= rangeEnd) {
       for (const schedule of schedules) {
         const kidId = schedule.kid_id;
-        const kid = kids.find((k) => k.id === kidId);
-        if (!kid) continue;
-
         const prev = prevCustody[kidId];
         const curr = custody[kidId];
 
         if (prev && curr && prev.parentId !== curr.parentId) {
-          // Only generate events within the actual range (not the extended day)
-          if (day >= rangeStart && day <= rangeEnd) {
-            const toParent = members.find((m) => m.id === curr.parentId);
-            const toName = toParent?.full_name?.split(" ")[0] || "Other Parent";
+          const dateStr = format(day, "yyyy-MM-dd");
+          const key = `${dateStr}|${curr.parentId}|${curr.isParentA}`;
 
-            // Determine if this is a pickup (start of parent's time) or dropoff
-            const isPickup = curr.isParentA;
-            const timeStr = isPickup ? pickupTime : dropoffTime;
-            const hour = parseTimeToHour(timeStr);
-            const dateStr = format(day, "yyyy-MM-dd");
-
-            events.push({
-              id: `turnover-${kidId}-${dateStr}`,
-              family_id: schedule.family_id,
-              kid_id: kidId,
-              kid_ids: [kidId],
-              title: `Custody Exchange — ${toName} picks up`,
-              event_type: "custody",
-              starts_at: `${dateStr}T${formatHour(hour)}:00`,
-              ends_at: `${dateStr}T${formatHour(hour + 0.5)}:00`,
-              all_day: false,
-              location: null,
-              notes: null,
-              recurring_rule: null,
-              created_by: "",
-              updated_by: null,
-              created_at: "",
-              updated_at: "",
-              _virtual: true,
+          const existing = transitionMap.get(key);
+          if (existing) {
+            if (!existing.kidIds.includes(kidId)) {
+              existing.kidIds.push(kidId);
+            }
+          } else {
+            transitionMap.set(key, {
+              dateStr,
+              toParentId: curr.parentId,
+              isParentA: curr.isParentA,
+              kidIds: [kidId],
+              familyId: schedule.family_id,
             });
           }
         }
@@ -97,6 +82,36 @@ export function generateTurnoverEvents(
     }
 
     prevCustody = custody;
+  }
+
+  // Build one event per unique transition (merged across kids)
+  const events: CalendarEvent[] = [];
+  for (const t of transitionMap.values()) {
+    const toParent = members.find((m) => m.id === t.toParentId);
+    const toName = toParent?.full_name?.split(" ")[0] || "Other Parent";
+
+    const timeStr = t.isParentA ? pickupTime : dropoffTime;
+    const hour = parseTimeToHour(timeStr);
+
+    events.push({
+      id: `turnover-${t.dateStr}-${t.toParentId.slice(0, 8)}`,
+      family_id: t.familyId,
+      kid_id: t.kidIds[0],
+      kid_ids: t.kidIds,
+      title: `Custody Exchange — ${toName} picks up`,
+      event_type: "custody",
+      starts_at: `${t.dateStr}T${formatHour(hour)}:00`,
+      ends_at: `${t.dateStr}T${formatHour(hour + 0.5)}:00`,
+      all_day: false,
+      location: null,
+      notes: null,
+      recurring_rule: null,
+      created_by: "",
+      updated_by: null,
+      created_at: "",
+      updated_at: "",
+      _virtual: true,
+    });
   }
 
   return events;
@@ -140,7 +155,7 @@ export function generateHolidayEvents(
       family_id: familyId,
       kid_id: firstKidId,
       kid_ids: kidIds,
-      title: `${icon} ${holiday.name}`,
+      title: holiday.name,
       event_type: "holiday" as const,
       starts_at: `${dateStr}T12:00:00`,
       ends_at: `${dateStr}T12:00:00`,
