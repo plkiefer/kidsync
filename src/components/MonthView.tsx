@@ -173,10 +173,12 @@ export default function MonthView({
                         e.stopPropagation();
                         onEventClick(evt);
                       }}
-                      className="text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-0.5"
+                      className={`text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-0.5 ${evt._tentative ? "opacity-60" : ""}`}
                       style={{
                         backgroundColor: `${typeColor}20`,
-                        borderLeft: `2.5px solid ${typeColor}`,
+                        borderLeft: evt._tentative
+                          ? `2.5px dashed ${typeColor}`
+                          : `2.5px solid ${typeColor}`,
                         color: typeColor,
                       }}
                     >

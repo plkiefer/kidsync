@@ -79,6 +79,8 @@ export interface CalendarEvent {
   updated_at: string;
   // Virtual flag for auto-generated events (birthdays, recurrence instances)
   _virtual?: boolean;
+  // Tentative flag for events based on pending (not yet approved) overrides
+  _tentative?: boolean;
   // Parent event ID for recurrence instances
   _recurrence_parent?: string;
   // Joined relations (optional)

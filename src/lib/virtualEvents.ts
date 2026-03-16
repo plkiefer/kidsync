@@ -45,7 +45,8 @@ export function generateTurnoverEvents(
     eventDate: Date;
     dateStr: string;
     toParentId: string;
-    isPickup: boolean; // true = pickup (going TO weekend parent), false = dropoff
+    isPickup: boolean;
+    isTentative: boolean;
     kidIds: string[];
     familyId: string;
   }>();
@@ -63,30 +64,29 @@ export function generateTurnoverEvents(
         const curr = custody[kidId];
 
         if (prev && curr && prev.parentId !== curr.parentId) {
-          // Determine if this is a pickup or dropoff
-          const isPickup = curr.isParentA; // transitioning TO the weekend parent = pickup
-
-          // Pickup: event goes on current day (the day weekend parent starts)
-          // Dropoff: event goes on PREVIOUS day (last day weekend parent has custody)
+          const isPickup = curr.isParentA;
           const eventDate = isPickup ? day : days[i - 1];
 
-          // Only include events within the visible range
+          // Check if this transition involves a pending override
+          const isTentative = !!(curr.isPending || prev.isPending);
+
           if (eventDate >= rangeStart && eventDate <= rangeEnd) {
-            const receivingParentId = isPickup ? curr.parentId : prev.parentId;
             const dateStr = format(eventDate, "yyyy-MM-dd");
-            const key = `${dateStr}|${receivingParentId}|${isPickup}`;
+            const key = `${dateStr}|${curr.parentId}|${isPickup}`;
 
             const existing = transitionMap.get(key);
             if (existing) {
               if (!existing.kidIds.includes(kidId)) {
                 existing.kidIds.push(kidId);
               }
+              if (isTentative) existing.isTentative = true;
             } else {
               transitionMap.set(key, {
                 eventDate,
                 dateStr,
-                toParentId: isPickup ? curr.parentId : curr.parentId,
+                toParentId: curr.parentId,
                 isPickup,
+                isTentative,
                 kidIds: [kidId],
                 familyId: schedule.family_id,
               });
@@ -110,9 +110,10 @@ export function generateTurnoverEvents(
     const receivingParent = members.find((m) => m.id === t.toParentId);
     const receivingName = receivingParent?.full_name?.split(" ")[0] || "Other Parent";
 
-    const title = t.isPickup
+    const baseTitle = t.isPickup
       ? `Pickup — ${receivingName}`
       : `Drop-off — ${receivingName}`;
+    const title = t.isTentative ? `${baseTitle} (pending)` : baseTitle;
 
     events.push({
       id: `turnover-${t.dateStr}-${t.isPickup ? "pickup" : "dropoff"}`,
@@ -122,16 +123,17 @@ export function generateTurnoverEvents(
       title,
       event_type: "custody",
       starts_at: `${t.dateStr}T${formatHour(hour)}:00`,
-      ends_at: `${t.dateStr}T${formatHour(hour)}:00`, // point-in-time, not a block
+      ends_at: `${t.dateStr}T${formatHour(hour)}:00`,
       all_day: false,
       location: null,
-      notes: null,
+      notes: t.isTentative ? "Pending approval" : null,
       recurring_rule: null,
       created_by: "",
       updated_by: null,
       created_at: "",
       updated_at: "",
       _virtual: true,
+      _tentative: t.isTentative,
     });
   }
 

@@ -5,6 +5,7 @@ export interface DayCustodyEntry {
   parentId: string;
   isParentA: boolean;
   isOverride: boolean;
+  isPending?: boolean;
 }
 
 export type DayCustodyInfo = Record<string, DayCustodyEntry>; // keyed by kid_id
@@ -33,6 +34,7 @@ export function computeCustodyForDate(
         parentId: override.parent_id,
         isParentA: override.parent_id === schedule.parent_a_id,
         isOverride: true,
+        isPending: override.status === "pending",
       };
       continue;
     }

@@ -543,9 +543,9 @@ export default function CalendarPage() {
           currentUserId={user?.id ?? ""}
           onCreateOverride={createOverride}
           onRespondToOverride={respondToOverride}
-          onClose={() => {
+          onClose={async () => {
             setShowCustodyOverrides(false);
-            refetchCustody();
+            await refetchCustody();
           }}
         />
       )}
@@ -558,11 +558,11 @@ export default function CalendarPage() {
           familyId={profile.family_id}
           currentUserId={user?.id ?? ""}
           onSubmit={createOverride}
-          onClose={() => {
+          onClose={async () => {
             setQuickChangeEvent(null);
             setShowDetailModal(false);
             setEditingEvent(null);
-            refetchCustody();
+            await refetchCustody();
           }}
         />
       )}
