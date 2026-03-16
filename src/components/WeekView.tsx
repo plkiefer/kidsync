@@ -190,24 +190,37 @@ export default function WeekView({
                 // Check for turnover event to create a time-based split
                 const turnoverEvt = timedEvents.find((e) => e.id.startsWith("turnover-"));
                 if (turnoverEvt && allSameParent) {
+                  const isCurrentA = custody[kidIds[0]].isParentA;
+                  const turnoverHour = getHourFromDateStr(turnoverEvt.starts_at);
+                  const splitPct = ((turnoverHour - startHour) / totalHours) * 100;
+
+                  // Check prev and next day to determine pickup vs dropoff
                   const prevDay = new Date(date);
                   prevDay.setDate(prevDay.getDate() - 1);
+                  const nextDay = new Date(date);
+                  nextDay.setDate(nextDay.getDate() + 1);
                   const prevCustody = getCustodyForDate(prevDay);
+                  const nextCustody = getCustodyForDate(nextDay);
                   const prevKids = Object.keys(prevCustody);
-                  if (prevKids.length > 0) {
-                    const prevSame = prevKids.every((k) => prevCustody[k].isParentA === prevCustody[prevKids[0]].isParentA);
-                    if (prevSame && prevCustody[prevKids[0]].isParentA !== custody[kidIds[0]].isParentA) {
-                      // Split at turnover time
-                      const turnoverHour = getHourFromDateStr(turnoverEvt.starts_at);
-                      const splitPct = ((turnoverHour - startHour) / totalHours) * 100;
-                      const topColor = prevCustody[prevKids[0]].isParentA
-                        ? "rgba(59, 130, 246, 0.08)"
-                        : "rgba(249, 115, 22, 0.08)";
-                      const bottomColor = custody[kidIds[0]].isParentA
-                        ? "rgba(59, 130, 246, 0.08)"
-                        : "rgba(249, 115, 22, 0.08)";
-                      custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} ${splitPct}%, transparent ${splitPct}%, transparent ${splitPct + 1}%, ${bottomColor} ${splitPct + 1}%, ${bottomColor} 100%)`;
-                    }
+                  const nextKids = Object.keys(nextCustody);
+                  const prevIsA = prevKids.length > 0 && prevCustody[prevKids[0]]?.isParentA;
+                  const nextIsA = nextKids.length > 0 && nextCustody[nextKids[0]]?.isParentA;
+
+                  let topColor = "";
+                  let bottomColor = "";
+
+                  if (prevIsA !== isCurrentA) {
+                    // Pickup day
+                    topColor = prevIsA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                    bottomColor = isCurrentA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                  } else if (nextIsA !== isCurrentA) {
+                    // Dropoff day
+                    topColor = isCurrentA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                    bottomColor = nextIsA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                  }
+
+                  if (topColor && bottomColor) {
+                    custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} ${splitPct}%, transparent ${splitPct}%, transparent ${splitPct + 1}%, ${bottomColor} ${splitPct + 1}%, ${bottomColor} 100%)`;
                   }
                 }
 

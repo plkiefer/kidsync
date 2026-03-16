@@ -2,7 +2,7 @@
 
 import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds, getEventIcon, getEventTypeColor, describeRRule } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
-import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download } from "lucide-react";
+import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download, AlertCircle } from "lucide-react";
 
 interface EventDetailModalProps {
   event: CalendarEvent;
@@ -13,6 +13,7 @@ interface EventDetailModalProps {
   onOpenTravel?: (eventId: string) => void;
   onClose: () => void;
   onDownloadAttachment?: (attachment: EventAttachment) => void;
+  onRequestCustodyChange?: () => void;
 }
 
 export default function EventDetailModal({
@@ -24,6 +25,7 @@ export default function EventDetailModal({
   onOpenTravel,
   onClose,
   onDownloadAttachment,
+  onRequestCustodyChange,
 }: EventDetailModalProps) {
   const kidIds = getEventKidIds(event);
   const eventKids = kids.filter((k) => kidIds.includes(k.id));
@@ -258,9 +260,24 @@ export default function EventDetailModal({
           {/* Actions — hide edit/delete for virtual events */}
           {event._virtual ? (
             <div className="pt-4 border-t border-[var(--color-divider)]">
-              <p className="text-[10px] text-[var(--color-text-faint)] text-center">
-                Auto-generated event — cannot be edited
-              </p>
+              {event.id.startsWith("turnover-") && onRequestCustodyChange ? (
+                <div className="space-y-2">
+                  <p className="text-[10px] text-[var(--color-text-faint)] text-center">
+                    Based on custody agreement — request a change to modify this schedule
+                  </p>
+                  <button
+                    onClick={() => { onClose(); onRequestCustodyChange(); }}
+                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
+                  >
+                    <AlertCircle size={13} />
+                    Request Schedule Change
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-[var(--color-text-faint)] text-center">
+                  Auto-generated event
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-divider)]">

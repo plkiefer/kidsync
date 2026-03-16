@@ -49,11 +49,10 @@ export default function MonthView({
   const isTurnoverDay = (dayEvents: CalendarEvent[]) =>
     dayEvents.some((e) => e.id.startsWith("turnover-"));
 
-  /** Get the previous calendar day */
-  const getPrevDay = (date: Date): Date => {
-    const prev = new Date(date);
-    prev.setDate(prev.getDate() - 1);
-    return prev;
+  const getAdjacentDay = (date: Date, offset: number): Date => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + offset);
+    return d;
   };
 
   return (
@@ -94,23 +93,30 @@ export default function MonthView({
                 );
 
                 if (hasTurnover && allSame) {
-                  // Split-day: get previous day's custody to determine "from" color
-                  const prevCustody = getCustodyForDate(getPrevDay(day));
+                  const isCurrentParentA = custody[kidIds[0]].isParentA;
+
+                  // Check previous day (for pickup: prev differs from today)
+                  const prevCustody = getCustodyForDate(getAdjacentDay(day, -1));
                   const prevKids = Object.keys(prevCustody);
-                  if (prevKids.length > 0) {
-                    const prevAllSame = prevKids.every(
-                      (k) => prevCustody[k].isParentA === prevCustody[prevKids[0]].isParentA
-                    );
-                    if (prevAllSame && prevCustody[prevKids[0]].isParentA !== custody[kidIds[0]].isParentA) {
-                      isSplitDay = true;
-                      const topColor = prevCustody[prevKids[0]].isParentA
-                        ? PARENT_A_COLOR_STRONG
-                        : PARENT_B_COLOR_STRONG;
-                      const bottomColor = custody[kidIds[0]].isParentA
-                        ? PARENT_A_COLOR_STRONG
-                        : PARENT_B_COLOR_STRONG;
-                      custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
-                    }
+                  const prevIsA = prevKids.length > 0 && prevKids.every((k) => prevCustody[k].isParentA) && prevCustody[prevKids[0]]?.isParentA;
+
+                  // Check next day (for dropoff: next differs from today)
+                  const nextCustody = getCustodyForDate(getAdjacentDay(day, 1));
+                  const nextKids = Object.keys(nextCustody);
+                  const nextIsA = nextKids.length > 0 && nextKids.every((k) => nextCustody[k].isParentA) && nextCustody[nextKids[0]]?.isParentA;
+
+                  if (prevIsA !== isCurrentParentA) {
+                    // PICKUP day: custody changes from prev parent → current parent
+                    isSplitDay = true;
+                    const topColor = prevIsA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
+                    const bottomColor = isCurrentParentA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
+                    custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
+                  } else if (nextIsA !== isCurrentParentA) {
+                    // DROPOFF day: custody changes from current parent → next parent
+                    isSplitDay = true;
+                    const topColor = isCurrentParentA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
+                    const bottomColor = nextIsA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
+                    custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
                   }
                 }
 

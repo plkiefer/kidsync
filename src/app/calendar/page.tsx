@@ -475,6 +475,7 @@ export default function CalendarPage() {
           onDelete={handleDeleteEvent}
           onOpenTravel={handleOpenTravel}
           onDownloadAttachment={handleDownloadAttachment}
+          onRequestCustodyChange={() => setShowCustodyOverrides(true)}
           onClose={() => {
             setShowDetailModal(false);
             setEditingEvent(null);
