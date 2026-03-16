@@ -28,6 +28,7 @@ import ListView from "@/components/ListView";
 import EventModal from "@/components/EventModal";
 import EventDetailModal from "@/components/EventDetailModal";
 import TravelModal from "@/components/TravelModal";
+import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
 import CustodySettings from "@/components/CustodySettings";
@@ -93,6 +94,7 @@ export default function CalendarPage() {
   const [existingTravel, setExistingTravel] = useState<any>(null);
   const [showCustodySettings, setShowCustodySettings] = useState(false);
   const [showCustodyOverrides, setShowCustodyOverrides] = useState(false);
+  const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
 
   // Auth guard
   useEffect(() => {
@@ -475,7 +477,13 @@ export default function CalendarPage() {
           onDelete={handleDeleteEvent}
           onOpenTravel={handleOpenTravel}
           onDownloadAttachment={handleDownloadAttachment}
-          onRequestCustodyChange={() => setShowCustodyOverrides(true)}
+          onRequestCustodyChange={() => {
+            if (editingEvent?.id.startsWith("turnover-")) {
+              setQuickChangeEvent(editingEvent);
+            } else {
+              setShowCustodyOverrides(true);
+            }
+          }}
           onClose={() => {
             setShowDetailModal(false);
             setEditingEvent(null);
@@ -537,6 +545,23 @@ export default function CalendarPage() {
           onRespondToOverride={respondToOverride}
           onClose={() => {
             setShowCustodyOverrides(false);
+            refetchCustody();
+          }}
+        />
+      )}
+
+      {quickChangeEvent && profile?.family_id && (
+        <QuickCustodyChange
+          turnoverEvent={quickChangeEvent}
+          kids={kids}
+          members={members}
+          familyId={profile.family_id}
+          currentUserId={user?.id ?? ""}
+          onSubmit={createOverride}
+          onClose={() => {
+            setQuickChangeEvent(null);
+            setShowDetailModal(false);
+            setEditingEvent(null);
             refetchCustody();
           }}
         />
