@@ -36,11 +36,12 @@ export async function POST(request: NextRequest) {
     let text = "";
 
     if (ext === "pdf") {
-      // Dynamic import to avoid bundling issues
-      const pdfParseModule = await import("pdf-parse");
-      const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-      const data = await pdfParse(buffer);
-      text = data.text;
+      // pdf-parse v2 uses a class-based API
+      const { PDFParse } = await import("pdf-parse");
+      const pdf = new (PDFParse as any)({ data: buffer });
+      const result = await pdf.getText();
+      text = result.text;
+      await pdf.destroy();
     } else if (ext === "docx" || ext === "doc") {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer });
