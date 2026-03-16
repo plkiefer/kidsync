@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Polyfill DOMMatrix for pdf-parse/pdfjs-dist in Node.js environments
+// Polyfill DOMMatrix for pdfjs-dist in Node.js/Vercel serverless
 if (typeof globalThis.DOMMatrix === "undefined") {
   (globalThis as any).DOMMatrix = class DOMMatrix {
     m11 = 1; m12 = 0; m13 = 0; m14 = 0;
@@ -21,6 +21,36 @@ if (typeof globalThis.DOMMatrix === "undefined") {
   };
 }
 
+/** Extract text from a PDF buffer using pdfjs-dist directly */
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // Pre-load the worker module and inject via globalThis so pdfjs-dist
+  // uses it directly instead of trying a dynamic import of ./pdf.worker.mjs
+  // (which fails in Vercel's serverless bundle)
+  // @ts-ignore — no type declarations for the worker module
+  const pdfjsWorker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+  (globalThis as any).pdfjsWorker = pdfjsWorker;
+
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+    .promise;
+
+  const pages: string[] = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .filter((item: any) => "str" in item)
+      .map((item: any) => item.str)
+      .join(" ");
+    pages.push(pageText);
+    page.cleanup();
+  }
+
+  await doc.destroy();
+  return pages.join("\n\n");
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -36,12 +66,7 @@ export async function POST(request: NextRequest) {
     let text = "";
 
     if (ext === "pdf") {
-      // pdf-parse v2 uses a class-based API
-      const { PDFParse } = await import("pdf-parse");
-      const pdf = new (PDFParse as any)({ data: buffer });
-      const result = await pdf.getText();
-      text = result.text;
-      await pdf.destroy();
+      text = await extractPdfText(buffer);
     } else if (ext === "docx" || ext === "doc") {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer });
