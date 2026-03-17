@@ -14,6 +14,7 @@ interface EventDetailModalProps {
   onClose: () => void;
   onDownloadAttachment?: (attachment: EventAttachment) => void;
   onRequestCustodyChange?: () => void;
+  onCancelExchange?: (turnoverEvent: CalendarEvent) => void;
   relatedOverrides?: CustodyOverride[];
 }
 
@@ -27,6 +28,7 @@ export default function EventDetailModal({
   onClose,
   onDownloadAttachment,
   onRequestCustodyChange,
+  onCancelExchange,
   relatedOverrides,
 }: EventDetailModalProps) {
   const getMemberName = (id: string) =>
@@ -318,18 +320,26 @@ export default function EventDetailModal({
           {/* Actions — hide edit/delete for virtual events */}
           {event._virtual ? (
             <div className="pt-4 border-t border-[var(--color-divider)]">
-              {event.id.startsWith("turnover-") && onRequestCustodyChange ? (
+              {event.id.startsWith("turnover-") ? (
                 <div className="space-y-2">
-                  <p className="text-[10px] text-[var(--color-text-faint)] text-center">
-                    Based on custody agreement — request a change to modify this schedule
-                  </p>
-                  <button
-                    onClick={() => { onClose(); onRequestCustodyChange(); }}
-                    className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
-                  >
-                    <AlertCircle size={13} />
-                    Request Schedule Change
-                  </button>
+                  {onRequestCustodyChange && (
+                    <button
+                      onClick={() => { onClose(); onRequestCustodyChange(); }}
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
+                    >
+                      <AlertCircle size={13} />
+                      Request Schedule Change
+                    </button>
+                  )}
+                  {onCancelExchange && (
+                    <button
+                      onClick={() => onCancelExchange(event)}
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                      Cancel This Exchange
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="text-[10px] text-[var(--color-text-faint)] text-center">

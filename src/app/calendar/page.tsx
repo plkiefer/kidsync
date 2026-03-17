@@ -280,6 +280,79 @@ export default function CalendarPage() {
     }
   };
 
+  const handleCancelExchange = async (turnoverEvent: CalendarEvent) => {
+    if (!profile?.family_id || !user) return;
+
+    const eventDate = turnoverEvent.starts_at.split("T")[0];
+    const isPickup = turnoverEvent.id.includes("pickup");
+    const eventKidIds = turnoverEvent.kid_ids || [turnoverEvent.kid_id];
+    const otherParent = members.find((m) => m.id !== user.id);
+    const supabase = (await import("@/lib/supabase")).getSupabase();
+
+    // Check if this turnover is from an override (non-standard)
+    const relatedOvr = overrides.filter((o) =>
+      eventDate >= o.start_date && eventDate <= o.end_date &&
+      o.status !== "withdrawn" && o.status !== "disputed"
+    );
+
+    if (relatedOvr.length > 0) {
+      // Non-standard: withdraw the overrides that created it
+      if (!window.confirm("Revert this exchange to the standard schedule?")) return;
+      for (const o of relatedOvr) {
+        await respondToOverride(o.id, "withdrawn", "Reverted to standard schedule", user.id);
+      }
+    } else {
+      // Standard: skip this pickup/dropoff set by giving other parent custody
+      if (!window.confirm("Cancel this exchange? This will give the other parent custody for this period and requires their approval.")) return;
+
+      // Find the matching pickup/dropoff pair for this weekend
+      // Pickup is on Friday, dropoff is on Sunday of the same custody block
+      const evtDate = new Date(eventDate + "T12:00:00");
+
+      let rangeStart: string;
+      let rangeEnd: string;
+
+      if (isPickup) {
+        // Pickup on Friday — skip Fri through Sun
+        rangeStart = eventDate;
+        const sun = new Date(evtDate);
+        sun.setDate(sun.getDate() + 2);
+        rangeEnd = sun.toISOString().slice(0, 10);
+      } else {
+        // Dropoff on Sunday — skip Fri through Sun
+        const fri = new Date(evtDate);
+        fri.setDate(fri.getDate() - 2);
+        rangeStart = fri.toISOString().slice(0, 10);
+        rangeEnd = eventDate;
+      }
+
+      const kidNames = eventKidIds
+        .map((id) => kids.find((k) => k.id === id)?.name)
+        .filter(Boolean)
+        .join(" & ");
+
+      for (const kidId of eventKidIds) {
+        await createOverride({
+          family_id: profile.family_id,
+          kid_id: kidId,
+          start_date: rangeStart,
+          end_date: rangeEnd,
+          parent_id: otherParent?.id || "",
+          note: `Weekend cancelled for ${kidNames} (${rangeStart} to ${rangeEnd})`,
+          reason: "Exchange cancelled",
+          compliance_status: "unchecked",
+          compliance_issues: null,
+          status: "pending" as OverrideStatus,
+          created_by: user.id,
+        });
+      }
+    }
+
+    setShowDetailModal(false);
+    setEditingEvent(null);
+    await refetchCustody();
+  };
+
   const handleExportICal = () => {
     downloadICal(filteredEvents, kids);
   };
@@ -484,6 +557,7 @@ export default function CalendarPage() {
               setShowCustodyOverrides(true);
             }
           }}
+          onCancelExchange={handleCancelExchange}
           relatedOverrides={
             editingEvent.id.startsWith("turnover-")
               ? overrides.filter((o) => {
