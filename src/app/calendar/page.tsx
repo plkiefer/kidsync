@@ -255,6 +255,69 @@ export default function CalendarPage() {
     setEditingEvent(null);
   };
 
+  // Delete a single occurrence of a recurring event (add exception date)
+  const handleDeleteOccurrence = async (occurrenceEvent: CalendarEvent) => {
+    if (!occurrenceEvent._recurrence_parent) return;
+    if (!window.confirm("Delete just this occurrence? The rest of the series will continue.")) return;
+
+    const parentId = occurrenceEvent._recurrence_parent;
+    const occDate = occurrenceEvent.starts_at.slice(0, 10);
+
+    // Find the parent event to get current exceptions
+    const parentEvent = events.find((e) => e.id === parentId);
+    const currentExceptions = parentEvent?.recurrence_exceptions || [];
+    const newExceptions = [...currentExceptions, occDate];
+
+    // Update the parent event's recurrence_exceptions
+    const supabase = (await import("@/lib/supabase")).getSupabase();
+    await supabase
+      .from("calendar_events")
+      .update({ recurrence_exceptions: newExceptions })
+      .eq("id", parentId);
+
+    await refetch();
+    setShowDetailModal(false);
+    setEditingEvent(null);
+  };
+
+  // Edit a single occurrence — exclude it from the series and create a standalone copy
+  const handleEditOccurrence = (occurrenceEvent: CalendarEvent) => {
+    if (!occurrenceEvent._recurrence_parent) return;
+
+    // We'll add the exception when saving the new standalone event
+    // For now, open the event modal with the occurrence's data as a NEW event
+    const standaloneEvent: CalendarEvent = {
+      ...occurrenceEvent,
+      id: "", // new event
+      recurring_rule: null, // not recurring
+      _virtual: false,
+      _recurrence_parent: undefined,
+      // Store the parent info so we can add the exception on save
+      notes: occurrenceEvent.notes
+        ? `${occurrenceEvent.notes}\n[Modified from recurring series]`
+        : "[Modified from recurring series]",
+    };
+
+    // Add exception to parent first
+    const parentId = occurrenceEvent._recurrence_parent;
+    const occDate = occurrenceEvent.starts_at.slice(0, 10);
+    const parentEvent = events.find((e) => e.id === parentId);
+    const currentExceptions = parentEvent?.recurrence_exceptions || [];
+
+    // Update exceptions in background
+    import("@/lib/supabase").then(({ getSupabase }) => {
+      getSupabase()
+        .from("calendar_events")
+        .update({ recurrence_exceptions: [...currentExceptions, occDate] })
+        .eq("id", parentId)
+        .then(() => refetch());
+    });
+
+    setEditingEvent(null);
+    setInitialDate(new Date(occurrenceEvent.starts_at));
+    setShowEventModal(true);
+  };
+
   const handleOpenTravel = async (eventId: string) => {
     setShowEventModal(false);
     setShowDetailModal(false);
@@ -647,6 +710,8 @@ export default function CalendarPage() {
             }
           }}
           onCancelExchange={handleCancelExchange}
+          onDeleteOccurrence={handleDeleteOccurrence}
+          onEditOccurrence={handleEditOccurrence}
           relatedOverrides={
             editingEvent.id.startsWith("turnover-")
               ? overrides.filter((o) => {

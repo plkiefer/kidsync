@@ -15,6 +15,8 @@ interface EventDetailModalProps {
   onDownloadAttachment?: (attachment: EventAttachment) => void;
   onRequestCustodyChange?: () => void;
   onCancelExchange?: (turnoverEvent: CalendarEvent) => void;
+  onDeleteOccurrence?: (event: CalendarEvent) => void;
+  onEditOccurrence?: (event: CalendarEvent) => void;
   relatedOverrides?: CustodyOverride[];
 }
 
@@ -29,6 +31,8 @@ export default function EventDetailModal({
   onDownloadAttachment,
   onRequestCustodyChange,
   onCancelExchange,
+  onDeleteOccurrence,
+  onEditOccurrence,
   relatedOverrides,
 }: EventDetailModalProps) {
   const getMemberName = (id: string) =>
@@ -357,7 +361,51 @@ export default function EventDetailModal({
                 </p>
               )}
             </div>
+          ) : event._recurrence_parent ? (
+            /* Recurring occurrence — Outlook-style: occurrence vs series */
+            <div className="pt-4 border-t border-[var(--color-divider)] space-y-2">
+              <div className="text-[10px] text-[var(--color-text-faint)] text-center mb-1">
+                This is part of a recurring series
+              </div>
+              <div className="flex gap-2">
+                {onDeleteOccurrence && (
+                  <button
+                    onClick={() => onDeleteOccurrence(event)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-[10px] font-semibold hover:bg-red-500/20 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Trash2 size={11} />
+                    Delete This
+                  </button>
+                )}
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/5 text-red-300 text-[10px] font-semibold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Trash2 size={11} />
+                  Delete Series
+                </button>
+              </div>
+              <div className="flex gap-2">
+                {onEditOccurrence && (
+                  <button
+                    onClick={() => { onClose(); onEditOccurrence(event); }}
+                    className="flex-1 px-3 py-2 rounded-xl bg-[var(--color-accent)] text-white text-[10px] font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
+                  >
+                    <Pencil size={11} />
+                    Edit This
+                  </button>
+                )}
+                <button
+                  onClick={onEdit}
+                  className="flex-1 px-3 py-2 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[10px] font-semibold hover:bg-[var(--color-accent)]/20 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Pencil size={11} />
+                  Edit Series
+                </button>
+              </div>
+            </div>
           ) : (
+            /* Non-recurring event — standard actions */
             <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-divider)]">
               <button
                 onClick={handleDelete}

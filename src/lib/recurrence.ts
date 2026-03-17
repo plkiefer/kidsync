@@ -90,8 +90,12 @@ export function expandRecurringEvents(
   const MAX_FUTURE_DAYS = 365;
 
   for (const event of events) {
-    // Always keep the original
-    result.push(event);
+    // Check if the original occurrence is excluded
+    const origExceptions = new Set(event.recurrence_exceptions || []);
+    const origDateStr = event.starts_at.slice(0, 10);
+    if (!origExceptions.has(origDateStr)) {
+      result.push(event);
+    }
 
     if (!event.recurring_rule || event._virtual) continue;
 
@@ -183,9 +187,12 @@ export function expandRecurringEvents(
       }
     }
 
-    // Build virtual events for each occurrence
+    // Build virtual events for each occurrence, skipping exception dates
+    const exceptions = new Set(event.recurrence_exceptions || []);
     for (let i = 0; i < occDates.length; i++) {
       const occStart = occDates[i];
+      const dateStr = `${occStart.getFullYear()}-${String(occStart.getMonth() + 1).padStart(2, "0")}-${String(occStart.getDate()).padStart(2, "0")}`;
+      if (exceptions.has(dateStr)) continue; // skip this occurrence
       const occEnd = new Date(occStart.getTime() + durationMs);
 
       result.push({

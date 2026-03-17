@@ -72,6 +72,7 @@ export interface CalendarEvent {
   location: string | null;
   notes: string | null;
   recurring_rule: string | null;
+  recurrence_exceptions?: string[]; // dates (YYYY-MM-DD) excluded from the series
   attachments?: EventAttachment[];
   created_by: string;
   updated_by: string | null;
