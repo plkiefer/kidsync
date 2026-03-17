@@ -121,13 +121,13 @@ export default function CustodySettings({
     setError("");
 
     try {
-      // Clear existing overrides when reapplying the agreement
-      // (prevents stale custom exchanges from persisting)
+      // Clear ALL active overrides when reapplying the agreement
+      // (clean slate — prevents any stale custom exchanges from persisting)
       await supabase
         .from("custody_overrides")
         .update({ status: "withdrawn" })
         .eq("family_id", familyId)
-        .in("status", ["pending", "approved"]);
+        .neq("status", "withdrawn");
 
       const otherParent = members.find((m) => m.id !== currentUserId);
       const parentMap: Record<string, string> = {};
