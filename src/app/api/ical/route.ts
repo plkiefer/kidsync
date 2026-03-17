@@ -1,12 +1,20 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
+import { getHolidaysForYear, getHolidayIcon } from "@/lib/holidays";
+import { computeCustodyForDate } from "@/lib/custody";
+import { eachDayOfInterval, addDays, format } from "date-fns";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-function toICalDate(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
+const pad = (n: number) => String(n).padStart(2, "0");
+
+function toICalDateTime(date: Date): string {
   return `${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}T${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}Z`;
+}
+
+function toICalDate(date: Date): string {
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
 }
 
 function escapeIcal(str: string): string {
@@ -19,7 +27,6 @@ function escapeIcal(str: string): string {
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
-  const kidFilter = request.nextUrl.searchParams.get("kid");
 
   if (!token) {
     return new Response("Missing token", { status: 401 });
@@ -38,28 +45,29 @@ export async function GET(request: NextRequest) {
     return new Response("Invalid token", { status: 401 });
   }
 
-  // Fetch events (last 6 months + future)
-  const sixMonthsAgo = new Date();
-  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  // Fetch all data needed
+  const [eventsRes, kidsRes, schedulesRes, overridesRes, agreementsRes] = await Promise.all([
+    supabase
+      .from("calendar_events")
+      .select("*, kid:kids(name), travel:event_travel_details(*)")
+      .eq("family_id", profile.family_id)
+      .gte("starts_at", "2026-01-01T00:00:00")
+      .order("starts_at", { ascending: true }),
+    supabase.from("kids").select("*").eq("family_id", profile.family_id),
+    supabase.from("custody_schedules").select("*").eq("family_id", profile.family_id),
+    supabase.from("custody_overrides").select("*").eq("family_id", profile.family_id).neq("status", "withdrawn"),
+    supabase.from("custody_agreements").select("parsed_terms").eq("family_id", profile.family_id).order("created_at", { ascending: false }).limit(1),
+  ]);
 
-  let query = supabase
-    .from("calendar_events")
-    .select(
-      `
-      *,
-      kid:kids(name),
-      travel:event_travel_details(*)
-    `
-    )
-    .eq("family_id", profile.family_id)
-    .gte("starts_at", sixMonthsAgo.toISOString())
-    .order("starts_at", { ascending: true });
-
-  if (kidFilter) {
-    query = query.eq("kid_id", kidFilter);
-  }
-
-  const { data: events } = await query;
+  const events = eventsRes.data || [];
+  const kids = kidsRes.data || [];
+  const schedules = schedulesRes.data || [];
+  const overrides = overridesRes.data || [];
+  const agreement = agreementsRes.data?.[0];
+  const terms = agreement?.parsed_terms as any;
+  const pickupTime = terms?.alternating_weekends?.pickup_time || "3:00 PM";
+  const dropoffTime = terms?.alternating_weekends?.dropoff_time || "5:00 PM";
+  const members = (await supabase.from("profiles").select("id, full_name").eq("family_id", profile.family_id)).data || [];
 
   // Build iCal
   const lines: string[] = [
@@ -72,59 +80,155 @@ export async function GET(request: NextRequest) {
     "X-WR-TIMEZONE:America/New_York",
   ];
 
-  for (const evt of events || []) {
+  // ── DB Events ──────────────────────────────────────────
+  for (const evt of events) {
     const kidName = (evt.kid as any)?.name || "Unknown";
     const start = new Date(evt.starts_at);
     const end = new Date(evt.ends_at);
 
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${evt.id}@kidsync`);
-    lines.push(`DTSTART:${toICalDate(start)}`);
-    lines.push(`DTEND:${toICalDate(end)}`);
-    lines.push(
-      `SUMMARY:[${escapeIcal(kidName)}] ${escapeIcal(evt.title)}`
-    );
 
-    let description = "";
-    if (evt.notes) description += evt.notes;
+    if (evt.all_day) {
+      lines.push(`DTSTART;VALUE=DATE:${toICalDate(start)}`);
+      const endDate = new Date(end);
+      endDate.setDate(endDate.getDate() + 1); // iCal all-day end is exclusive
+      lines.push(`DTEND;VALUE=DATE:${toICalDate(endDate)}`);
+    } else {
+      lines.push(`DTSTART:${toICalDateTime(start)}`);
+      lines.push(`DTEND:${toICalDateTime(end)}`);
+    }
 
+    lines.push(`SUMMARY:[${escapeIcal(kidName)}] ${escapeIcal(evt.title)}`);
+
+    // Add RRULE for recurring events
+    if (evt.recurring_rule) {
+      lines.push(`RRULE:${evt.recurring_rule}`);
+    }
+
+    // Add EXDATE for recurrence exceptions
+    const exceptions = evt.recurrence_exceptions as string[] | null;
+    if (exceptions && exceptions.length > 0) {
+      for (const exDate of exceptions) {
+        const [y, m, d] = exDate.split("-").map(Number);
+        const exDateTime = new Date(y, m - 1, d, start.getHours(), start.getMinutes());
+        lines.push(`EXDATE:${toICalDateTime(exDateTime)}`);
+      }
+    }
+
+    // Description with travel details
+    let description = evt.notes || "";
     const travel = evt.travel as any;
     if (travel && Array.isArray(travel) && travel.length > 0) {
       const t = travel[0];
       if (t.lodging_name) {
-        description += `\\n\\nLODGING: ${t.lodging_name}`;
+        description += `\\nLODGING: ${t.lodging_name}`;
         if (t.lodging_address) description += `\\n${t.lodging_address}`;
-        if (t.lodging_phone) description += `\\nPhone: ${t.lodging_phone}`;
-        if (t.lodging_confirmation)
-          description += `\\nConf#: ${t.lodging_confirmation}`;
       }
       if (t.flights) {
         try {
-          const flights =
-            typeof t.flights === "string"
-              ? JSON.parse(t.flights)
-              : t.flights;
+          const flights = typeof t.flights === "string" ? JSON.parse(t.flights) : t.flights;
           for (const f of flights) {
-            description += `\\n\\nFLIGHT: ${f.carrier} ${f.flight_number}`;
-            description += `\\n${f.departure_airport} → ${f.arrival_airport}`;
-            if (f.departure_time)
-              description += `\\nDeparts: ${new Date(f.departure_time).toLocaleString()}`;
-            if (f.confirmation)
-              description += `\\nConf#: ${f.confirmation}`;
+            description += `\\nFLIGHT: ${f.carrier} ${f.flight_number} ${f.departure_airport}-${f.arrival_airport}`;
           }
-        } catch {
-          // ignore malformed flight data
-        }
-      }
-      if (t.emergency_name) {
-        description += `\\n\\nEMERGENCY: ${t.emergency_name} ${t.emergency_phone || ""}`;
+        } catch { /* ignore */ }
       }
     }
-
     if (description) lines.push(`DESCRIPTION:${escapeIcal(description)}`);
     if (evt.location) lines.push(`LOCATION:${escapeIcal(evt.location)}`);
-    lines.push(`LAST-MODIFIED:${toICalDate(new Date(evt.updated_at))}`);
     lines.push("END:VEVENT");
+  }
+
+  // ── Birthdays ──────────────────────────────────────────
+  for (const kid of kids) {
+    if (!kid.birth_date) continue;
+    const [bYear, bMonth, bDay] = kid.birth_date.split("-").map(Number);
+    for (let year = 2026; year <= 2041; year++) {
+      const age = year - bYear;
+      const dateStr = `${year}${pad(bMonth)}${pad(bDay)}`;
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:birthday-${kid.id}-${year}@kidsync`);
+      lines.push(`DTSTART;VALUE=DATE:${dateStr}`);
+      const nextDay = new Date(year, bMonth - 1, bDay + 1);
+      lines.push(`DTEND;VALUE=DATE:${toICalDate(nextDay)}`);
+      lines.push(`SUMMARY:🎂 ${escapeIcal(kid.name)}'s Birthday${age > 0 ? ` (${age})` : ""}`);
+      lines.push("END:VEVENT");
+    }
+  }
+
+  // ── Holidays (2026-2041) ───────────────────────────────
+  for (let year = 2026; year <= 2041; year++) {
+    const holidays = getHolidaysForYear(year);
+    for (const h of holidays) {
+      const dateStr = `${h.date.getFullYear()}${pad(h.date.getMonth() + 1)}${pad(h.date.getDate())}`;
+      const icon = getHolidayIcon(h.name);
+      const tierLabel = h.tier === "federal" ? " (Federal)" : h.tier === "state" ? " (VA)" : "";
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:holiday-${dateStr}-${h.name.replace(/\s+/g, "-")}@kidsync`);
+      lines.push(`DTSTART;VALUE=DATE:${dateStr}`);
+      const nextDay = new Date(h.date);
+      nextDay.setDate(nextDay.getDate() + 1);
+      lines.push(`DTEND;VALUE=DATE:${toICalDate(nextDay)}`);
+      lines.push(`SUMMARY:${icon} ${escapeIcal(h.name)}${tierLabel}`);
+      lines.push("TRANSP:TRANSPARENT");
+      lines.push("END:VEVENT");
+    }
+  }
+
+  // ── Custody Turnovers (next 6 months) ──────────────────
+  if (schedules.length > 0) {
+    const approvedOverrides = overrides.filter(
+      (o: any) => o.status === "approved" || o.status === "pending"
+    );
+    const rangeStart = new Date();
+    const rangeEnd = new Date();
+    rangeEnd.setMonth(rangeEnd.getMonth() + 6);
+    const days = eachDayOfInterval({ start: addDays(rangeStart, -1), end: addDays(rangeEnd, 1) });
+
+    let prevCustody: Record<string, any> = {};
+    for (let i = 0; i < days.length; i++) {
+      const day = days[i];
+      const custody = computeCustodyForDate(day, schedules as any, approvedOverrides as any);
+
+      if (i > 0 && day >= rangeStart && day <= rangeEnd) {
+        // Check first kid for transitions
+        const firstKid = schedules[0] as any;
+        const prev = prevCustody[firstKid.kid_id];
+        const curr = custody[firstKid.kid_id];
+
+        if (prev && curr && prev.parentId !== curr.parentId) {
+          const isPickup = curr.isParentA;
+          const eventDate = isPickup ? day : days[i - 1];
+          const dateStr = format(eventDate, "yyyy-MM-dd");
+
+          const receivingParent = members.find((m: any) => m.id === (isPickup ? curr.parentId : curr.parentId));
+          const name = (receivingParent as any)?.full_name?.split(" ")[0] || "Parent";
+          const title = isPickup ? `Pickup — ${name}` : `Drop-off — ${name}`;
+          const timeStr = isPickup ? pickupTime : dropoffTime;
+
+          // Parse time
+          const ampm = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          let hour = 15, min = 0;
+          if (ampm) {
+            hour = parseInt(ampm[1]);
+            min = parseInt(ampm[2]);
+            if (ampm[3].toUpperCase() === "PM" && hour !== 12) hour += 12;
+            if (ampm[3].toUpperCase() === "AM" && hour === 12) hour = 0;
+          }
+
+          const evtStart = new Date(eventDate);
+          evtStart.setHours(hour, min, 0, 0);
+
+          lines.push("BEGIN:VEVENT");
+          lines.push(`UID:turnover-${dateStr}-${isPickup ? "pickup" : "dropoff"}@kidsync`);
+          lines.push(`DTSTART:${toICalDateTime(evtStart)}`);
+          lines.push(`DTEND:${toICalDateTime(evtStart)}`);
+          lines.push(`SUMMARY:🔄 ${escapeIcal(title)}`);
+          lines.push("END:VEVENT");
+        }
+      }
+      prevCustody = custody;
+    }
   }
 
   lines.push("END:VCALENDAR");
