@@ -335,23 +335,43 @@ export default function CalendarPage() {
         }
 
         if (nonStandardDays.length > 0) {
-          // Create cancellation override only for non-standard days
-          const cancelStart = nonStandardDays[0];
-          const cancelEnd = nonStandardDays[nonStandardDays.length - 1];
-          for (const kidId of eventKidIds) {
-            await createOverride({
-              family_id: profile.family_id,
-              kid_id: kidId,
-              start_date: cancelStart,
-              end_date: cancelEnd,
-              parent_id: otherParent?.id || "",
-              note: `Cancellation of custom exchange for ${kidNames} (${origStart} to ${origEnd})`,
-              reason: "Reverting approved schedule change",
-              compliance_status: "unchecked",
-              compliance_issues: null,
-              status: "pending" as OverrideStatus,
-              created_by: user.id,
-            });
+          // Split non-standard days into contiguous ranges
+          // (e.g., [Wed,Thu] and [Mon,Tue,Wed] if a standard Fri-Sun is in between)
+          const ranges: { start: string; end: string }[] = [];
+          let rangeStartIdx = 0;
+          for (let i = 1; i <= nonStandardDays.length; i++) {
+            const isEnd = i === nonStandardDays.length;
+            const isGap = !isEnd && (() => {
+              const prev = new Date(nonStandardDays[i - 1] + "T12:00:00");
+              const curr = new Date(nonStandardDays[i] + "T12:00:00");
+              return (curr.getTime() - prev.getTime()) > 86400000 * 1.5; // more than ~1 day
+            })();
+            if (isEnd || isGap) {
+              ranges.push({
+                start: nonStandardDays[rangeStartIdx],
+                end: nonStandardDays[i - 1],
+              });
+              rangeStartIdx = i;
+            }
+          }
+
+          // Create one cancellation override per contiguous range
+          for (const range of ranges) {
+            for (const kidId of eventKidIds) {
+              await createOverride({
+                family_id: profile.family_id,
+                kid_id: kidId,
+                start_date: range.start,
+                end_date: range.end,
+                parent_id: otherParent?.id || "",
+                note: `Cancellation of custom exchange for ${kidNames} (${origStart} to ${origEnd})`,
+                reason: "Reverting approved schedule change",
+                compliance_status: "unchecked",
+                compliance_issues: null,
+                status: "pending" as OverrideStatus,
+                created_by: user.id,
+              });
+            }
           }
         } else {
           // All days match the standard pattern — just withdraw the original
