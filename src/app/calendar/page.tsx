@@ -41,6 +41,8 @@ import {
   LogOut,
   Shield,
   AlertCircle,
+  Link2,
+  Check,
 } from "lucide-react";
 
 type ViewMode = "month" | "week" | "list";
@@ -94,6 +96,8 @@ export default function CalendarPage() {
   const [existingTravel, setExistingTravel] = useState<any>(null);
   const [showCustodySettings, setShowCustodySettings] = useState(false);
   const [showCustodyOverrides, setShowCustodyOverrides] = useState(false);
+  const [showICalMenu, setShowICalMenu] = useState(false);
+  const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
 
   // Auth guard
@@ -102,6 +106,14 @@ export default function CalendarPage() {
       router.replace("/login");
     }
   }, [authLoading, user, router]);
+
+  // Close iCal menu on outside click
+  useEffect(() => {
+    if (!showICalMenu) return;
+    const handler = (e: MouseEvent) => setShowICalMenu(false);
+    setTimeout(() => document.addEventListener("click", handler), 0);
+    return () => document.removeEventListener("click", handler);
+  }, [showICalMenu]);
 
   // Generate virtual birthday events for kids with birth_date
   const birthdayEvents: CalendarEvent[] = kids
@@ -577,13 +589,66 @@ export default function CalendarPage() {
             <Shield size={13} />
             Custody
           </button>
-          <button
-            onClick={handleExportICal}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
-          >
-            <Download size={13} />
-            Export iCal
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowICalMenu(!showICalMenu)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            >
+              <Download size={13} />
+              iCal
+            </button>
+            {showICalMenu && (
+              <div className="absolute right-0 top-10 z-30 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg py-1.5 min-w-[280px] animate-scale-in">
+                <button
+                  onClick={() => { handleExportICal(); setShowICalMenu(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--color-surface-alt)] transition-colors text-[var(--color-text)] flex items-center gap-2"
+                >
+                  <Download size={14} className="text-[var(--color-text-faint)]" />
+                  Download .ics File
+                </button>
+                <div className="border-t border-[var(--color-divider)] my-1" />
+                <div className="px-4 py-2">
+                  <div className="text-[10px] font-bold text-[var(--color-text-faint)] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Link2 size={11} />
+                    Calendar Feed URL
+                  </div>
+                  {profile?.ical_token ? (
+                    <>
+                      <div className="flex gap-1.5">
+                        <input
+                          readOnly
+                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/api/ical?token=${profile.ical_token}`}
+                          className="flex-1 px-2.5 py-1.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[10px] text-[var(--color-text)] font-mono select-all focus:outline-none"
+                          onFocus={(e) => e.target.select()}
+                        />
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `${window.location.origin}/api/ical?token=${profile.ical_token}`
+                            );
+                            setFeedCopied(true);
+                            setTimeout(() => setFeedCopied(false), 2000);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-[10px] font-semibold hover:opacity-90 transition-opacity flex items-center gap-1"
+                        >
+                          {feedCopied ? <Check size={11} /> : <Link2 size={11} />}
+                          {feedCopied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-[var(--color-text-faint)] mt-2 leading-relaxed">
+                        Add this URL in Google Calendar, Apple Calendar, or Outlook
+                        to auto-sync events. Keep this URL private.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-[var(--color-text-faint)]">
+                      No feed token set. Ask your admin to generate one.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={handleSignOut}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
