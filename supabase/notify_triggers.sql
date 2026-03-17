@@ -1,9 +1,12 @@
 -- ============================================================
--- Email notification triggers for KidSync
--- Fires the notify-parent Edge Function via pg_net whenever:
---   1. A calendar event is created, updated, or deleted
---   2. A custody override is created or its status changes
+-- Email notification trigger for calendar events
+-- Fires the notify-parent Edge Function via pg_net whenever
+-- a calendar event is created, updated, or deleted.
 -- ============================================================
+--
+-- Custody override notifications are sent from the frontend
+-- (via supabase.functions.invoke) to avoid duplicate emails
+-- when creating overrides for multiple kids.
 --
 -- SETUP: Run this first if pg_net is not yet enabled:
 --   CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
@@ -12,58 +15,7 @@
 -- with your actual Supabase service role key (Settings → API).
 -- ============================================================
 
-
--- ── Custody override trigger ──────────────────────────────────
-
-CREATE OR REPLACE FUNCTION public.handle_custody_override_change()
-RETURNS TRIGGER AS $$
-DECLARE
-  v_action     TEXT;
-  v_changed_by UUID;
-  v_snapshot   JSONB;
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    v_action := 'requested';
-    v_changed_by := NEW.created_by;
-  ELSIF TG_OP = 'UPDATE' THEN
-    IF OLD.status IS DISTINCT FROM NEW.status THEN
-      v_action := NEW.status; -- 'approved', 'disputed', or 'withdrawn'
-      v_changed_by := COALESCE(NEW.responded_by, NEW.created_by);
-    ELSE
-      -- Non-status update (e.g. compliance check) — skip notification
-      RETURN NEW;
-    END IF;
-  END IF;
-
-  v_snapshot := to_jsonb(NEW);
-
-  PERFORM net.http_post(
-    url := 'https://logxqzyxeuggdcypwqks.supabase.co/functions/v1/notify-parent'::text,
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY_HERE'
-    ),
-    body := jsonb_build_object(
-      'type', 'custody_override',
-      'action', v_action,
-      'override', v_snapshot,
-      'family_id', NEW.family_id::text,
-      'changed_by', v_changed_by::text
-    )
-  );
-
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_custody_override_change ON public.custody_overrides;
-CREATE TRIGGER on_custody_override_change
-  AFTER INSERT OR UPDATE ON public.custody_overrides
-  FOR EACH ROW EXECUTE FUNCTION public.handle_custody_override_change();
-
-
 -- ── Calendar event trigger ────────────────────────────────────
--- (Only run this if the trigger doesn't already exist)
 
 CREATE OR REPLACE FUNCTION public.handle_event_change()
 RETURNS TRIGGER AS $$

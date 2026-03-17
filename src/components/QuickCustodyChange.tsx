@@ -23,6 +23,13 @@ interface QuickCustodyChangeProps {
   familyId: string;
   currentUserId: string;
   onSubmit: (override: any) => Promise<CustodyOverride | null>;
+  onNotifyCustodyChange: (params: {
+    action: "requested" | "approved" | "disputed" | "withdrawn";
+    override: { start_date: string; end_date: string; parent_id: string; reason?: string | null; note?: string | null };
+    kidIds: string[];
+    familyId: string;
+    changedBy: string;
+  }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -33,6 +40,7 @@ export default function QuickCustodyChange({
   familyId,
   currentUserId,
   onSubmit,
+  onNotifyCustodyChange,
   onClose,
 }: QuickCustodyChangeProps) {
   // Derive context from the turnover event
@@ -159,6 +167,13 @@ export default function QuickCustodyChange({
           created_by: currentUserId,
         });
       }
+      await onNotifyCustodyChange({
+        action: "requested",
+        override: { start_date: rangeStart, end_date: rangeEnd, parent_id: overrideParent, note: description, reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}` },
+        kidIds: selectedKids,
+        familyId,
+        changedBy: currentUserId,
+      });
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message || "Failed to submit change request");

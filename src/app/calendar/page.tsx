@@ -76,6 +76,7 @@ export default function CalendarPage() {
     agreements,
     createOverride,
     respondToOverride,
+    notifyCustodyChange,
     refetchCustody,
   } = useCustody(dataReady);
 
@@ -455,12 +456,26 @@ export default function CalendarPage() {
                 created_by: user.id,
               });
             }
+            await notifyCustodyChange({
+              action: "requested",
+              override: { start_date: range.start, end_date: range.end, parent_id: otherParent?.id || "", reason: "Reverting approved schedule change" },
+              kidIds: eventKidIds,
+              familyId: profile.family_id,
+              changedBy: user.id,
+            });
           }
         } else {
           // All days match the standard pattern — just withdraw the original
           for (const o of relatedOvr) {
             await respondToOverride(o.id, "withdrawn", "Reverted — all days match standard schedule", user.id);
           }
+          await notifyCustodyChange({
+            action: "withdrawn",
+            override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Reverted — all days match standard schedule" },
+            kidIds: eventKidIds,
+            familyId: profile.family_id,
+            changedBy: user.id,
+          });
         }
       } else {
         // Pending only: can withdraw directly
@@ -468,6 +483,13 @@ export default function CalendarPage() {
         for (const o of relatedOvr) {
           await respondToOverride(o.id, "withdrawn", "Withdrawn by requester", user.id);
         }
+        await notifyCustodyChange({
+          action: "withdrawn",
+          override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Withdrawn by requester" },
+          kidIds: eventKidIds,
+          familyId: profile.family_id,
+          changedBy: user.id,
+        });
       }
     } else {
       // Standard: skip this pickup/dropoff set by giving other parent custody
@@ -514,6 +536,13 @@ export default function CalendarPage() {
           created_by: user.id,
         });
       }
+      await notifyCustodyChange({
+        action: "requested",
+        override: { start_date: rangeStart, end_date: rangeEnd, parent_id: otherParent?.id || "", reason: "Exchange cancelled" },
+        kidIds: eventKidIds,
+        familyId: profile.family_id,
+        changedBy: user.id,
+      });
     }
 
     setShowDetailModal(false);
@@ -833,6 +862,13 @@ export default function CalendarPage() {
                 created_by: user.id,
               });
             }
+            await notifyCustodyChange({
+              action: "requested",
+              override: { start_date: data.pickupDate, end_date: data.dropoffDate, parent_id: user.id, note: description, reason: data.notes || "Custom custody exchange" },
+              kidIds: data.kidIds,
+              familyId: profile.family_id,
+              changedBy: user.id,
+            });
 
             setShowEventModal(false);
             setEditingEvent(null);
@@ -883,6 +919,7 @@ export default function CalendarPage() {
           currentUserId={user?.id ?? ""}
           onCreateOverride={createOverride}
           onRespondToOverride={respondToOverride}
+          onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
             setShowCustodyOverrides(false);
             await refetchCustody();
@@ -898,6 +935,7 @@ export default function CalendarPage() {
           familyId={profile.family_id}
           currentUserId={user?.id ?? ""}
           onSubmit={createOverride}
+          onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
             setQuickChangeEvent(null);
             setShowDetailModal(false);

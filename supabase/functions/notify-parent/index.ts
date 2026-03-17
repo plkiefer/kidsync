@@ -1,8 +1,8 @@
 // supabase/functions/notify-parent/index.ts
 //
-// Triggered by pg_net from Postgres triggers whenever:
-//   1. A calendar event is created, updated, or deleted
-//   2. A custody override is created or its status changes
+// Triggered by:
+//   1. pg_net DB trigger on calendar_events (INSERT/UPDATE/DELETE)
+//   2. Frontend call via supabase.functions.invoke() for custody overrides
 // Sends an email to the OTHER parent in the family via Resend.
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
@@ -12,13 +12,12 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FROM_EMAIL = "KidSync <onboarding@resend.dev>";
-const APP_URL = "https://yourdomain.com"; // TODO: update when you have a production domain
+const APP_URL = "https://kidsync-zeta.vercel.app";
 
 // TEST MODE: Override recipient emails so real users don't get notifications
 // Remove this map (and the remap in sendToAll) when going to production
 const TEST_EMAIL_MAP: Record<string, string> = {
-  "p.l.kiefer@proton.me": "p.l.kiefer@proton.me",   // Patrick → same
-  // Danielle's real email → your gmail for testing
+  "p.l.kiefer@proton.me": "p.l.kiefer@proton.me",
 };
 const TEST_FALLBACK_EMAIL = "p.l.kiefer@gmail.com";
 
@@ -27,7 +26,6 @@ serve(async (req) => {
     const payload = await req.json();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    // Route to the right handler based on payload type
     if (payload.type === "custody_override") {
       return await handleCustodyOverride(supabase, payload);
     } else {
@@ -41,7 +39,7 @@ serve(async (req) => {
   }
 });
 
-// ── Calendar event notifications ──────────────────────────────
+// ── Calendar event notifications (Notification style) ─────────
 
 async function handleCalendarEvent(
   supabase: ReturnType<typeof createClient>,
@@ -71,8 +69,7 @@ async function handleCalendarEvent(
   );
 
   const subject = `KidSync: ${actor} ${verb} for ${kidName}`;
-  const html = emailWrapper(
-    "Calendar Update",
+  const html = notificationEmail(
     `${actor} ${verb}`,
     `
       <h3 style="color: #1C1C1C; margin: 0 0 8px 0;">${event.title}</h3>
@@ -92,10 +89,11 @@ async function handleCalendarEvent(
 
 async function handleCustodyOverride(
   supabase: ReturnType<typeof createClient>,
-  { action, override, family_id, changed_by }: {
+  { action, override, kid_ids, family_id, changed_by }: {
     type: string;
     action: string;
     override: Record<string, unknown>;
+    kid_ids: string[];
     family_id: string;
     changed_by: string;
   }
@@ -104,8 +102,14 @@ async function handleCustodyOverride(
   if (!recipients.length) return noRecipients();
 
   const actor = await getName(supabase, changed_by);
-  const kidName = await getKidName(supabase, override.kid_id as string);
   const custodyParent = await getName(supabase, override.parent_id as string);
+
+  // Look up all kid names
+  const kidNames: string[] = [];
+  for (const kidId of kid_ids) {
+    kidNames.push(await getKidName(supabase, kidId));
+  }
+  const kidNamesStr = kidNames.join(" & ");
 
   const startDate = formatDate(override.start_date as string);
   const endDate = formatDate(override.end_date as string);
@@ -114,59 +118,104 @@ async function handleCustodyOverride(
       ? startDate
       : `${startDate} – ${endDate}`;
 
-  // Build action-specific messaging
-  let subject: string;
-  let headline: string;
-  let detail: string;
-  let borderColor = "#383838";
+  const reason = (override.reason || override.response_note || "") as string;
 
-  switch (action) {
-    case "requested":
-      subject = `KidSync: ${actor} requested a custody change for ${kidName}`;
-      headline = "Custody Change Request";
-      detail = `${actor} is requesting custody of ${kidName} with ${custodyParent} for ${dateRange}.`;
-      borderColor = "#F59E0B"; // amber
-      break;
-    case "approved":
-      subject = `KidSync: Custody change approved for ${kidName}`;
-      headline = "Custody Change Approved";
-      detail = `${actor} approved the custody change for ${kidName} (${dateRange}).`;
-      borderColor = "#22C55E"; // green
-      break;
-    case "disputed":
-      subject = `KidSync: Custody change disputed for ${kidName}`;
-      headline = "Custody Change Disputed";
-      detail = `${actor} disputed the custody change for ${kidName} (${dateRange}).`;
-      borderColor = "#EF4444"; // red
-      break;
-    case "withdrawn":
-      subject = `KidSync: Custody change withdrawn for ${kidName}`;
-      headline = "Custody Change Withdrawn";
-      detail = `${actor} withdrew the custody change request for ${kidName} (${dateRange}).`;
-      borderColor = "#6B7280"; // gray
-      break;
-    default:
-      subject = `KidSync: Custody update for ${kidName}`;
-      headline = "Custody Update";
-      detail = `${actor} made a custody change for ${kidName} (${dateRange}).`;
+  // "requested" → Action Required email; everything else → Notification email
+  if (action === "requested") {
+    const subject = `KidSync: Action Required — ${actor} requested a custody change for ${kidNamesStr}`;
+    const html = actionRequiredEmail(
+      `${actor} is requesting a custody change`,
+      `
+        <p style="color: #686460; margin: 0; font-size: 14px;">
+          <strong>${kidNamesStr}</strong><br/>
+          ${dateRange}<br/>
+          Custody with: ${custodyParent}
+          ${reason ? `<br/><br/><em>"${reason}"</em>` : ""}
+        </p>
+      `
+    );
+    return await sendToAll(recipients, subject, html);
   }
 
-  const reason = override.reason || override.response_note;
-  const html = emailWrapper(
-    headline,
-    detail,
+  // Approved / Disputed / Withdrawn → Notification style
+  let verb: string;
+  switch (action) {
+    case "approved":
+      verb = `approved a custody change for ${kidNamesStr}`;
+      break;
+    case "disputed":
+      verb = `disputed a custody change for ${kidNamesStr}`;
+      break;
+    case "withdrawn":
+      verb = `withdrew a custody change request for ${kidNamesStr}`;
+      break;
+    default:
+      verb = `made a custody update for ${kidNamesStr}`;
+  }
+
+  const subject = `KidSync: ${actor} ${verb}`;
+  const html = notificationEmail(
+    `${actor} ${verb}`,
     `
       <p style="color: #686460; margin: 0; font-size: 14px;">
-        <strong>${kidName}</strong><br/>
+        <strong>${kidNamesStr}</strong><br/>
         ${dateRange}<br/>
         Custody with: ${custodyParent}
         ${reason ? `<br/><br/><em>"${reason}"</em>` : ""}
       </p>
-    `,
-    borderColor
+    `
   );
 
   return await sendToAll(recipients, subject, html);
+}
+
+// ── Email templates ───────────────────────────────────────────
+
+function actionRequiredEmail(subtitle: string, bodyContent: string): string {
+  return `
+    <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto;">
+      <div style="background: #FAFAF8; padding: 24px; border-radius: 12px; border: 1px solid #E0E0DC;">
+        <div style="display: inline-block; padding: 4px 10px; background: #FEF3C7; color: #92400E; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">
+          Action Required
+        </div>
+        <h2 style="color: #1C1C1C; margin: 0 0 4px 0;">Custody Change Request</h2>
+        <p style="color: #686460; margin: 0 0 20px 0; font-size: 14px;">
+          ${subtitle}
+        </p>
+        <div style="background: #F4F4F2; padding: 16px; border-radius: 8px; border-left: 4px solid #F59E0B;">
+          ${bodyContent}
+        </div>
+        <a href="${APP_URL}/calendar"
+           style="display: inline-block; margin-top: 20px; padding: 10px 20px;
+                  background: #D97706; color: #fff; border-radius: 8px;
+                  text-decoration: none; font-weight: 600; font-size: 14px;">
+          Review Request
+        </a>
+      </div>
+    </div>
+  `;
+}
+
+function notificationEmail(subtitle: string, bodyContent: string): string {
+  return `
+    <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto;">
+      <div style="background: #FAFAF8; padding: 24px; border-radius: 12px; border: 1px solid #E0E0DC;">
+        <h2 style="color: #1C1C1C; margin: 0 0 4px 0;">KidSync Update</h2>
+        <p style="color: #686460; margin: 0 0 20px 0; font-size: 14px;">
+          ${subtitle}
+        </p>
+        <div style="background: #F4F4F2; padding: 16px; border-radius: 8px; border-left: 4px solid #383838;">
+          ${bodyContent}
+        </div>
+        <a href="${APP_URL}/calendar"
+           style="display: inline-block; margin-top: 20px; padding: 10px 20px;
+                  background: #383838; color: #fff; border-radius: 8px;
+                  text-decoration: none; font-weight: 600; font-size: 14px;">
+          View Calendar
+        </a>
+      </div>
+    </div>
+  `;
 }
 
 // ── Shared helpers ────────────────────────────────────────────
@@ -215,33 +264,6 @@ function formatDate(dateStr: string): string {
     month: "short",
     day: "numeric",
   });
-}
-
-function emailWrapper(
-  headline: string,
-  subtitle: string,
-  bodyContent: string,
-  borderColor = "#383838"
-): string {
-  return `
-    <div style="font-family: -apple-system, sans-serif; max-width: 500px; margin: 0 auto;">
-      <div style="background: #FAFAF8; padding: 24px; border-radius: 12px; border: 1px solid #E0E0DC;">
-        <h2 style="color: #1C1C1C; margin: 0 0 4px 0;">${headline}</h2>
-        <p style="color: #686460; margin: 0 0 20px 0; font-size: 14px;">
-          ${subtitle}
-        </p>
-        <div style="background: #F4F4F2; padding: 16px; border-radius: 8px; border-left: 4px solid ${borderColor};">
-          ${bodyContent}
-        </div>
-        <a href="${APP_URL}/calendar"
-           style="display: inline-block; margin-top: 20px; padding: 10px 20px;
-                  background: #383838; color: #fff; border-radius: 8px;
-                  text-decoration: none; font-weight: 600; font-size: 14px;">
-          View Calendar
-        </a>
-      </div>
-    </div>
-  `;
 }
 
 function noRecipients() {

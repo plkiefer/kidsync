@@ -5,6 +5,21 @@ import { getSupabase } from "@/lib/supabase";
 import { CustodySchedule, CustodyOverride, CustodyAgreement, OverrideStatus } from "@/lib/types";
 import { computeCustodyForDate, DayCustodyInfo } from "@/lib/custody";
 
+interface NotifyCustodyParams {
+  action: "requested" | "approved" | "disputed" | "withdrawn";
+  override: {
+    start_date: string;
+    end_date: string;
+    parent_id: string;
+    reason?: string | null;
+    response_note?: string | null;
+    note?: string | null;
+  };
+  kidIds: string[];
+  familyId: string;
+  changedBy: string;
+}
+
 interface CustodyState {
   schedules: CustodySchedule[];
   overrides: CustodyOverride[];
@@ -13,6 +28,7 @@ interface CustodyState {
   getCustodyForDate: (date: Date) => DayCustodyInfo;
   createOverride: (override: Omit<CustodyOverride, "id" | "created_at" | "compliance_checked_at" | "responded_by" | "responded_at" | "response_note">) => Promise<CustodyOverride | null>;
   respondToOverride: (overrideId: string, status: OverrideStatus, note: string, userId: string) => Promise<boolean>;
+  notifyCustodyChange: (params: NotifyCustodyParams) => Promise<void>;
   refetchCustody: () => Promise<void>;
 }
 
@@ -97,6 +113,27 @@ export function useCustody(ready = true): CustodyState {
     [supabase, fetchCustody]
   );
 
+  const notifyCustodyChange = useCallback(
+    async (params: NotifyCustodyParams) => {
+      try {
+        await supabase.functions.invoke("notify-parent", {
+          body: {
+            type: "custody_override",
+            action: params.action,
+            override: params.override,
+            kid_ids: params.kidIds,
+            family_id: params.familyId,
+            changed_by: params.changedBy,
+          },
+        });
+      } catch (err) {
+        // Non-blocking: email failure shouldn't break the UI
+        console.warn("[custody] notification failed:", err);
+      }
+    },
+    [supabase]
+  );
+
   const respondToOverride = useCallback(
     async (overrideId: string, status: OverrideStatus, note: string, userId: string): Promise<boolean> => {
       const { error } = await supabase
@@ -128,6 +165,7 @@ export function useCustody(ready = true): CustodyState {
     getCustodyForDate,
     createOverride,
     respondToOverride,
+    notifyCustodyChange,
     refetchCustody: fetchCustody,
   };
 }

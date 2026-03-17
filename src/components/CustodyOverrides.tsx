@@ -36,6 +36,13 @@ interface CustodyOverridesProps {
     note: string,
     userId: string
   ) => Promise<boolean>;
+  onNotifyCustodyChange: (params: {
+    action: "requested" | "approved" | "disputed" | "withdrawn";
+    override: { start_date: string; end_date: string; parent_id: string; reason?: string | null; response_note?: string | null; note?: string | null };
+    kidIds: string[];
+    familyId: string;
+    changedBy: string;
+  }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -91,6 +98,7 @@ export default function CustodyOverrides({
   currentUserId,
   onCreateOverride,
   onRespondToOverride,
+  onNotifyCustodyChange,
   onClose,
 }: CustodyOverridesProps) {
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -177,6 +185,13 @@ export default function CustodyOverrides({
         status: "pending" as OverrideStatus,
         created_by: currentUserId,
       });
+      await onNotifyCustodyChange({
+        action: "requested",
+        override: { start_date: newStartDate, end_date: newEndDate, parent_id: newParentId, note: newNote, reason: newReason },
+        kidIds: [newKidId],
+        familyId,
+        changedBy: currentUserId,
+      });
 
       // Reset form
       setShowCreateForm(false);
@@ -205,6 +220,20 @@ export default function CustodyOverrides({
           responseNote,
           currentUserId
         );
+      }
+      // Send one notification for all kids in this group
+      const firstOverride = overrides.find((o) => o.id === overrideIds[0]);
+      if (firstOverride) {
+        const kidIds = overrideIds
+          .map((id) => overrides.find((o) => o.id === id)?.kid_id)
+          .filter(Boolean) as string[];
+        await onNotifyCustodyChange({
+          action: status as "approved" | "disputed" | "withdrawn",
+          override: { start_date: firstOverride.start_date, end_date: firstOverride.end_date, parent_id: firstOverride.parent_id, reason: firstOverride.reason, response_note: responseNote, note: firstOverride.note },
+          kidIds,
+          familyId,
+          changedBy: currentUserId,
+        });
       }
       setRespondingTo(null);
       setResponseNote("");
