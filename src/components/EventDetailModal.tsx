@@ -57,11 +57,11 @@ export default function EventDetailModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        <div className="h-2 rounded-t-2xl" style={colorBarStyle} />
+        <div className="h-2 rounded-t-2xl shrink-0" style={colorBarStyle} />
 
-        <div className="p-6">
+        <div className="flex-1 overflow-y-auto p-6">
           {/* Top row */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -264,7 +264,16 @@ export default function EventDetailModal({
           </div>
 
           {/* Change history for turnover events */}
-          {event.id.startsWith("turnover-") && relatedOverrides && relatedOverrides.length > 0 && (
+          {event.id.startsWith("turnover-") && relatedOverrides && relatedOverrides.length > 0 && (() => {
+            // Deduplicate: group overrides with same note+date+status
+            const seen = new Set<string>();
+            const grouped = relatedOverrides.filter((o) => {
+              const key = `${o.note}|${o.start_date}|${o.status}`;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            return (
             <div className="mb-4">
               <div className="flex items-center gap-2 mb-2">
                 <History size={13} className="text-[var(--color-text-faint)]" />
@@ -273,7 +282,7 @@ export default function EventDetailModal({
                 </span>
               </div>
               <div className="space-y-1.5">
-                {relatedOverrides.map((o) => (
+                {grouped.map((o) => (
                   <div
                     key={o.id}
                     className={`text-[11px] px-3 py-2 rounded-lg border ${
@@ -315,7 +324,8 @@ export default function EventDetailModal({
                 ))}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* Actions — hide edit/delete for virtual events */}
           {event._virtual ? (

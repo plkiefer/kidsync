@@ -123,14 +123,23 @@ export default function QuickCustodyChange({
         }
       }
 
-      // Withdraw any existing overrides that overlap this range
+      // Withdraw any existing overrides that overlap the new range OR the original date
       for (const kidId of selectedKids) {
+        // Withdraw overrides overlapping the new range
         await supabase
           .from("custody_overrides")
           .update({ status: "withdrawn" })
           .eq("kid_id", kidId)
           .lte("start_date", rangeEnd)
           .gte("end_date", rangeStart)
+          .in("status", ["pending", "approved"]);
+        // Also withdraw any covering the original turnover date
+        await supabase
+          .from("custody_overrides")
+          .update({ status: "withdrawn" })
+          .eq("kid_id", kidId)
+          .lte("start_date", currentDate)
+          .gte("end_date", currentDate)
           .in("status", ["pending", "approved"]);
       }
 

@@ -296,10 +296,32 @@ export default function CalendarPage() {
     );
 
     if (relatedOvr.length > 0) {
-      // Non-standard: withdraw the overrides that created it
-      if (!window.confirm("Revert this exchange to the standard schedule?")) return;
-      for (const o of relatedOvr) {
-        await respondToOverride(o.id, "withdrawn", "Reverted to standard schedule", user.id);
+      const hasApproved = relatedOvr.some((o) => o.status === "approved");
+      if (hasApproved) {
+        // Approved changes require the other parent's approval to cancel
+        if (!window.confirm("This change was approved. Cancelling requires the other parent's approval. Proceed?")) return;
+        const kidNames = eventKidIds.map((id) => kids.find((k) => k.id === id)?.name).filter(Boolean).join(" & ");
+        for (const kidId of eventKidIds) {
+          await createOverride({
+            family_id: profile.family_id,
+            kid_id: kidId,
+            start_date: relatedOvr[0].start_date,
+            end_date: relatedOvr[0].end_date,
+            parent_id: otherParent?.id || "",
+            note: `Cancellation of approved change for ${kidNames} (${relatedOvr[0].start_date})`,
+            reason: "Reverting approved schedule change",
+            compliance_status: "unchecked",
+            compliance_issues: null,
+            status: "pending" as OverrideStatus,
+            created_by: user.id,
+          });
+        }
+      } else {
+        // Pending only: can withdraw directly
+        if (!window.confirm("Withdraw this pending change request?")) return;
+        for (const o of relatedOvr) {
+          await respondToOverride(o.id, "withdrawn", "Withdrawn by requester", user.id);
+        }
       }
     } else {
       // Standard: skip this pickup/dropoff set by giving other parent custody
@@ -374,10 +396,14 @@ export default function CalendarPage() {
     );
   }
 
-  // Count pending overrides that need current user's response
-  const pendingOverrideCount = overrides.filter(
+  // Count pending overrides that need current user's response (grouped by note+date)
+  const pendingForMe = overrides.filter(
     (o) => o.status === "pending" && o.created_by !== user?.id
-  ).length;
+  );
+  const pendingGrouped = new Set(
+    pendingForMe.map((o) => `${o.note}|${o.start_date}|${o.end_date}`)
+  );
+  const pendingOverrideCount = pendingGrouped.size;
 
   if (!user) return null;
 
