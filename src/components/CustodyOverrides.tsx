@@ -216,6 +216,16 @@ export default function CustodyOverrides({
     }
   };
 
+  // Filter out old approved overrides (>14 days past end_date) and old disputed (>30 days)
+  const now = new Date();
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000).toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+  const visibleOverrides = overrides.filter((o) => {
+    if (o.status === "approved" && o.end_date < fourteenDaysAgo) return false;
+    if (o.status === "disputed" && o.end_date < thirtyDaysAgo) return false;
+    return true;
+  });
+
   // Group overrides with same note+date+status+parent (quick changes for multiple kids)
   interface OverrideGroup {
     primary: CustodyOverride;
@@ -224,10 +234,10 @@ export default function CustodyOverrides({
   }
   const groupedOverrides: OverrideGroup[] = [];
   const seen = new Set<string>();
-  for (const o of overrides) {
+  for (const o of visibleOverrides) {
     if (seen.has(o.id)) continue;
     // Find matching overrides (same note, date, status, parent)
-    const matches = overrides.filter(
+    const matches = visibleOverrides.filter(
       (other) =>
         other.id !== o.id &&
         !seen.has(other.id) &&

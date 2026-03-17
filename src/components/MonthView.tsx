@@ -38,7 +38,14 @@ export default function MonthView({
   }
 
   const getEventsForDay = (date: Date) =>
-    events.filter((e) => isSameDay(parseTimestamp(e.starts_at), date));
+    events
+      .filter((e) => isSameDay(parseTimestamp(e.starts_at), date))
+      .sort((a, b) => {
+        // All-day events first (holidays, birthdays), then timed events
+        if (a.all_day && !b.all_day) return -1;
+        if (!a.all_day && b.all_day) return 1;
+        return 0;
+      });
 
   const getEventKids = (event: CalendarEvent) => {
     const kidIds = getEventKidIds(event);

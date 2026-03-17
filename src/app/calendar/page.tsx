@@ -173,15 +173,23 @@ export default function CalendarPage() {
           return kidIds.includes(filterKid);
         });
 
-  // Navigation
+  // Navigation — clamped to Jan 2026 through Dec 2041
+  const MIN_DATE = new Date(2026, 0, 1);
+  const MAX_DATE = new Date(2041, 11, 31);
+  const clampDate = (d: Date) => {
+    if (d < MIN_DATE) return new Date(MIN_DATE);
+    if (d > MAX_DATE) return new Date(MAX_DATE);
+    return d;
+  };
+
   const goBack = () => {
-    if (view === "month") setCurrentDate((d) => subMonths(d, 1));
-    else setCurrentDate((d) => subWeeks(d, 1));
+    if (view === "month") setCurrentDate((d) => clampDate(subMonths(d, 1)));
+    else setCurrentDate((d) => clampDate(subWeeks(d, 1)));
   };
 
   const goForward = () => {
-    if (view === "month") setCurrentDate((d) => addMonths(d, 1));
-    else setCurrentDate((d) => addWeeks(d, 1));
+    if (view === "month") setCurrentDate((d) => clampDate(addMonths(d, 1)));
+    else setCurrentDate((d) => clampDate(addWeeks(d, 1)));
   };
 
   const goToday = () => setCurrentDate(new Date());
@@ -592,7 +600,8 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={goBack}
-            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+            disabled={currentDate <= MIN_DATE}
+            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronLeft size={16} />
           </button>
@@ -601,7 +610,8 @@ export default function CalendarPage() {
           </h2>
           <button
             onClick={goForward}
-            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+            disabled={currentDate >= MAX_DATE}
+            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight size={16} />
           </button>
