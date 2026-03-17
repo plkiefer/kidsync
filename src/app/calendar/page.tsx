@@ -484,6 +484,14 @@ export default function CalendarPage() {
               setShowCustodyOverrides(true);
             }
           }}
+          relatedOverrides={
+            editingEvent.id.startsWith("turnover-")
+              ? overrides.filter((o) => {
+                  const eventDate = editingEvent.starts_at.split("T")[0];
+                  return eventDate >= o.start_date && eventDate <= o.end_date;
+                })
+              : undefined
+          }
           onClose={() => {
             setShowDetailModal(false);
             setEditingEvent(null);

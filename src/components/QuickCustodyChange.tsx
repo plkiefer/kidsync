@@ -13,6 +13,7 @@ import {
 import { getSupabase } from "@/lib/supabase";
 import { CalendarEvent, Kid, Profile, CustodyOverride, OverrideStatus } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
+import { addDays, format } from "date-fns";
 
 interface QuickCustodyChangeProps {
   /** The turnover event being modified */
@@ -84,25 +85,63 @@ export default function QuickCustodyChange({
     try {
       const supabase = getSupabase();
 
-      // Withdraw any existing overrides for the same kids+date to prevent stale duplicates
+      // Compute the override date range:
+      // Moving a turnover to a non-adjacent day requires covering all gap days
+      // so custody extends continuously (no phantom pickup+dropoff on isolated days)
+      const origDate = new Date(currentDate + "T12:00:00");
+      const targetDate = new Date(newDate + "T12:00:00");
+      const movingLater = targetDate > origDate;
+
+      let rangeStart: string;
+      let rangeEnd: string;
+      let overrideParent: string;
+
+      if (isPickup) {
+        if (movingLater) {
+          // Shrinking: give gap days to other parent (Mother)
+          rangeStart = currentDate;
+          rangeEnd = format(addDays(targetDate, -1), "yyyy-MM-dd");
+          overrideParent = otherParent?.id || "";
+        } else {
+          // Extending: give gap days to weekend parent (Father)
+          rangeStart = newDate;
+          rangeEnd = format(addDays(origDate, -1), "yyyy-MM-dd");
+          overrideParent = overrideParentId;
+        }
+      } else {
+        // Dropoff
+        if (movingLater) {
+          // Extending: give gap days to weekend parent (Father)
+          rangeStart = format(addDays(origDate, 1), "yyyy-MM-dd");
+          rangeEnd = newDate;
+          overrideParent = overrideParentId;
+        } else {
+          // Shrinking: give gap days to other parent (Mother)
+          rangeStart = format(addDays(targetDate, 1), "yyyy-MM-dd");
+          rangeEnd = currentDate;
+          overrideParent = otherParent?.id || "";
+        }
+      }
+
+      // Withdraw any existing overrides that overlap this range
       for (const kidId of selectedKids) {
         await supabase
           .from("custody_overrides")
           .update({ status: "withdrawn" })
           .eq("kid_id", kidId)
-          .eq("start_date", newDate)
+          .lte("start_date", rangeEnd)
+          .gte("end_date", rangeStart)
           .in("status", ["pending", "approved"]);
       }
 
-      // Submit one override per kid (required by schema) but with same note
-      // so they appear as a grouped request
+      // Submit one override per kid covering the full range
       for (const kidId of selectedKids) {
         await onSubmit({
           family_id: familyId,
           kid_id: kidId,
-          start_date: newDate,
-          end_date: newDate,
-          parent_id: overrideParentId,
+          start_date: rangeStart,
+          end_date: rangeEnd,
+          parent_id: overrideParent,
           note: description,
           reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}`,
           compliance_status: "unchecked" as const,

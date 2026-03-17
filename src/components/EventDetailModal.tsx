@@ -1,8 +1,8 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, getEventKidIds, getEventIcon, getEventTypeColor, describeRRule } from "@/lib/types";
-import { formatShortDate, formatTime } from "@/lib/dates";
-import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download, AlertCircle } from "lucide-react";
+import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, CustodyOverride, getEventKidIds, getEventIcon, getEventTypeColor, describeRRule } from "@/lib/types";
+import { formatShortDate, formatTime, format, parseISO } from "@/lib/dates";
+import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download, AlertCircle, History } from "lucide-react";
 
 interface EventDetailModalProps {
   event: CalendarEvent;
@@ -14,6 +14,7 @@ interface EventDetailModalProps {
   onClose: () => void;
   onDownloadAttachment?: (attachment: EventAttachment) => void;
   onRequestCustodyChange?: () => void;
+  relatedOverrides?: CustodyOverride[];
 }
 
 export default function EventDetailModal({
@@ -26,7 +27,10 @@ export default function EventDetailModal({
   onClose,
   onDownloadAttachment,
   onRequestCustodyChange,
+  relatedOverrides,
 }: EventDetailModalProps) {
+  const getMemberName = (id: string) =>
+    members.find((m) => m.id === id)?.full_name?.split(" ")[0] || "Unknown";
   const kidIds = getEventKidIds(event);
   const eventKids = kids.filter((k) => kidIds.includes(k.id));
   const creator = members.find((m) => m.id === event.created_by);
@@ -256,6 +260,60 @@ export default function EventDetailModal({
               </div>
             </div>
           </div>
+
+          {/* Change history for turnover events */}
+          {event.id.startsWith("turnover-") && relatedOverrides && relatedOverrides.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <History size={13} className="text-[var(--color-text-faint)]" />
+                <span className="text-[10px] font-bold text-[var(--color-text-faint)] uppercase tracking-wider">
+                  Change History
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {relatedOverrides.map((o) => (
+                  <div
+                    key={o.id}
+                    className={`text-[11px] px-3 py-2 rounded-lg border ${
+                      o.status === "approved"
+                        ? "border-green-500/20 bg-green-500/5"
+                        : o.status === "disputed"
+                        ? "border-red-500/20 bg-red-500/5"
+                        : o.status === "pending"
+                        ? "border-amber-500/20 bg-amber-500/5"
+                        : "border-[var(--color-border)] bg-[var(--color-input)]"
+                    }`}
+                  >
+                    <div className="text-[var(--color-text)]">
+                      {o.note || "Schedule change"}
+                    </div>
+                    <div className="text-[var(--color-text-faint)] mt-1 space-y-0.5">
+                      <div>
+                        Requested {o.created_at ? format(parseISO(o.created_at), "MMM d") : ""}
+                        {o.created_by ? ` by ${getMemberName(o.created_by)}` : ""}
+                      </div>
+                      {o.status === "approved" && o.responded_at && (
+                        <div className="text-green-400">
+                          Approved {format(parseISO(o.responded_at), "MMM d")}
+                          {o.responded_by ? ` by ${getMemberName(o.responded_by)}` : ""}
+                        </div>
+                      )}
+                      {o.status === "disputed" && (
+                        <div className="text-red-400">
+                          Rejected {o.responded_at ? format(parseISO(o.responded_at), "MMM d") : ""}
+                          {o.responded_by ? ` by ${getMemberName(o.responded_by)}` : ""}
+                          {o.response_note ? ` — ${o.response_note}` : ""}
+                        </div>
+                      )}
+                      {o.status === "pending" && (
+                        <div className="text-amber-400">Awaiting response</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Actions — hide edit/delete for virtual events */}
           {event._virtual ? (

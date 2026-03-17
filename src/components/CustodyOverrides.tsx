@@ -725,7 +725,7 @@ export default function CustodyOverrides({
                                   onChange={(e) =>
                                     setResponseNote(e.target.value)
                                   }
-                                  placeholder="Add a comment (optional)..."
+                                  placeholder="Add a comment (required for disputes)..."
                                   rows={2}
                                   className="w-full px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-faint)] resize-none"
                                 />
@@ -766,7 +766,7 @@ export default function CustodyOverrides({
                                         "disputed"
                                       )
                                     }
-                                    disabled={respondLoading}
+                                    disabled={respondLoading || !responseNote.trim()}
                                     className="flex-1 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                                   >
                                     {respondLoading ? (

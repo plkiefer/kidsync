@@ -28,7 +28,7 @@ export function useCustody(ready = true): CustodyState {
     try {
       const [schedRes, overRes, agreeRes] = await Promise.all([
         supabase.from("custody_schedules").select("*"),
-        supabase.from("custody_overrides").select("*").order("start_date"),
+        supabase.from("custody_overrides").select("*").neq("status", "withdrawn").order("start_date"),
         supabase.from("custody_agreements").select("*").order("created_at", { ascending: false }),
       ]);
 
