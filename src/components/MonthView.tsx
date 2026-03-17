@@ -182,7 +182,7 @@ export default function MonthView({
                         color: typeColor,
                       }}
                     >
-                      {evtKids.map((k) => (
+                      {evt.event_type !== "holiday" && evtKids.map((k) => (
                         <span
                           key={k.id}
                           className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[7px] font-bold text-white shrink-0"

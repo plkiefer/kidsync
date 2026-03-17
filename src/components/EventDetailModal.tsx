@@ -327,8 +327,8 @@ export default function EventDetailModal({
             );
           })()}
 
-          {/* Actions — hide edit/delete for virtual events */}
-          {event._virtual ? (
+          {/* Actions — hide edit/delete for truly virtual events (not recurrence instances) */}
+          {event._virtual && !event._recurrence_parent ? (
             <div className="pt-4 border-t border-[var(--color-divider)]">
               {event.id.startsWith("turnover-") ? (
                 <div className="space-y-2">

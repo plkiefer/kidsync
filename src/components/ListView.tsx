@@ -100,7 +100,7 @@ export default function ListView({
             {/* Kid badges + creator */}
             <div className="text-right shrink-0">
               <div className="flex items-center gap-1.5 justify-end mb-1">
-                {evtKids.map((kid) => (
+                {evt.event_type !== "holiday" && evtKids.map((kid) => (
                   <div
                     key={kid.id}
                     className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md"
