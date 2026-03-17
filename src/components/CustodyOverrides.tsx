@@ -9,7 +9,6 @@ import {
   XCircle,
   Clock,
   Shield,
-  MessageSquare,
   Loader2,
   ChevronDown,
   ChevronUp,
@@ -547,273 +546,132 @@ export default function CustodyOverrides({
                 const allIds = group.all.map((o) => o.id);
                 const kidNamesStr = group.kidIds.map(getKidName).join(" & ");
                 const statusCfg = STATUS_CONFIG[override.status];
-                const compCfg =
-                  COMPLIANCE_CONFIG[override.compliance_status];
                 const StatusIcon = statusCfg.icon;
-                const CompIcon = compCfg.icon;
                 const isExpanded = expandedOverride === override.id;
-                const isMyRequest =
-                  override.created_by === currentUserId;
-                const needsMyResponse =
-                  !isMyRequest && override.status === "pending";
+                const isMyRequest = override.created_by === currentUserId;
+                const needsMyResponse = !isMyRequest && override.status === "pending";
+                const requesterName = override.created_by ? getMemberName(override.created_by) : "Unknown";
 
+                // Build a short, clean title
+                const shortDate = (d: string) => {
+                  const dt = new Date(d + "T12:00:00");
+                  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                };
+                const dateRange = override.start_date === override.end_date
+                  ? shortDate(override.start_date)
+                  : `${shortDate(override.start_date)} – ${shortDate(override.end_date)}`;
+                const shortTitle = `${kidNamesStr} · ${dateRange}`;
+
+                // ── PENDING NEEDING MY RESPONSE: streamlined inline approve/dispute ──
+                if (needsMyResponse) {
+                  return (
+                    <div
+                      key={override.id}
+                      className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 space-y-2.5"
+                    >
+                      <div className="flex items-start gap-2">
+                        <Clock size={15} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold text-[var(--color-text)]">
+                            {shortTitle}
+                          </div>
+                          <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5">
+                            {requesterName} requests custody with {getMemberName(override.parent_id)}
+                          </div>
+                          {override.reason && override.reason !== override.note && (
+                            <div className="text-[11px] text-[var(--color-text-muted)] mt-1 italic">
+                              "{override.reason}"
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Comment box */}
+                      <textarea
+                        value={respondingTo === override.id ? responseNote : ""}
+                        onFocus={() => setRespondingTo(override.id)}
+                        onChange={(e) => {
+                          setRespondingTo(override.id);
+                          setResponseNote(e.target.value);
+                        }}
+                        placeholder="Add a comment (required to dispute)..."
+                        rows={1}
+                        className="w-full px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-faint)] resize-none"
+                      />
+
+                      {/* Approve / Dispute — always visible */}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleRespond(allIds, "approved")}
+                          disabled={respondLoading}
+                          className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          {respondLoading && respondingTo === override.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <CheckCircle size={12} />
+                          )}
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleRespond(allIds, "disputed")}
+                          disabled={respondLoading || !(respondingTo === override.id && responseNote.trim())}
+                          className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          {respondLoading && respondingTo === override.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <XCircle size={12} />
+                          )}
+                          Dispute
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // ── ALL OTHER STATUSES: compact expandable card ──
                 return (
                   <div
                     key={override.id}
-                    className={`rounded-xl border transition-colors ${
-                      needsMyResponse
-                        ? "border-amber-500/40 bg-amber-500/5"
-                        : "border-[var(--color-border)] bg-[var(--color-input)]"
-                    }`}
+                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)]"
                   >
-                    {/* Summary row */}
                     <button
-                      onClick={() =>
-                        setExpandedOverride(isExpanded ? null : override.id)
-                      }
+                      onClick={() => setExpandedOverride(isExpanded ? null : override.id)}
                       className="w-full flex items-center gap-3 p-3 text-left"
                     >
-                      <StatusIcon
-                        size={16}
-                        className={statusCfg.color}
-                      />
+                      <StatusIcon size={15} className={statusCfg.color} />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-[var(--color-text)] truncate">
-                            {override.note || "Custody Change"}
-                          </span>
-                          {needsMyResponse && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400">
-                              ACTION NEEDED
-                            </span>
-                          )}
+                        <div className="text-sm font-semibold text-[var(--color-text)] truncate">
+                          {shortTitle}
                         </div>
-                        <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-faint)]">
-                          <span>{kidNamesStr}</span>
-                          <span>-</span>
-                          <span>
-                            {override.start_date} to {override.end_date}
-                          </span>
-                          <span>-</span>
-                          <span>
-                            with {getMemberName(override.parent_id)}
-                          </span>
+                        <div className="text-[11px] text-[var(--color-text-faint)]">
+                          {requesterName} → {getMemberName(override.parent_id)}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {override.compliance_status === "flagged" && (
-                          <AlertTriangle
-                            size={14}
-                            className="text-red-400"
-                          />
-                        )}
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCfg.bg} ${statusCfg.color}`}
-                        >
-                          {statusCfg.label}
-                        </span>
-                        {isExpanded ? (
-                          <ChevronUp
-                            size={14}
-                            className="text-[var(--color-text-faint)]"
-                          />
-                        ) : (
-                          <ChevronDown
-                            size={14}
-                            className="text-[var(--color-text-faint)]"
-                          />
-                        )}
-                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCfg.bg} ${statusCfg.color}`}>
+                        {statusCfg.label}
+                      </span>
+                      {isExpanded ? <ChevronUp size={14} className="text-[var(--color-text-faint)]" /> : <ChevronDown size={14} className="text-[var(--color-text-faint)]" />}
                     </button>
 
-                    {/* Expanded details */}
                     {isExpanded && (
-                      <div className="px-3 pb-3 space-y-3 border-t border-[var(--color-divider)]">
-                        {/* Details */}
-                        <div className="pt-3 grid grid-cols-2 gap-2 text-[11px]">
-                          <div>
-                            <span className="text-[var(--color-text-faint)]">
-                              Requested by:{" "}
-                            </span>
-                            <span className="text-[var(--color-text)] font-medium">
-                              {override.created_by
-                                ? getMemberName(override.created_by)
-                                : "Unknown"}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-[var(--color-text-faint)]">
-                              Custody to:{" "}
-                            </span>
-                            <span className="text-[var(--color-text)] font-medium">
-                              {getMemberName(override.parent_id)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Reason */}
+                      <div className="px-3 pb-3 space-y-2 border-t border-[var(--color-divider)]">
                         {override.reason && (
-                          <div className="bg-[var(--color-surface)]/50 rounded-lg p-2.5">
-                            <div className="text-[10px] font-bold text-[var(--color-text-faint)] uppercase mb-1">
-                              Reason
-                            </div>
-                            <p className="text-xs text-[var(--color-text)]">
-                              {override.reason}
-                            </p>
+                          <div className="pt-2 text-xs text-[var(--color-text)]">
+                            {override.reason}
                           </div>
                         )}
-
-                        {/* Compliance */}
-                        {override.compliance_status !== "unchecked" && (
-                          <div
-                            className={`rounded-lg p-2.5 border ${
-                              override.compliance_status === "compliant"
-                                ? "border-green-500/20 bg-green-500/5"
-                                : "border-red-500/20 bg-red-500/5"
-                            }`}
-                          >
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <CompIcon
-                                size={12}
-                                className={compCfg.color}
-                              />
-                              <span
-                                className={`text-[10px] font-bold uppercase ${compCfg.color}`}
-                              >
-                                {compCfg.label}
-                              </span>
-                            </div>
-                            {override.compliance_issues &&
-                              override.compliance_issues.length > 0 && (
-                                <ul className="space-y-0.5">
-                                  {override.compliance_issues.map(
-                                    (issue, i) => (
-                                      <li
-                                        key={i}
-                                        className="text-[11px] text-red-300 flex gap-1.5"
-                                      >
-                                        <span className="shrink-0">
-                                          -
-                                        </span>
-                                        {issue}
-                                      </li>
-                                    )
-                                  )}
-                                </ul>
-                              )}
-                          </div>
-                        )}
-
-                        {/* Response from other parent */}
                         {override.responded_by && (
-                          <div className="bg-[var(--color-surface)]/50 rounded-lg p-2.5">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <MessageSquare
-                                size={12}
-                                className="text-[var(--color-text-faint)]"
-                              />
-                              <span className="text-[10px] font-bold text-[var(--color-text-faint)] uppercase">
-                                Response from{" "}
-                                {getMemberName(override.responded_by)}
-                              </span>
-                            </div>
-                            {override.response_note && (
-                              <p className="text-xs text-[var(--color-text)]">
-                                {override.response_note}
-                              </p>
-                            )}
+                          <div className="text-[11px] text-[var(--color-text-faint)]">
+                            {override.status === "approved" ? "Approved" : "Disputed"} by {getMemberName(override.responded_by)}
+                            {override.response_note && ` — "${override.response_note}"`}
                           </div>
                         )}
-
-                        {/* Response actions */}
-                        {needsMyResponse && (
-                          <div className="space-y-2">
-                            {respondingTo === override.id ? (
-                              <div className="space-y-2">
-                                <textarea
-                                  value={responseNote}
-                                  onChange={(e) =>
-                                    setResponseNote(e.target.value)
-                                  }
-                                  placeholder="Add a comment (required for disputes)..."
-                                  rows={2}
-                                  className="w-full px-3 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-faint)] resize-none"
-                                />
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setRespondingTo(null);
-                                      setResponseNote("");
-                                    }}
-                                    className="px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleRespond(
-                                        allIds,
-                                        "approved"
-                                      )
-                                    }
-                                    disabled={respondLoading}
-                                    className="flex-1 px-3 py-1.5 rounded-lg bg-green-600 text-white text-[10px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                  >
-                                    {respondLoading ? (
-                                      <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                      />
-                                    ) : (
-                                      <CheckCircle size={12} />
-                                    )}
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleRespond(
-                                        allIds,
-                                        "disputed"
-                                      )
-                                    }
-                                    disabled={respondLoading || !responseNote.trim()}
-                                    className="flex-1 px-3 py-1.5 rounded-lg bg-red-600 text-white text-[10px] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                  >
-                                    {respondLoading ? (
-                                      <Loader2
-                                        size={12}
-                                        className="animate-spin"
-                                      />
-                                    ) : (
-                                      <XCircle size={12} />
-                                    )}
-                                    Dispute
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                onClick={() =>
-                                  setRespondingTo(override.id)
-                                }
-                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[10px] font-semibold hover:bg-amber-500/20 transition-colors"
-                              >
-                                <MessageSquare size={12} />
-                                Respond to This Request
-                              </button>
-                            )}
-                          </div>
-                        )}
-
                         {/* Withdraw own request */}
                         {isMyRequest && override.status === "pending" && (
                           <button
-                            onClick={() =>
-                              handleRespond(
-                                allIds,
-                                "withdrawn"
-                              )
-                            }
+                            onClick={() => handleRespond(allIds, "withdrawn")}
                             disabled={respondLoading}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-text-faint)] hover:bg-[var(--color-surface-alt)] transition-colors"
                           >
