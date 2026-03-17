@@ -31,6 +31,16 @@ interface EventModalProps {
   onDelete?: (id: string) => void;
   onClose: () => void;
   onOpenTravel?: (eventId: string) => void;
+  onCreateCustodyExchange?: (data: {
+    kidIds: string[];
+    pickupDate: string;
+    pickupTime: string;
+    pickupLocation: string;
+    dropoffDate: string;
+    dropoffTime: string;
+    dropoffLocation: string;
+    notes: string;
+  }) => void;
 }
 
 const EVENT_TYPES = Object.entries(EVENT_TYPE_CONFIG) as [
@@ -46,6 +56,7 @@ export default function EventModal({
   onDelete,
   onClose,
   onOpenTravel,
+  onCreateCustodyExchange,
 }: EventModalProps) {
   const isNew = !event?.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,6 +103,19 @@ export default function EventModal({
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
 
+  // Custody exchange specific state
+  const isCustodyMode = form.event_type === "custody" && onCreateCustodyExchange;
+  const defaultDateStr = (initialDate || new Date()).toISOString().slice(0, 10);
+  const [custodyPickupDate, setCustodyPickupDate] = useState(defaultDateStr);
+  const [custodyPickupTime, setCustodyPickupTime] = useState("15:00");
+  const [custodyPickupLocation, setCustodyPickupLocation] = useState("");
+  const [custodyDropoffDate, setCustodyDropoffDate] = useState(
+    (() => { const d = new Date(initialDate || new Date()); d.setDate(d.getDate() + 2); return d.toISOString().slice(0, 10); })()
+  );
+  const [custodyDropoffTime, setCustodyDropoffTime] = useState("17:00");
+  const [custodyDropoffLocation, setCustodyDropoffLocation] = useState("");
+  const [custodyNotes, setCustodyNotes] = useState("");
+
   const update = (field: keyof EventFormData, value: string | boolean | string[]) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
@@ -113,6 +137,20 @@ export default function EventModal({
   };
 
   const handleSubmit = () => {
+    // Custody exchange mode — delegate to the custody handler
+    if (isCustodyMode) {
+      onCreateCustodyExchange!({
+        kidIds: form.kid_ids,
+        pickupDate: custodyPickupDate,
+        pickupTime: custodyPickupTime,
+        pickupLocation: custodyPickupLocation,
+        dropoffDate: custodyDropoffDate,
+        dropoffTime: custodyDropoffTime,
+        dropoffLocation: custodyDropoffLocation,
+        notes: custodyNotes,
+      });
+      return;
+    }
     if (!form.title.trim()) return;
     onSave(
       {
@@ -166,15 +204,21 @@ export default function EventModal({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Title */}
-          <input
-            type="text"
-            value={form.title}
-            onChange={(e) => update("title", e.target.value)}
-            placeholder="Add title"
-            autoFocus
-            className="w-full text-xl font-display text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent border-0 border-b-2 border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none pb-2 mb-5 transition-colors"
-          />
+          {/* Title — hidden in custody mode */}
+          {isCustodyMode ? (
+            <h2 className="text-xl font-display text-[var(--color-text)] pb-2 mb-5 border-b-2 border-indigo-500/30">
+              🔄 Custom Custody Exchange
+            </h2>
+          ) : (
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => update("title", e.target.value)}
+              placeholder="Add title"
+              autoFocus
+              className="w-full text-xl font-display text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent border-0 border-b-2 border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none pb-2 mb-5 transition-colors"
+            />
+          )}
 
           {/* Event type pills */}
           <div className="flex flex-wrap gap-1.5 mb-3">
@@ -252,7 +296,101 @@ export default function EventModal({
           {/* Divider */}
           <div className="border-t border-[var(--color-divider)] mb-4" />
 
-          {/* Icon rows */}
+          {/* Custody Exchange Mode */}
+          {isCustodyMode ? (
+            <div className="space-y-4">
+              {/* Pickup */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+                    <Clock size={14} />
+                  </div>
+                  <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
+                    Pickup
+                  </span>
+                </div>
+                <div className="ml-10 grid grid-cols-2 gap-2">
+                  <input
+                    type="date"
+                    value={custodyPickupDate}
+                    onChange={(e) => setCustodyPickupDate(e.target.value)}
+                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                  <input
+                    type="time"
+                    value={custodyPickupTime}
+                    onChange={(e) => setCustodyPickupTime(e.target.value)}
+                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                  <input
+                    type="text"
+                    value={custodyPickupLocation}
+                    onChange={(e) => setCustodyPickupLocation(e.target.value)}
+                    placeholder="Pickup location"
+                    className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Drop-off */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 shrink-0">
+                    <Clock size={14} />
+                  </div>
+                  <span className="text-xs font-bold text-orange-500 uppercase tracking-wider">
+                    Drop-off
+                  </span>
+                </div>
+                <div className="ml-10 grid grid-cols-2 gap-2">
+                  <input
+                    type="date"
+                    value={custodyDropoffDate}
+                    onChange={(e) => setCustodyDropoffDate(e.target.value)}
+                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                  <input
+                    type="time"
+                    value={custodyDropoffTime}
+                    onChange={(e) => setCustodyDropoffTime(e.target.value)}
+                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                  <input
+                    type="text"
+                    value={custodyDropoffLocation}
+                    onChange={(e) => setCustodyDropoffLocation(e.target.value)}
+                    placeholder="Drop-off location"
+                    className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="flex items-start gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                  <FileText size={14} />
+                </div>
+                <input
+                  type="text"
+                  value={custodyNotes}
+                  onChange={(e) => setCustodyNotes(e.target.value)}
+                  placeholder="Reason or notes"
+                  className="flex-1 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                />
+              </div>
+
+              {/* Compliance note */}
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                <Plane size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-amber-300 leading-relaxed">
+                  This creates a custody change request. The other parent will
+                  be notified and must approve.
+                </p>
+              </div>
+            </div>
+          ) : (
+
+          /* Standard event fields */
           <div className="space-y-1">
             {/* All-day + Date/Time */}
             <div className="py-2">
@@ -536,6 +674,7 @@ export default function EventModal({
               )}
             </div>
           </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -561,10 +700,10 @@ export default function EventModal({
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!form.title.trim()}
+            disabled={isCustodyMode ? !custodyPickupDate || !custodyDropoffDate : !form.title.trim()}
             className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {isNew ? "Save" : "Save Changes"}
+            {isCustodyMode ? "Submit Request" : isNew ? "Save" : "Save Changes"}
           </button>
         </div>
       </div>

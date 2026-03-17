@@ -606,6 +606,35 @@ export default function CalendarPage() {
           kids={kids}
           onSave={handleSaveEvent}
           onDelete={handleDeleteEvent}
+          onCreateCustodyExchange={async (data) => {
+            if (!profile?.family_id || !user) return;
+            const otherParent = members.find((m) => m.id !== user.id);
+            const kidNames = data.kidIds
+              .map((id) => kids.find((k) => k.id === id)?.name)
+              .filter(Boolean)
+              .join(" & ");
+            const description = `Custom custody: ${kidNames} with ${profile.full_name?.split(" ")[0] || "Dad"} — Pickup ${data.pickupDate} at ${data.pickupTime}, Drop-off ${data.dropoffDate} at ${data.dropoffTime}${data.notes ? ` — ${data.notes}` : ""}`;
+
+            for (const kidId of data.kidIds) {
+              await createOverride({
+                family_id: profile.family_id,
+                kid_id: kidId,
+                start_date: data.pickupDate,
+                end_date: data.dropoffDate,
+                parent_id: user.id,
+                note: description,
+                reason: data.notes || "Custom custody exchange",
+                compliance_status: "unchecked",
+                compliance_issues: null,
+                status: "pending" as OverrideStatus,
+                created_by: user.id,
+              });
+            }
+
+            setShowEventModal(false);
+            setEditingEvent(null);
+            await refetchCustody();
+          }}
           onClose={() => {
             setShowEventModal(false);
             setEditingEvent(null);
