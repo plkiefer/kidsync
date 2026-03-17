@@ -29,7 +29,7 @@ interface QuickCustodyChangeProps {
     kidIds: string[];
     familyId: string;
     changedBy: string;
-  }) => Promise<void>;
+  }) => void;
   onClose: () => void;
 }
 
@@ -167,7 +167,7 @@ export default function QuickCustodyChange({
           created_by: currentUserId,
         });
       }
-      await onNotifyCustodyChange({
+      onNotifyCustodyChange({
         action: "requested",
         override: { start_date: rangeStart, end_date: rangeEnd, parent_id: overrideParent, note: description, reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}` },
         kidIds: selectedKids,

@@ -456,7 +456,7 @@ export default function CalendarPage() {
                 created_by: user.id,
               });
             }
-            await notifyCustodyChange({
+            notifyCustodyChange({
               action: "requested",
               override: { start_date: range.start, end_date: range.end, parent_id: otherParent?.id || "", reason: "Reverting approved schedule change" },
               kidIds: eventKidIds,
@@ -469,7 +469,7 @@ export default function CalendarPage() {
           for (const o of relatedOvr) {
             await respondToOverride(o.id, "withdrawn", "Reverted — all days match standard schedule", user.id);
           }
-          await notifyCustodyChange({
+          notifyCustodyChange({
             action: "withdrawn",
             override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Reverted — all days match standard schedule" },
             kidIds: eventKidIds,
@@ -483,7 +483,7 @@ export default function CalendarPage() {
         for (const o of relatedOvr) {
           await respondToOverride(o.id, "withdrawn", "Withdrawn by requester", user.id);
         }
-        await notifyCustodyChange({
+        notifyCustodyChange({
           action: "withdrawn",
           override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Withdrawn by requester" },
           kidIds: eventKidIds,
@@ -536,7 +536,7 @@ export default function CalendarPage() {
           created_by: user.id,
         });
       }
-      await notifyCustodyChange({
+      notifyCustodyChange({
         action: "requested",
         override: { start_date: rangeStart, end_date: rangeEnd, parent_id: otherParent?.id || "", reason: "Exchange cancelled" },
         kidIds: eventKidIds,
@@ -862,7 +862,7 @@ export default function CalendarPage() {
                 created_by: user.id,
               });
             }
-            await notifyCustodyChange({
+            notifyCustodyChange({
               action: "requested",
               override: { start_date: data.pickupDate, end_date: data.dropoffDate, parent_id: user.id, note: description, reason: data.notes || "Custom custody exchange" },
               kidIds: data.kidIds,

@@ -42,7 +42,7 @@ interface CustodyOverridesProps {
     kidIds: string[];
     familyId: string;
     changedBy: string;
-  }) => Promise<void>;
+  }) => void;
   onClose: () => void;
 }
 
@@ -185,7 +185,7 @@ export default function CustodyOverrides({
         status: "pending" as OverrideStatus,
         created_by: currentUserId,
       });
-      await onNotifyCustodyChange({
+      onNotifyCustodyChange({
         action: "requested",
         override: { start_date: newStartDate, end_date: newEndDate, parent_id: newParentId, note: newNote, reason: newReason },
         kidIds: [newKidId],
@@ -227,7 +227,7 @@ export default function CustodyOverrides({
         const kidIds = overrideIds
           .map((id) => overrides.find((o) => o.id === id)?.kid_id)
           .filter(Boolean) as string[];
-        await onNotifyCustodyChange({
+        onNotifyCustodyChange({
           action: status as "approved" | "disputed" | "withdrawn",
           override: { start_date: firstOverride.start_date, end_date: firstOverride.end_date, parent_id: firstOverride.parent_id, reason: firstOverride.reason, response_note: responseNote, note: firstOverride.note },
           kidIds,

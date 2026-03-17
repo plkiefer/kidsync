@@ -28,7 +28,7 @@ interface CustodyState {
   getCustodyForDate: (date: Date) => DayCustodyInfo;
   createOverride: (override: Omit<CustodyOverride, "id" | "created_at" | "compliance_checked_at" | "responded_by" | "responded_at" | "response_note">) => Promise<CustodyOverride | null>;
   respondToOverride: (overrideId: string, status: OverrideStatus, note: string, userId: string) => Promise<boolean>;
-  notifyCustodyChange: (params: NotifyCustodyParams) => Promise<void>;
+  notifyCustodyChange: (params: NotifyCustodyParams) => void;
   refetchCustody: () => Promise<void>;
 }
 
@@ -114,22 +114,20 @@ export function useCustody(ready = true): CustodyState {
   );
 
   const notifyCustodyChange = useCallback(
-    async (params: NotifyCustodyParams) => {
-      try {
-        await supabase.functions.invoke("notify-parent", {
-          body: {
-            type: "custody_override",
-            action: params.action,
-            override: params.override,
-            kid_ids: params.kidIds,
-            family_id: params.familyId,
-            changed_by: params.changedBy,
-          },
-        });
-      } catch (err) {
-        // Non-blocking: email failure shouldn't break the UI
+    (params: NotifyCustodyParams) => {
+      // Fire and forget — never block the UI waiting for email delivery
+      supabase.functions.invoke("notify-parent", {
+        body: {
+          type: "custody_override",
+          action: params.action,
+          override: params.override,
+          kid_ids: params.kidIds,
+          family_id: params.familyId,
+          changed_by: params.changedBy,
+        },
+      }).catch((err) => {
         console.warn("[custody] notification failed:", err);
-      }
+      });
     },
     [supabase]
   );
