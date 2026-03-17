@@ -298,23 +298,66 @@ export default function CalendarPage() {
     if (relatedOvr.length > 0) {
       const hasApproved = relatedOvr.some((o) => o.status === "approved");
       if (hasApproved) {
-        // Approved changes require the other parent's approval to cancel
+        // Approved changes require the other parent's approval to cancel.
+        // Only override the NON-STANDARD days back to the other parent,
+        // so standing custody turnovers (e.g., standard Fri-Sun) reappear.
         if (!window.confirm("This change was approved. Cancelling requires the other parent's approval. Proceed?")) return;
         const kidNames = eventKidIds.map((id) => kids.find((k) => k.id === id)?.name).filter(Boolean).join(" & ");
-        for (const kidId of eventKidIds) {
-          await createOverride({
-            family_id: profile.family_id,
-            kid_id: kidId,
-            start_date: relatedOvr[0].start_date,
-            end_date: relatedOvr[0].end_date,
-            parent_id: otherParent?.id || "",
-            note: `Cancellation of approved change for ${kidNames} (${relatedOvr[0].start_date})`,
-            reason: "Reverting approved schedule change",
-            compliance_status: "unchecked",
-            compliance_issues: null,
-            status: "pending" as OverrideStatus,
-            created_by: user.id,
-          });
+
+        // Find the original override's date range
+        const origStart = relatedOvr[0].start_date;
+        const origEnd = relatedOvr[0].end_date;
+
+        // Compute which days are non-standard (differ from the base pattern)
+        const { computeCustodyForDate: computeBase } = await import("@/lib/custody");
+        const { eachDayOfInterval, format: fmtDate } = await import("date-fns");
+
+        const rangeDays = eachDayOfInterval({
+          start: new Date(origStart + "T12:00:00"),
+          end: new Date(origEnd + "T12:00:00"),
+        });
+
+        // For each kid, find days where the pattern gives a different parent
+        const nonStandardDays: string[] = [];
+        for (const day of rangeDays) {
+          // Compute custody WITHOUT overrides (pattern only)
+          const patternCustody = computeBase(day, schedules, []);
+          const firstKid = eventKidIds[0];
+          const patternParent = patternCustody[firstKid]?.parentId;
+          // If pattern gives the OTHER parent (not Father), this is a non-standard day
+          if (patternParent && patternParent !== user.id) {
+            // This day was changed by the override — need to revert it
+          } else {
+            // This day matches the standard pattern — skip it
+            continue;
+          }
+          nonStandardDays.push(fmtDate(day, "yyyy-MM-dd"));
+        }
+
+        if (nonStandardDays.length > 0) {
+          // Create cancellation override only for non-standard days
+          const cancelStart = nonStandardDays[0];
+          const cancelEnd = nonStandardDays[nonStandardDays.length - 1];
+          for (const kidId of eventKidIds) {
+            await createOverride({
+              family_id: profile.family_id,
+              kid_id: kidId,
+              start_date: cancelStart,
+              end_date: cancelEnd,
+              parent_id: otherParent?.id || "",
+              note: `Cancellation of custom exchange for ${kidNames} (${origStart} to ${origEnd})`,
+              reason: "Reverting approved schedule change",
+              compliance_status: "unchecked",
+              compliance_issues: null,
+              status: "pending" as OverrideStatus,
+              created_by: user.id,
+            });
+          }
+        } else {
+          // All days match the standard pattern — just withdraw the original
+          for (const o of relatedOvr) {
+            await respondToOverride(o.id, "withdrawn", "Reverted — all days match standard schedule", user.id);
+          }
         }
       } else {
         // Pending only: can withdraw directly
