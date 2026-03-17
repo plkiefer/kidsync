@@ -105,8 +105,13 @@ export function generateTurnoverEvents(
     const timeStr = t.isPickup ? pickupTime : dropoffTime;
     const hour = parseTimeToHour(timeStr);
 
-    // For pickup: "Patrick picks up" (weekend parent receives)
-    // For dropoff: "Drop-off to Danielle" (primary parent receives)
+    // Build a proper local→UTC ISO string so parseTimestamp handles it correctly
+    const [y, m, d] = t.dateStr.split("-").map(Number);
+    const h = Math.floor(hour);
+    const min = Math.round((hour - h) * 60);
+    const localDate = new Date(y, m - 1, d, h, min, 0);
+    const isoStr = localDate.toISOString(); // converts local time to UTC with Z
+
     const receivingParent = members.find((m) => m.id === t.toParentId);
     const receivingName = receivingParent?.full_name?.split(" ")[0] || "Other Parent";
 
@@ -122,8 +127,8 @@ export function generateTurnoverEvents(
       kid_ids: t.kidIds,
       title,
       event_type: "custody",
-      starts_at: `${t.dateStr}T${formatHour(hour)}:00`,
-      ends_at: `${t.dateStr}T${formatHour(hour)}:00`,
+      starts_at: isoStr,
+      ends_at: isoStr,
       all_day: false,
       location: null,
       notes: t.isTentative ? "Pending approval" : null,
