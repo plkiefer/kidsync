@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { CustodySchedule, CustodyOverride, CustodyAgreement, OverrideStatus } from "@/lib/types";
-import { computeCustodyForDate, DayCustodyInfo } from "@/lib/custody";
+import { computeCustodyForDate, DayCustodyInfo, findStandardTurnoverDates, parseLocalDate, formatDateStr } from "@/lib/custody";
+import { addDays } from "date-fns";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -36,6 +37,17 @@ interface CustodyState {
   respondToOverrides: (overrideIds: string[], status: OverrideStatus, note: string, userId: string) => Promise<boolean>;
   /** Withdraw overlapping overrides for given kids/date ranges, refetch once */
   withdrawOverlapping: (kidIds: string[], dateRanges: { start: string; end: string }[]) => Promise<void>;
+  /** Move a pickup/dropoff: computes range relative to standard schedule, withdraws conflicts, creates override */
+  moveTurnover: (params: {
+    isPickup: boolean;
+    currentDate: string;
+    newDate: string;
+    kidIds: string[];
+    familyId: string;
+    userId: string;
+    note: string;
+    reason: string;
+  }) => Promise<boolean>;
   notifyCustodyChange: (params: NotifyCustodyParams) => void;
   refetchCustody: () => Promise<void>;
 }
@@ -200,6 +212,91 @@ export function useCustody(ready = true): CustodyState {
     [supabase]
   );
 
+  // ── Move turnover ──────────────────────────────────────────
+
+  const moveTurnover = useCallback(
+    async (params: {
+      isPickup: boolean;
+      currentDate: string;
+      newDate: string;
+      kidIds: string[];
+      familyId: string;
+      userId: string;
+      note: string;
+      reason: string;
+    }): Promise<boolean> => {
+      const refDate = parseLocalDate(params.currentDate);
+      const targetDate = parseLocalDate(params.newDate);
+
+      // Find the standard turnover dates using the base schedule (no overrides)
+      const schedule = schedules.find((s) => s.kid_id === params.kidIds[0]);
+      if (!schedule) {
+        console.error("[custody] no schedule found for kid", params.kidIds[0]);
+        return false;
+      }
+
+      const standard = findStandardTurnoverDates(refDate, schedule);
+      if (!standard) {
+        console.error("[custody] could not find standard turnover dates");
+        return false;
+      }
+
+      let rangeStart: string;
+      let rangeEnd: string;
+      let overrideParent: string;
+
+      if (params.isPickup) {
+        if (targetDate < standard.pickupDate) {
+          // Extending: pickup earlier than standard → give parent_a these gap days
+          rangeStart = params.newDate;
+          rangeEnd = formatDateStr(addDays(standard.pickupDate, -1));
+          overrideParent = schedule.parent_a_id;
+        } else {
+          // Shrinking: pickup later than standard → give parent_b these gap days
+          rangeStart = formatDateStr(standard.pickupDate);
+          rangeEnd = formatDateStr(addDays(targetDate, -1));
+          overrideParent = schedule.parent_b_id;
+        }
+      } else {
+        if (targetDate > standard.dropoffDate) {
+          // Extending: dropoff later than standard → give parent_a these gap days
+          rangeStart = formatDateStr(addDays(standard.dropoffDate, 1));
+          rangeEnd = params.newDate;
+          overrideParent = schedule.parent_a_id;
+        } else {
+          // Shrinking: dropoff earlier than standard → give parent_b these gap days
+          rangeStart = formatDateStr(addDays(targetDate, 1));
+          rangeEnd = formatDateStr(standard.dropoffDate);
+          overrideParent = schedule.parent_b_id;
+        }
+      }
+
+      // Withdraw any existing overrides that overlap the new range or the standard custody block
+      await withdrawOverlapping(params.kidIds, [
+        { start: rangeStart, end: rangeEnd },
+        { start: formatDateStr(standard.pickupDate), end: formatDateStr(standard.dropoffDate) },
+      ]);
+
+      // Create the new override
+      await createOverrides(params.kidIds.map((kidId) => ({
+        family_id: params.familyId,
+        kid_id: kidId,
+        start_date: rangeStart,
+        end_date: rangeEnd,
+        parent_id: overrideParent,
+        note: params.note,
+        reason: params.reason,
+        compliance_status: "unchecked" as const,
+        compliance_issues: null,
+        status: "pending" as OverrideStatus,
+        created_by: params.userId,
+      })));
+
+      return true;
+    },
+    [schedules, withdrawOverlapping, createOverrides]
+  );
+
   // ── Notify (fire and forget) ──────────────────────────────
 
   const notifyCustodyChange = useCallback(
@@ -229,6 +326,7 @@ export function useCustody(ready = true): CustodyState {
     createOverrides,
     respondToOverrides,
     withdrawOverlapping,
+    moveTurnover,
     notifyCustodyChange,
     refetchCustody: fetchCustody,
   };

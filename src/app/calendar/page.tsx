@@ -77,6 +77,7 @@ export default function CalendarPage() {
     createOverrides,
     respondToOverrides,
     withdrawOverlapping,
+    moveTurnover,
     notifyCustodyChange,
     refetchCustody,
   } = useCustody(dataReady);
@@ -926,8 +927,7 @@ export default function CalendarPage() {
           members={members}
           familyId={profile.family_id}
           currentUserId={user?.id ?? ""}
-          onCreateOverrides={createOverrides}
-          onWithdrawOverlapping={withdrawOverlapping}
+          onMoveTurnover={moveTurnover}
           onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
             setQuickChangeEvent(null);

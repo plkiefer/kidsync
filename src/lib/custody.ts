@@ -1,5 +1,5 @@
 import { CustodySchedule, CustodyOverride } from "./types";
-import { differenceInCalendarDays } from "date-fns";
+import { differenceInCalendarDays, addDays, eachDayOfInterval, format } from "date-fns";
 
 export interface DayCustodyEntry {
   parentId: string;
@@ -86,7 +86,53 @@ export function computeCustodyForDate(
 }
 
 /** Parse a YYYY-MM-DD string as local date (avoids UTC shift) */
-function parseLocalDate(dateStr: string): Date {
+export function parseLocalDate(dateStr: string): Date {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+/**
+ * Find the standard (no-override) pickup and dropoff dates for the custody
+ * block nearest to a reference date. Scans ±7 days using only the base
+ * schedule to find where custody naturally transitions.
+ *
+ * Returns null if no transitions found (e.g., fixed_days with no alternating).
+ */
+export function findStandardTurnoverDates(
+  referenceDate: Date,
+  schedule: CustodySchedule
+): { pickupDate: Date; dropoffDate: Date } | null {
+  const scanStart = addDays(referenceDate, -7);
+  const scanEnd = addDays(referenceDate, 7);
+  const days = eachDayOfInterval({ start: scanStart, end: scanEnd });
+
+  let pickupDate: Date | null = null;
+  let dropoffDate: Date | null = null;
+
+  // Compute standard custody (no overrides) for consecutive days
+  for (let i = 1; i < days.length; i++) {
+    const prev = computeCustodyForDate(days[i - 1], [schedule], []);
+    const curr = computeCustodyForDate(days[i], [schedule], []);
+    const kidId = schedule.kid_id;
+
+    if (prev[kidId] && curr[kidId] && prev[kidId].parentId !== curr[kidId].parentId) {
+      if (curr[kidId].isParentA) {
+        // Transition to parent_a = pickup day
+        pickupDate = days[i];
+      } else {
+        // Transition away from parent_a = dropoff is the day BEFORE (last day parent_a has custody)
+        dropoffDate = days[i - 1];
+      }
+    }
+  }
+
+  if (pickupDate && dropoffDate) {
+    return { pickupDate, dropoffDate };
+  }
+  return null;
+}
+
+/** Format a date as YYYY-MM-DD */
+export function formatDateStr(date: Date): string {
+  return format(date, "yyyy-MM-dd");
 }
