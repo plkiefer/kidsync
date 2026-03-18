@@ -74,8 +74,9 @@ export default function CalendarPage() {
     getCustodyForDate,
     overrides,
     agreements,
-    createOverride,
-    respondToOverride,
+    createOverrides,
+    respondToOverrides,
+    withdrawOverlapping,
     notifyCustodyChange,
     refetchCustody,
   } = useCustody(dataReady);
@@ -439,36 +440,33 @@ export default function CalendarPage() {
             }
           }
 
-          // Create one cancellation override per contiguous range
-          for (const range of ranges) {
-            for (const kidId of eventKidIds) {
-              await createOverride({
-                family_id: profile.family_id,
-                kid_id: kidId,
-                start_date: range.start,
-                end_date: range.end,
-                parent_id: otherParent?.id || "",
-                note: `Cancellation of custom exchange for ${kidNames} (${origStart} to ${origEnd})`,
-                reason: "Reverting approved schedule change",
-                compliance_status: "unchecked",
-                compliance_issues: null,
-                status: "pending" as OverrideStatus,
-                created_by: user.id,
-              });
-            }
-            notifyCustodyChange({
-              action: "requested",
-              override: { start_date: range.start, end_date: range.end, parent_id: otherParent?.id || "", reason: "Reverting approved schedule change" },
-              kidIds: eventKidIds,
-              familyId: profile.family_id,
-              changedBy: user.id,
-            });
-          }
+          // Create cancellation overrides for all ranges × kids in one batch
+          const cancellationInputs = ranges.flatMap((range) =>
+            eventKidIds.map((kidId) => ({
+              family_id: profile.family_id,
+              kid_id: kidId,
+              start_date: range.start,
+              end_date: range.end,
+              parent_id: otherParent?.id || "",
+              note: `Cancellation of custom exchange for ${kidNames} (${origStart} to ${origEnd})`,
+              reason: "Reverting approved schedule change",
+              compliance_status: "unchecked" as const,
+              compliance_issues: null,
+              status: "pending" as OverrideStatus,
+              created_by: user.id,
+            }))
+          );
+          await createOverrides(cancellationInputs);
+          notifyCustodyChange({
+            action: "requested",
+            override: { start_date: ranges[0].start, end_date: ranges[ranges.length - 1].end, parent_id: otherParent?.id || "", reason: "Reverting approved schedule change" },
+            kidIds: eventKidIds,
+            familyId: profile.family_id,
+            changedBy: user.id,
+          });
         } else {
           // All days match the standard pattern — just withdraw the original
-          for (const o of relatedOvr) {
-            await respondToOverride(o.id, "withdrawn", "Reverted — all days match standard schedule", user.id);
-          }
+          await respondToOverrides(relatedOvr.map((o) => o.id), "withdrawn", "Reverted — all days match standard schedule", user.id);
           notifyCustodyChange({
             action: "withdrawn",
             override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Reverted — all days match standard schedule" },
@@ -480,9 +478,7 @@ export default function CalendarPage() {
       } else {
         // Pending only: can withdraw directly
         if (!window.confirm("Withdraw this pending change request?")) return;
-        for (const o of relatedOvr) {
-          await respondToOverride(o.id, "withdrawn", "Withdrawn by requester", user.id);
-        }
+        await respondToOverrides(relatedOvr.map((o) => o.id), "withdrawn", "Withdrawn by requester", user.id);
         notifyCustodyChange({
           action: "withdrawn",
           override: { start_date: relatedOvr[0].start_date, end_date: relatedOvr[relatedOvr.length - 1].end_date, parent_id: relatedOvr[0].parent_id, reason: "Withdrawn by requester" },
@@ -521,21 +517,19 @@ export default function CalendarPage() {
         .filter(Boolean)
         .join(" & ");
 
-      for (const kidId of eventKidIds) {
-        await createOverride({
-          family_id: profile.family_id,
-          kid_id: kidId,
-          start_date: rangeStart,
-          end_date: rangeEnd,
-          parent_id: otherParent?.id || "",
-          note: `Weekend cancelled for ${kidNames} (${rangeStart} to ${rangeEnd})`,
-          reason: "Exchange cancelled",
-          compliance_status: "unchecked",
-          compliance_issues: null,
-          status: "pending" as OverrideStatus,
-          created_by: user.id,
-        });
-      }
+      await createOverrides(eventKidIds.map((kidId) => ({
+        family_id: profile.family_id,
+        kid_id: kidId,
+        start_date: rangeStart,
+        end_date: rangeEnd,
+        parent_id: otherParent?.id || "",
+        note: `Weekend cancelled for ${kidNames} (${rangeStart} to ${rangeEnd})`,
+        reason: "Exchange cancelled",
+        compliance_status: "unchecked" as const,
+        compliance_issues: null,
+        status: "pending" as OverrideStatus,
+        created_by: user.id,
+      })));
       notifyCustodyChange({
         action: "requested",
         override: { start_date: rangeStart, end_date: rangeEnd, parent_id: otherParent?.id || "", reason: "Exchange cancelled" },
@@ -847,21 +841,19 @@ export default function CalendarPage() {
               .join(" & ");
             const description = `Custom custody: ${kidNames} with ${profile.full_name?.split(" ")[0] || "Dad"} — Pickup ${data.pickupDate} at ${data.pickupTime}, Drop-off ${data.dropoffDate} at ${data.dropoffTime}${data.notes ? ` — ${data.notes}` : ""}`;
 
-            for (const kidId of data.kidIds) {
-              await createOverride({
-                family_id: profile.family_id,
-                kid_id: kidId,
-                start_date: data.pickupDate,
-                end_date: data.dropoffDate,
-                parent_id: user.id,
-                note: description,
-                reason: data.notes || "Custom custody exchange",
-                compliance_status: "unchecked",
-                compliance_issues: null,
-                status: "pending" as OverrideStatus,
-                created_by: user.id,
-              });
-            }
+            await createOverrides(data.kidIds.map((kidId) => ({
+              family_id: profile.family_id,
+              kid_id: kidId,
+              start_date: data.pickupDate,
+              end_date: data.dropoffDate,
+              parent_id: user.id,
+              note: description,
+              reason: data.notes || "Custom custody exchange",
+              compliance_status: "unchecked" as const,
+              compliance_issues: null,
+              status: "pending" as OverrideStatus,
+              created_by: user.id,
+            })));
             notifyCustodyChange({
               action: "requested",
               override: { start_date: data.pickupDate, end_date: data.dropoffDate, parent_id: user.id, note: description, reason: data.notes || "Custom custody exchange" },
@@ -917,8 +909,8 @@ export default function CalendarPage() {
           overrides={overrides}
           agreements={agreements}
           currentUserId={user?.id ?? ""}
-          onCreateOverride={createOverride}
-          onRespondToOverride={respondToOverride}
+          onCreateOverrides={createOverrides}
+          onRespondToOverrides={respondToOverrides}
           onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
             setShowCustodyOverrides(false);
@@ -934,7 +926,8 @@ export default function CalendarPage() {
           members={members}
           familyId={profile.family_id}
           currentUserId={user?.id ?? ""}
-          onSubmit={createOverride}
+          onCreateOverrides={createOverrides}
+          onWithdrawOverlapping={withdrawOverlapping}
           onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
             setQuickChangeEvent(null);

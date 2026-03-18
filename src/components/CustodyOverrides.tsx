@@ -29,13 +29,8 @@ interface CustodyOverridesProps {
   overrides: CustodyOverride[];
   agreements: CustodyAgreement[];
   currentUserId: string;
-  onCreateOverride: (override: any) => Promise<CustodyOverride | null>;
-  onRespondToOverride: (
-    overrideId: string,
-    status: OverrideStatus,
-    note: string,
-    userId: string
-  ) => Promise<boolean>;
+  onCreateOverrides: (overrides: any[]) => Promise<CustodyOverride[]>;
+  onRespondToOverrides: (overrideIds: string[], status: OverrideStatus, note: string, userId: string) => Promise<boolean>;
   onNotifyCustodyChange: (params: {
     action: "requested" | "approved" | "disputed" | "withdrawn";
     override: { start_date: string; end_date: string; parent_id: string; reason?: string | null; response_note?: string | null; note?: string | null };
@@ -96,8 +91,8 @@ export default function CustodyOverrides({
   overrides,
   agreements,
   currentUserId,
-  onCreateOverride,
-  onRespondToOverride,
+  onCreateOverrides,
+  onRespondToOverrides,
   onNotifyCustodyChange,
   onClose,
 }: CustodyOverridesProps) {
@@ -168,7 +163,7 @@ export default function CustodyOverrides({
 
     setCreating(true);
     try {
-      await onCreateOverride({
+      await onCreateOverrides([{
         family_id: familyId,
         kid_id: newKidId,
         start_date: newStartDate,
@@ -184,7 +179,7 @@ export default function CustodyOverrides({
         compliance_issues: complianceResult?.issues || null,
         status: "pending" as OverrideStatus,
         created_by: currentUserId,
-      });
+      }]);
       onNotifyCustodyChange({
         action: "requested",
         override: { start_date: newStartDate, end_date: newEndDate, parent_id: newParentId, note: newNote, reason: newReason },
@@ -213,14 +208,7 @@ export default function CustodyOverrides({
   ) => {
     setRespondLoading(true);
     try {
-      for (const id of overrideIds) {
-        await onRespondToOverride(
-          id,
-          status,
-          responseNote,
-          currentUserId
-        );
-      }
+      await onRespondToOverrides(overrideIds, status, responseNote, currentUserId);
       // Send one notification for all kids in this group
       const firstOverride = overrides.find((o) => o.id === overrideIds[0]);
       if (firstOverride) {

@@ -10,7 +10,6 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { getSupabase } from "@/lib/supabase";
 import { CalendarEvent, Kid, Profile, CustodyOverride, OverrideStatus } from "@/lib/types";
 import { formatShortDate, formatTime } from "@/lib/dates";
 import { addDays, format } from "date-fns";
@@ -22,7 +21,8 @@ interface QuickCustodyChangeProps {
   members: Profile[];
   familyId: string;
   currentUserId: string;
-  onSubmit: (override: any) => Promise<CustodyOverride | null>;
+  onCreateOverrides: (overrides: any[]) => Promise<CustodyOverride[]>;
+  onWithdrawOverlapping: (kidIds: string[], dateRanges: { start: string; end: string }[]) => Promise<void>;
   onNotifyCustodyChange: (params: {
     action: "requested" | "approved" | "disputed" | "withdrawn";
     override: { start_date: string; end_date: string; parent_id: string; reason?: string | null; note?: string | null };
@@ -39,7 +39,8 @@ export default function QuickCustodyChange({
   members,
   familyId,
   currentUserId,
-  onSubmit,
+  onCreateOverrides,
+  onWithdrawOverlapping,
   onNotifyCustodyChange,
   onClose,
 }: QuickCustodyChangeProps) {
@@ -91,8 +92,6 @@ export default function QuickCustodyChange({
     const description = `${isPickup ? "Pickup" : "Drop-off"} for ${kidNames} moved from ${currentDate} to ${newDate} at ${newTime}${note ? ` — ${note}` : ""}`;
 
     try {
-      const supabase = getSupabase();
-
       // Compute the override date range:
       // Moving a turnover to a non-adjacent day requires covering all gap days
       // so custody extends continuously (no phantom pickup+dropoff on isolated days)
@@ -106,67 +105,46 @@ export default function QuickCustodyChange({
 
       if (isPickup) {
         if (movingLater) {
-          // Shrinking: give gap days to other parent (Mother)
           rangeStart = currentDate;
           rangeEnd = format(addDays(targetDate, -1), "yyyy-MM-dd");
           overrideParent = otherParent?.id || "";
         } else {
-          // Extending: give gap days to weekend parent (Father)
           rangeStart = newDate;
           rangeEnd = format(addDays(origDate, -1), "yyyy-MM-dd");
           overrideParent = overrideParentId;
         }
       } else {
-        // Dropoff
         if (movingLater) {
-          // Extending: give gap days to weekend parent (Father)
           rangeStart = format(addDays(origDate, 1), "yyyy-MM-dd");
           rangeEnd = newDate;
           overrideParent = overrideParentId;
         } else {
-          // Shrinking: give gap days to other parent (Mother)
           rangeStart = format(addDays(targetDate, 1), "yyyy-MM-dd");
           rangeEnd = currentDate;
           overrideParent = otherParent?.id || "";
         }
       }
 
-      // Withdraw any existing overrides that overlap the new range OR the original date
-      for (const kidId of selectedKids) {
-        // Withdraw overrides overlapping the new range
-        await supabase
-          .from("custody_overrides")
-          .update({ status: "withdrawn" })
-          .eq("kid_id", kidId)
-          .lte("start_date", rangeEnd)
-          .gte("end_date", rangeStart)
-          .in("status", ["pending", "approved"]);
-        // Also withdraw any covering the original turnover date
-        await supabase
-          .from("custody_overrides")
-          .update({ status: "withdrawn" })
-          .eq("kid_id", kidId)
-          .lte("start_date", currentDate)
-          .gte("end_date", currentDate)
-          .in("status", ["pending", "approved"]);
-      }
+      // Withdraw overlapping overrides via the hook (keeps state in sync)
+      await onWithdrawOverlapping(selectedKids, [
+        { start: rangeStart, end: rangeEnd },
+        { start: currentDate, end: currentDate },
+      ]);
 
-      // Submit one override per kid covering the full range
-      for (const kidId of selectedKids) {
-        await onSubmit({
-          family_id: familyId,
-          kid_id: kidId,
-          start_date: rangeStart,
-          end_date: rangeEnd,
-          parent_id: overrideParent,
-          note: description,
-          reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}`,
-          compliance_status: "unchecked" as const,
-          compliance_issues: null,
-          status: "pending" as OverrideStatus,
-          created_by: currentUserId,
-        });
-      }
+      // Create all kid overrides in one batch DB call
+      await onCreateOverrides(selectedKids.map((kidId) => ({
+        family_id: familyId,
+        kid_id: kidId,
+        start_date: rangeStart,
+        end_date: rangeEnd,
+        parent_id: overrideParent,
+        note: description,
+        reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}`,
+        compliance_status: "unchecked" as const,
+        compliance_issues: null,
+        status: "pending" as OverrideStatus,
+        created_by: currentUserId,
+      })));
       onNotifyCustodyChange({
         action: "requested",
         override: { start_date: rangeStart, end_date: rangeEnd, parent_id: overrideParent, note: description, reason: note || `Schedule change for ${isPickup ? "pickup" : "drop-off"}` },

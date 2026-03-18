@@ -19,22 +19,42 @@ const APP_URL = "https://kidsync-zeta.vercel.app";
 const TEST_EMAIL_MAP: Record<string, string> = {
   "p.l.kiefer@proton.me": "p.l.kiefer@proton.me",
 };
-const TEST_FALLBACK_EMAIL = "p.l.kiefer@gmail.com";
+const TEST_FALLBACK_EMAIL = "p.l.kiefer@proton.me";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 serve(async (req) => {
+  // Handle CORS preflight from browser calls
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const payload = await req.json();
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
+    let result;
     if (payload.type === "custody_override") {
-      return await handleCustodyOverride(supabase, payload);
+      result = await handleCustodyOverride(supabase, payload);
     } else {
-      return await handleCalendarEvent(supabase, payload);
+      result = await handleCalendarEvent(supabase, payload);
     }
+
+    // Add CORS headers to the response
+    const body = await result.text();
+    return new Response(body, {
+      status: result.status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Notification error:", error);
     return new Response(JSON.stringify({ error: (error as Error).message }), {
       status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
