@@ -96,19 +96,26 @@ export function useCustody(ready = true): CustodyState {
     async (
       override: Omit<CustodyOverride, "id" | "created_at" | "compliance_checked_at" | "responded_by" | "responded_at" | "response_note">
     ): Promise<CustodyOverride | null> => {
-      const { data, error } = await supabase
-        .from("custody_overrides")
-        .insert(override)
-        .select()
-        .single();
+      try {
+        const result = await Promise.race([
+          supabase.from("custody_overrides").insert(override).select().single(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), 15000)),
+        ]);
 
-      if (error) {
-        console.error("[custody] create override error:", error);
+        if (result.error) {
+          console.error("[custody] create override error:", result.error);
+          return null;
+        }
+
+        await Promise.race([
+          fetchCustody(),
+          new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+        ]);
+        return result.data as CustodyOverride;
+      } catch (err) {
+        console.error("[custody] create timed out or failed:", err);
         return null;
       }
-
-      await fetchCustody();
-      return data as CustodyOverride;
     },
     [supabase, fetchCustody]
   );
@@ -135,25 +142,37 @@ export function useCustody(ready = true): CustodyState {
   const respondToOverride = useCallback(
     async (overrideId: string, status: OverrideStatus, note: string, userId: string): Promise<boolean> => {
       console.log("[custody] responding to override:", overrideId, status);
-      const { error } = await supabase
-        .from("custody_overrides")
-        .update({
-          status,
-          response_note: note || null,
-          responded_by: userId,
-          responded_at: new Date().toISOString(),
-        })
-        .eq("id", overrideId);
 
-      if (error) {
-        console.error("[custody] respond error:", error);
+      try {
+        const result = await Promise.race([
+          supabase
+            .from("custody_overrides")
+            .update({
+              status,
+              response_note: note || null,
+              responded_by: userId,
+              responded_at: new Date().toISOString(),
+            })
+            .eq("id", overrideId),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), 15000)),
+        ]);
+
+        if (result.error) {
+          console.error("[custody] respond error:", result.error);
+          return false;
+        }
+        console.log("[custody] update succeeded, refetching...");
+
+        await Promise.race([
+          fetchCustody(),
+          new Promise<void>((resolve) => setTimeout(resolve, 10000)),
+        ]);
+        console.log("[custody] refetch done");
+        return true;
+      } catch (err) {
+        console.error("[custody] respond timed out or failed:", err);
         return false;
       }
-      console.log("[custody] update succeeded, refetching...");
-
-      await fetchCustody();
-      console.log("[custody] refetch done");
-      return true;
     },
     [supabase, fetchCustody]
   );
