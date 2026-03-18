@@ -134,6 +134,7 @@ export function useCustody(ready = true): CustodyState {
 
   const respondToOverride = useCallback(
     async (overrideId: string, status: OverrideStatus, note: string, userId: string): Promise<boolean> => {
+      console.log("[custody] responding to override:", overrideId, status);
       const { error } = await supabase
         .from("custody_overrides")
         .update({
@@ -148,8 +149,10 @@ export function useCustody(ready = true): CustodyState {
         console.error("[custody] respond error:", error);
         return false;
       }
+      console.log("[custody] update succeeded, refetching...");
 
       await fetchCustody();
+      console.log("[custody] refetch done");
       return true;
     },
     [supabase, fetchCustody]
