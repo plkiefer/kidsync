@@ -156,9 +156,11 @@ export function useAuth(): AuthState {
   );
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    // Clear local state immediately so the UI redirects
     setUser(null);
     setProfile(null);
+    // Then sign out from Supabase (don't block on it — can hang if auth state is stale)
+    supabase.auth.signOut().catch(() => {});
   }, [supabase]);
 
   return {

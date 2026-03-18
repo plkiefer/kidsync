@@ -910,7 +910,6 @@ export default function CalendarPage() {
           overrides={overrides}
           agreements={agreements}
           currentUserId={user?.id ?? ""}
-          onCreateOverrides={createOverrides}
           onRespondToOverrides={respondToOverrides}
           onNotifyCustodyChange={notifyCustodyChange}
           onClose={async () => {
