@@ -43,6 +43,7 @@ import {
   AlertCircle,
   Link2,
   Check,
+  Settings,
 } from "lucide-react";
 
 type ViewMode = "month" | "week" | "list";
@@ -673,6 +674,13 @@ export default function CalendarPage() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => router.push("/settings")}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+          >
+            <Settings size={13} />
+            Settings
+          </button>
           <button
             onClick={handleSignOut}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
