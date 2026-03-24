@@ -24,6 +24,7 @@ interface QuickCustodyChangeProps {
     isPickup: boolean;
     currentDate: string;
     newDate: string;
+    newTime?: string;
     kidIds: string[];
     familyId: string;
     userId: string;
@@ -98,6 +99,7 @@ export default function QuickCustodyChange({
         isPickup,
         currentDate,
         newDate,
+        newTime: newTime !== currentTime ? newTime : undefined,
         kidIds: selectedKids,
         familyId,
         userId: currentUserId,

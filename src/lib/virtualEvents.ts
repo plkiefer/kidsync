@@ -49,6 +49,7 @@ export function generateTurnoverEvents(
     isTentative: boolean;
     kidIds: string[];
     familyId: string;
+    overrideTime: string | null;
   }>();
 
   let prevCustody: DayCustodyInfo = {};
@@ -74,12 +75,23 @@ export function generateTurnoverEvents(
             const dateStr = format(eventDate, "yyyy-MM-dd");
             const key = `${dateStr}|${curr.parentId}|${isPickup}`;
 
+            // Check if any override on the event date carries a time override
+            const matchingOverride = approvedOverrides.find(
+              (o) =>
+                o.kid_id === kidId &&
+                o.override_time &&
+                o.start_date <= dateStr &&
+                o.end_date >= dateStr
+            );
+            const overrideTime = matchingOverride?.override_time || null;
+
             const existing = transitionMap.get(key);
             if (existing) {
               if (!existing.kidIds.includes(kidId)) {
                 existing.kidIds.push(kidId);
               }
               if (isTentative) existing.isTentative = true;
+              if (overrideTime && !existing.overrideTime) existing.overrideTime = overrideTime;
             } else {
               transitionMap.set(key, {
                 eventDate,
@@ -89,6 +101,7 @@ export function generateTurnoverEvents(
                 isTentative,
                 kidIds: [kidId],
                 familyId: schedule.family_id,
+                overrideTime,
               });
             }
           }
@@ -102,7 +115,7 @@ export function generateTurnoverEvents(
   // Build one event per unique transition (merged across kids)
   const events: CalendarEvent[] = [];
   for (const t of transitionMap.values()) {
-    const timeStr = t.isPickup ? pickupTime : dropoffTime;
+    const timeStr = t.overrideTime || (t.isPickup ? pickupTime : dropoffTime);
     const hour = parseTimeToHour(timeStr);
 
     // Build a proper local→UTC ISO string so parseTimestamp handles it correctly

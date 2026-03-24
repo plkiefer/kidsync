@@ -42,6 +42,7 @@ interface CustodyState {
     isPickup: boolean;
     currentDate: string;
     newDate: string;
+    newTime?: string;
     kidIds: string[];
     familyId: string;
     userId: string;
@@ -219,6 +220,7 @@ export function useCustody(ready = true): CustodyState {
       isPickup: boolean;
       currentDate: string;
       newDate: string;
+      newTime?: string;
       kidIds: string[];
       familyId: string;
       userId: string;
@@ -271,26 +273,66 @@ export function useCustody(ready = true): CustodyState {
         }
       }
 
-      // Withdraw any existing overrides that overlap the new range or the standard custody block
-      await withdrawOverlapping(params.kidIds, [
-        { start: rangeStart, end: rangeEnd },
-        { start: formatDateStr(standard.pickupDate), end: formatDateStr(standard.dropoffDate) },
-      ]);
+      const dateChanged = rangeStart <= rangeEnd;
+      const timeChanged = !!params.newTime;
 
-      // Create the new override
-      await createOverrides(params.kidIds.map((kidId) => ({
-        family_id: params.familyId,
-        kid_id: kidId,
-        start_date: rangeStart,
-        end_date: rangeEnd,
-        parent_id: overrideParent,
-        note: params.note,
-        reason: params.reason,
-        compliance_status: "unchecked" as const,
-        compliance_issues: null,
-        status: "pending" as OverrideStatus,
-        created_by: params.userId,
-      })));
+      // Always withdraw overrides that cover the current turnover date (so old
+      // overrides that created the current non-standard position get cleared),
+      // plus the standard custody block range.
+      const withdrawalRanges = [
+        { start: params.currentDate, end: params.currentDate },
+        { start: formatDateStr(standard.pickupDate), end: formatDateStr(standard.dropoffDate) },
+      ];
+
+      if (dateChanged) {
+        withdrawalRanges.push({ start: rangeStart, end: rangeEnd });
+      }
+
+      // Also withdraw overrides on the target date (for time-only changes)
+      if (params.newDate !== params.currentDate) {
+        withdrawalRanges.push({ start: params.newDate, end: params.newDate });
+      }
+
+      await withdrawOverlapping(params.kidIds, withdrawalRanges);
+
+      if (dateChanged) {
+        // Date changed — create override for the custody range
+        await createOverrides(params.kidIds.map((kidId) => ({
+          family_id: params.familyId,
+          kid_id: kidId,
+          start_date: rangeStart,
+          end_date: rangeEnd,
+          parent_id: overrideParent,
+          note: params.note,
+          reason: params.reason,
+          compliance_status: "unchecked" as const,
+          compliance_issues: null,
+          status: "pending" as OverrideStatus,
+          created_by: params.userId,
+          override_time: params.newTime || null,
+        })));
+      } else if (timeChanged) {
+        // Time-only change (date matches standard) — create a same-day override
+        // on the turnover date to carry the new time.
+        const turnoverDate = params.newDate;
+        const standardCustody = computeCustodyForDate(targetDate, [schedule], []);
+        const sameParent = standardCustody[params.kidIds[0]]?.parentId || schedule.parent_a_id;
+
+        await createOverrides(params.kidIds.map((kidId) => ({
+          family_id: params.familyId,
+          kid_id: kidId,
+          start_date: turnoverDate,
+          end_date: turnoverDate,
+          parent_id: sameParent,
+          note: params.note,
+          reason: params.reason,
+          compliance_status: "unchecked" as const,
+          compliance_issues: null,
+          status: "pending" as OverrideStatus,
+          created_by: params.userId,
+          override_time: params.newTime,
+        })));
+      }
 
       return true;
     },

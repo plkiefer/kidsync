@@ -233,6 +233,8 @@ export interface CustodyOverride {
   responded_at: string | null;
   response_note: string | null;
   created_at: string;
+  // Optional time override for turnover events (e.g. "10:00" or "3:00 PM")
+  override_time?: string | null;
 }
 
 export interface CustodyAgreement {

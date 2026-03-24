@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS custody_overrides (
   responded_by UUID,
   responded_at TIMESTAMPTZ,
   response_note TEXT, -- other parent's comment when approving/disputing
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  override_time TEXT -- optional time override for turnover (e.g. "10:00", "3:00 PM")
 );
 
 -- Custody agreements (uploaded legal docs + AI-parsed terms)
