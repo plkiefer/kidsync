@@ -119,15 +119,15 @@ export default function WeekView({
                 key={i}
                 className={`
                   px-1 py-2 text-center border-r border-[var(--color-divider)] last:border-r-0
-                  ${today ? "bg-[var(--color-accent-soft)]" : ""}
+                  ${today ? "bg-[var(--color-today)]" : ""}
                 `}
               >
-                <div className="text-[10px] font-bold text-[var(--color-text-faint)] uppercase tracking-wider">
+                <div className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider">
                   {DAY_HEADERS[i]}
                 </div>
                 <div
                   className={`
-                    inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-semibold
+                    inline-flex items-center justify-center w-9 h-9 rounded-full text-base font-semibold
                     ${today ? "bg-[var(--color-accent)] text-white" : "text-[var(--color-text)]"}
                   `}
                 >
@@ -143,7 +143,7 @@ export default function WeekView({
                         <div
                           key={evt.id}
                           onClick={(e) => { e.stopPropagation(); onEventClick(evt); }}
-                          className="text-[9px] px-1 py-0.5 rounded truncate cursor-pointer font-semibold"
+                          className="text-[11px] px-1.5 py-0.5 rounded truncate cursor-pointer font-semibold"
                           style={{ backgroundColor: `${typeColor}25`, color: typeColor }}
                         >
                           {evt.event_type !== "holiday" && evtKids.map((k) => k.name.charAt(0)).join("")} {getEventIcon(evt)} {evt.title}
@@ -166,7 +166,7 @@ export default function WeekView({
             {hours.map((hour) => (
               <div
                 key={hour}
-                className="absolute right-2 text-[10px] text-[var(--color-text-faint)] font-medium -translate-y-1/2"
+                className="absolute right-2 text-xs text-[var(--color-text-muted)] font-medium -translate-y-1/2"
                 style={{ top: (hour - startHour) * HOUR_HEIGHT }}
               >
                 {formatHourLabel(hour)}
@@ -211,12 +211,12 @@ export default function WeekView({
 
                   if (prevIsA !== isCurrentA) {
                     // Pickup day
-                    topColor = prevIsA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
-                    bottomColor = isCurrentA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                    topColor = prevIsA ? "rgba(59, 130, 246, 0.15)" : "rgba(249, 115, 22, 0.15)";
+                    bottomColor = isCurrentA ? "rgba(59, 130, 246, 0.15)" : "rgba(249, 115, 22, 0.15)";
                   } else if (nextIsA !== isCurrentA) {
                     // Dropoff day
-                    topColor = isCurrentA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
-                    bottomColor = nextIsA ? "rgba(59, 130, 246, 0.08)" : "rgba(249, 115, 22, 0.08)";
+                    topColor = isCurrentA ? "rgba(59, 130, 246, 0.15)" : "rgba(249, 115, 22, 0.15)";
+                    bottomColor = nextIsA ? "rgba(59, 130, 246, 0.15)" : "rgba(249, 115, 22, 0.15)";
                   }
 
                   if (topColor && bottomColor) {
@@ -228,10 +228,10 @@ export default function WeekView({
                   if (allSameParent) {
                     const isParentA = custody[kidIds[0]].isParentA;
                     custodyBg = isParentA
-                      ? "rgba(59, 130, 246, 0.05)"
-                      : "rgba(249, 115, 22, 0.05)";
+                      ? "rgba(59, 130, 246, 0.10)"
+                      : "rgba(249, 115, 22, 0.10)";
                   } else {
-                    custodyBg = "repeating-linear-gradient(135deg, rgba(59,130,246,0.04) 0px, rgba(59,130,246,0.04) 4px, rgba(249,115,22,0.04) 4px, rgba(249,115,22,0.04) 8px)";
+                    custodyBg = "repeating-linear-gradient(135deg, rgba(59,130,246,0.08) 0px, rgba(59,130,246,0.08) 4px, rgba(249,115,22,0.08) 4px, rgba(249,115,22,0.08) 8px)";
                   }
                 }
               }
@@ -240,7 +240,7 @@ export default function WeekView({
             return (
               <div
                 key={i}
-                className={`relative border-r border-[var(--color-divider)] last:border-r-0 ${today ? "bg-[var(--color-accent-soft)]" : ""}`}
+                className={`relative border-r border-[var(--color-divider)] last:border-r-0 ${today ? "bg-[var(--color-today)]" : ""}`}
                 style={custodyBg && !today ? { background: custodyBg } : undefined}
                 onClick={() => onDayClick?.(date)}
               >
@@ -273,11 +273,11 @@ export default function WeekView({
                         zIndex: 10,
                       }}
                     >
-                      <div className="flex items-center gap-0.5 text-[10px] font-bold">
+                      <div className="flex items-center gap-1 text-xs font-bold">
                         {evt.event_type !== "holiday" && evtKids.map((k) => (
                           <span
                             key={k.id}
-                            className="inline-flex items-center justify-center w-[13px] h-[13px] rounded-full text-[7px] font-bold text-white shrink-0"
+                            className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[9px] font-bold text-white shrink-0"
                             style={{ backgroundColor: k.color }}
                           >
                             {k.name.charAt(0)}
@@ -286,7 +286,7 @@ export default function WeekView({
                         <span className="truncate">{getEventIcon(evt)} {evt.title}</span>
                       </div>
                       {height > 30 && (
-                        <div className="text-[9px] opacity-70 truncate">
+                        <div className="text-[11px] opacity-70 truncate">
                           {formatTime(evt.starts_at)}
                         </div>
                       )}

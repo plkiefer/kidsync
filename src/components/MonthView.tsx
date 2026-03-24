@@ -15,10 +15,10 @@ interface MonthViewProps {
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const PARENT_A_COLOR = "rgba(59, 130, 246, 0.07)";
-const PARENT_B_COLOR = "rgba(249, 115, 22, 0.07)";
-const PARENT_A_COLOR_STRONG = "rgba(59, 130, 246, 0.12)";
-const PARENT_B_COLOR_STRONG = "rgba(249, 115, 22, 0.12)";
+const PARENT_A_COLOR = "rgba(59, 130, 246, 0.12)";
+const PARENT_B_COLOR = "rgba(249, 115, 22, 0.12)";
+const PARENT_A_COLOR_STRONG = "rgba(59, 130, 246, 0.20)";
+const PARENT_B_COLOR_STRONG = "rgba(249, 115, 22, 0.20)";
 
 export default function MonthView({
   currentDate,
@@ -69,7 +69,7 @@ export default function MonthView({
         {DAY_HEADERS.map((d) => (
           <div
             key={d}
-            className="px-2 py-3 text-center text-xs font-bold text-[var(--color-text-faint)] uppercase tracking-wider border-b border-[var(--color-divider)]"
+            className="px-2 py-3 text-center text-sm font-bold text-[var(--color-text-muted)] uppercase tracking-wider border-b border-[var(--color-divider)]"
           >
             {d}
           </div>
@@ -134,7 +134,7 @@ export default function MonthView({
                       : PARENT_B_COLOR;
                   } else {
                     custodyBg =
-                      "repeating-linear-gradient(135deg, rgba(59,130,246,0.05) 0px, rgba(59,130,246,0.05) 4px, rgba(249,115,22,0.05) 4px, rgba(249,115,22,0.05) 8px)";
+                      "repeating-linear-gradient(135deg, rgba(59,130,246,0.10) 0px, rgba(59,130,246,0.10) 4px, rgba(249,115,22,0.10) 4px, rgba(249,115,22,0.10) 8px)";
                   }
                 }
               }
@@ -146,7 +146,7 @@ export default function MonthView({
                 onClick={() => onDayClick(day)}
                 className={`
                   min-h-0 p-1.5 cursor-pointer transition-colors border-r border-b border-[var(--color-divider)]
-                  ${today ? "bg-[var(--color-accent-soft)]" : "hover:bg-[var(--color-surface-alt)]/60"}
+                  ${today ? "bg-[var(--color-today)]" : "hover:bg-[var(--color-surface-alt)]/60"}
                   ${di === 6 ? "border-r-0" : ""}
                   ${wi === weeks.length - 1 ? "border-b-0" : ""}
                 `}
@@ -155,12 +155,12 @@ export default function MonthView({
                 {/* Day number */}
                 <div
                   className={`
-                    w-7 h-7 flex items-center justify-center rounded-full text-xs font-medium mb-1
+                    w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold mb-1
                     ${
                       today
-                        ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] font-bold"
+                        ? "bg-[var(--color-accent)] text-white font-bold"
                         : inMonth
-                        ? "text-[var(--color-text-muted)]"
+                        ? "text-[var(--color-text)]"
                         : "text-[var(--color-text-faint)]"
                     }
                   `}
@@ -180,7 +180,7 @@ export default function MonthView({
                         e.stopPropagation();
                         onEventClick(evt);
                       }}
-                      className={`text-[10px] px-1.5 py-0.5 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-0.5 ${evt._tentative ? "opacity-60" : ""}`}
+                      className={`text-xs px-1.5 py-1 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-1 ${evt._tentative ? "opacity-60" : ""}`}
                       style={{
                         backgroundColor: `${typeColor}20`,
                         borderLeft: evt._tentative
@@ -192,7 +192,7 @@ export default function MonthView({
                       {evt.event_type !== "holiday" && evtKids.map((k) => (
                         <span
                           key={k.id}
-                          className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-full text-[7px] font-bold text-white shrink-0"
+                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[9px] font-bold text-white shrink-0"
                           style={{ backgroundColor: k.color }}
                           title={k.name}
                         >
@@ -207,7 +207,7 @@ export default function MonthView({
                 })}
 
                 {dayEvents.length > 3 && (
-                  <div className="text-[10px] text-[var(--color-text-faint)] pl-1.5">
+                  <div className="text-xs text-[var(--color-text-faint)] pl-1.5">
                     +{dayEvents.length - 3} more
                   </div>
                 )}

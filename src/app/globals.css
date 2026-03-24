@@ -24,7 +24,8 @@
   /* Accent — Gunmetal */
   --color-accent:       #383838;
   --color-accent-text:  #F8F8F6;
-  --color-accent-soft:  #EEECEA;
+  --color-accent-soft:  #E0DDD6;
+  --color-today:        #D8D3C8;
 
   /* Kid colors */
   --color-kid-1:        #C4A040;   /* warm gold  — Ethan */
