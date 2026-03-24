@@ -124,12 +124,15 @@ export default function SettingsPage() {
       <div className="space-y-5">
         {/* Change Email Card */}
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-1">
             <Mail className="w-4 h-4 text-[var(--color-text-muted)]" />
             <h2 className="font-display text-base font-semibold text-[var(--color-text)]">
               Change Email
             </h2>
           </div>
+          <p className="text-[11px] text-[var(--color-text-faint)] mb-4 ml-6">
+            A confirmation link will be sent to the new address. Your email won&apos;t change until you click it.
+          </p>
 
           <div className="space-y-3">
             <input
@@ -212,9 +215,15 @@ export default function SettingsPage() {
               </div>
             )}
 
+            {confirmPassword && newPassword !== confirmPassword && (
+              <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+                Passwords do not match.
+              </div>
+            )}
+
             <button
               onClick={handleChangePassword}
-              disabled={passwordLoading || !newPassword || !confirmPassword}
+              disabled={passwordLoading || !newPassword || !confirmPassword || newPassword !== confirmPassword || newPassword.length < 6}
               className="w-full py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {passwordLoading ? (
