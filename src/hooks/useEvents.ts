@@ -15,6 +15,9 @@ interface EventsState {
   loading: boolean;
   error: string | null;
   createEvent: (data: EventFormData) => Promise<CalendarEvent | null>;
+  createEventsBatch: (
+    rows: EventFormData[]
+  ) => Promise<{ inserted: number; failed: number; error?: string }>;
   updateEvent: (
     id: string,
     data: Partial<EventFormData>
@@ -240,6 +243,80 @@ export function useEvents(ready = true): EventsState {
           err instanceof Error ? err.message : "Failed to create event"
         );
         return null;
+      }
+    },
+    [supabase]
+  );
+
+  /**
+   * Bulk-insert non-travel events in a single Supabase call.
+   *
+   * Why this exists: the per-row createEvent path re-fetches user + profile
+   * each iteration AND the realtime subscription fires fetchEvents on every
+   * INSERT. At ~20+ rows that produces cascading token-refresh contention
+   * that deadlocks Supabase (see the warning in app/calendar/page.tsx about
+   * "Data hooks only query AFTER auth resolves").
+   *
+   * This helper: auth + profile lookup ONCE, then a single array insert.
+   * One INSERT → one realtime event → no cascade. Intended for the Schedule
+   * Import flow; general event creation still uses createEvent.
+   *
+   * Travel events are rejected here — the schedule importer doesn't emit
+   * them, and travel needs the sibling event_travel_details upsert which
+   * this path skips.
+   */
+  const createEventsBatch = useCallback(
+    async (
+      rows: EventFormData[]
+    ): Promise<{ inserted: number; failed: number; error?: string }> => {
+      if (!rows.length) return { inserted: 0, failed: 0 };
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("family_id")
+          .eq("id", user.id)
+          .single();
+        if (!profile) throw new Error("Profile not found");
+
+        const payload = rows.map((data) => ({
+          family_id: profile.family_id,
+          kid_id: data.kid_ids[0],
+          kid_ids: data.kid_ids,
+          title: data.title,
+          event_type: data.event_type,
+          starts_at: data.starts_at,
+          ends_at: data.ends_at,
+          all_day: data.all_day,
+          location: data.location || null,
+          notes: data.notes || null,
+          recurring_rule: data.recurring_rule || null,
+          created_by: user.id,
+        }));
+
+        const { data: inserted, error: insertErr } = await supabase
+          .from("calendar_events")
+          .insert(payload)
+          .select("id");
+
+        if (insertErr) throw insertErr;
+
+        const insertedCount = inserted?.length ?? 0;
+        return {
+          inserted: insertedCount,
+          failed: rows.length - insertedCount,
+        };
+      } catch (err) {
+        console.error("Error batch-creating events:", err);
+        return {
+          inserted: 0,
+          failed: rows.length,
+          error: err instanceof Error ? err.message : "Batch insert failed",
+        };
       }
     },
     [supabase]
@@ -632,6 +709,7 @@ export function useEvents(ready = true): EventsState {
     loading,
     error,
     createEvent,
+    createEventsBatch,
     updateEvent,
     deleteEvent,
     getEvent,

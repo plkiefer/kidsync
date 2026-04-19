@@ -62,6 +62,7 @@ export default function CalendarPage() {
     events,
     loading: eventsLoading,
     createEvent,
+    createEventsBatch,
     updateEvent,
     deleteEvent,
     saveTravelDetails,
@@ -941,7 +942,7 @@ export default function CalendarPage() {
       {showScheduleImport && (
         <ScheduleImportModal
           kids={kids}
-          onCreateEvent={createEvent}
+          onCreateEvents={createEventsBatch}
           onClose={() => setShowScheduleImport(false)}
           onDone={() => { refetch(); }}
         />

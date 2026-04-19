@@ -50,7 +50,15 @@ interface ReviewRow extends ExtractedEvent {
 
 interface ScheduleImportModalProps {
   kids: Kid[];
-  onCreateEvent: (data: EventFormData) => Promise<unknown>;
+  /**
+   * Bulk insert. Receives the full selected event list in one call — this
+   * MUST be a batch-capable handler (single Supabase insert). Per-row looping
+   * from the client triggers token-refresh contention with the realtime
+   * subscription and deadlocks at 0 / N. See useEvents.createEventsBatch.
+   */
+  onCreateEvents: (
+    rows: EventFormData[]
+  ) => Promise<{ inserted: number; failed: number; error?: string }>;
   onClose: () => void;
   onDone?: () => void;           // called after successful insert (e.g., refetch)
 }
@@ -121,7 +129,7 @@ function confidenceColor(c: number): string {
 
 export default function ScheduleImportModal({
   kids,
-  onCreateEvent,
+  onCreateEvents,
   onClose,
   onDone,
 }: ScheduleImportModalProps) {
@@ -145,7 +153,7 @@ export default function ScheduleImportModal({
   // Step 3 state
   const [insertedCount, setInsertedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
-  const [insertProgress, setInsertProgress] = useState(0);
+  const [insertErrorMsg, setInsertErrorMsg] = useState<string | null>(null);
 
   // ── Derived ──
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
@@ -236,22 +244,16 @@ export default function ScheduleImportModal({
     setStep("inserting");
     setInsertedCount(0);
     setFailedCount(0);
+    setInsertErrorMsg(null);
 
-    // Sequential insert — keeps error handling straightforward and avoids
-    // hammering Supabase with a burst. If this ever matters perf-wise we can
-    // batch, but a typical school calendar is 20-40 rows.
-    for (let i = 0; i < toInsert.length; i++) {
-      const row = toInsert[i];
-      try {
-        await onCreateEvent(toEventFormData(row, kidIds));
-        setInsertedCount((n) => n + 1);
-      } catch (err) {
-        console.error("[ScheduleImport] failed to insert row:", row, err);
-        setFailedCount((n) => n + 1);
-      }
-      setInsertProgress(i + 1);
-    }
-
+    // Batch insert — sequential per-row looping hits a token-refresh deadlock
+    // with the events-table realtime subscription. One call, one realtime
+    // event, no cascade.
+    const payloads = toInsert.map((row) => toEventFormData(row, kidIds));
+    const { inserted, failed, error } = await onCreateEvents(payloads);
+    setInsertedCount(inserted);
+    setFailedCount(failed);
+    if (error) setInsertErrorMsg(error);
     setStep("done");
   };
 
@@ -347,21 +349,38 @@ export default function ScheduleImportModal({
           {step === "inserting" && (
             <div className="flex flex-col items-center justify-center py-16">
               <Loader2 size={32} className="animate-spin mb-4" style={{ color: "var(--ink)" }} />
-              <div className="t-heading mb-1">Adding events</div>
-              <div className="t-caption">
-                {insertProgress} / {selectedCount}
-              </div>
+              <div className="t-heading mb-1">Adding {selectedCount} event{selectedCount === 1 ? "" : "s"}</div>
+              <div className="t-caption">Writing to calendar…</div>
             </div>
           )}
 
           {step === "done" && (
             <div className="flex flex-col items-center justify-center py-12">
-              <CheckCircle2 size={36} className="mb-4" style={{ color: "var(--ink)" }} />
-              <div className="t-heading mb-1">Import complete</div>
+              {failedCount > 0 ? (
+                <AlertTriangle size={36} className="mb-4" style={{ color: "var(--accent-amber)" }} />
+              ) : (
+                <CheckCircle2 size={36} className="mb-4" style={{ color: "var(--ink)" }} />
+              )}
+              <div className="t-heading mb-1">
+                {failedCount > 0 && insertedCount === 0 ? "Import failed" : "Import complete"}
+              </div>
               <div className="t-caption text-center">
                 {insertedCount} event{insertedCount === 1 ? "" : "s"} added
                 {failedCount > 0 && ` · ${failedCount} failed`}
               </div>
+              {insertErrorMsg && (
+                <div
+                  className="t-body mt-3 px-3 py-2"
+                  style={{
+                    color: "var(--accent-red)",
+                    background: "var(--accent-red-tint)",
+                    border: "1px solid var(--accent-red)",
+                    maxWidth: 480,
+                  }}
+                >
+                  {insertErrorMsg}
+                </div>
+              )}
             </div>
           )}
         </div>
