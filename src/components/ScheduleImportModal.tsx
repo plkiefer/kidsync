@@ -7,6 +7,7 @@ import {
   EventFormData,
   EVENT_TYPE_CONFIG,
 } from "@/lib/types";
+import { formatAllDayTimestamp } from "@/lib/allDay";
 import {
   Upload,
   X,
@@ -93,16 +94,13 @@ function composeDateTime(date: string, time: string | null, fallback: string): s
 function toEventFormData(row: ReviewRow, kidIds: string[]): EventFormData {
   const startDate = row.start_date;
   const endDate = row.end_date || row.start_date;
-  // App convention (see virtualEvents.ts, calendar/page.tsx birthday events,
-  // CustodyOverrides): anchor all-day events at noon so TZ conversion from
-  // the timestamptz column never shifts the visible date across a boundary.
-  // T00:00 / T23:59 serialized as UTC renders as the PREVIOUS / NEXT day in
-  // any western timezone.
+  // All-day events go through formatAllDayTimestamp (lib/allDay.ts) so the
+  // T12:00 UTC convention is applied consistently with the rest of the app.
   const starts_at = row.all_day
-    ? `${startDate}T12:00:00`
+    ? formatAllDayTimestamp(startDate)
     : composeDateTime(startDate, row.start_time, "09:00");
   const ends_at = row.all_day
-    ? `${endDate}T12:00:00`
+    ? formatAllDayTimestamp(endDate)
     : composeDateTime(endDate, row.end_time, row.start_time ? addOneHour(row.start_time) : "10:00");
 
   return {

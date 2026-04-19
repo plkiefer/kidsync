@@ -1,6 +1,7 @@
 import { CalendarEvent, CustodySchedule, CustodyOverride, CustodyAgreement, ParsedCustodyTerms, Kid } from "./types";
 import { computeCustodyForDate, DayCustodyInfo } from "./custody";
 import { getHolidaysForYear } from "./holidays";
+import { formatAllDayTimestamp } from "./allDay";
 import { eachDayOfInterval, addDays, format } from "date-fns";
 
 // ── Custody Turnover Events ─────────────────────────────────
@@ -197,8 +198,8 @@ export function generateHolidayEvents(
       kid_ids: kidIds,
       title: holiday.name,
       event_type: "holiday" as const,
-      starts_at: `${dateStr}T12:00:00`,
-      ends_at: `${dateStr}T12:00:00`,
+      starts_at: formatAllDayTimestamp(dateStr),
+      ends_at: formatAllDayTimestamp(dateStr),
       all_day: true,
       location: null,
       notes: tierLabel,

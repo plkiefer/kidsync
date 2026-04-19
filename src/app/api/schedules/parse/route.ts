@@ -12,71 +12,139 @@ import Anthropic from "@anthropic-ai/sdk";
  *
  * Design notes:
  *  - Every event comes back with YYYY-MM-DD start_date (required) and optional
- *    end_date, start_time, end_time, all_day. The review UI lets the user fix
- *    anything the AI got wrong, so we bias the prompt toward *inclusion* —
- *    missed events are worse than mis-dated ones (which are trivial to edit).
- *  - event_type is drawn from the existing EventType enum so the review UI
- *    and calendar render without a mapping layer.
- *  - confidence is per-event, 0-1, used to flag shaky rows in the review UI.
- *  - No dedup against existing events. User handles collisions manually for v1.
+ *    end_date, start_time, end_time, all_day.
+ *  - The AI is instructed to EXTEND multi-day school-calendar ranges to the
+ *    surrounding weekends so the visible bar on the calendar matches the
+ *    actual "out of school" period from the parent's POV. Literal dates from
+ *    the source document go in notes.
+ *  - event_type stays tight (school/sports/medical/activity/other) so existing
+ *    rendering + filters work unchanged.
+ *  - confidence per-event flags shaky rows in the review UI.
+ *  - subcategory (closure / early-dismissal / milestone / teacher-only /
+ *    weather-makeup) lets the UI style events without reparsing notes.
  */
 
-const SYSTEM_PROMPT = `You are a schedule parser. Extract every date-specific event from the provided document into a structured list.
+const SYSTEM_PROMPT = `You are a school/activity schedule parser. Extract every date-specific event from the provided document into a structured list that a co-parenting calendar can render cleanly.
 
 Return ONLY valid JSON (no markdown, no commentary) matching this exact shape:
 {
   "events": [
     {
-      "title": "string — short, calendar-ready label (e.g. 'First Day of School', 'Game vs. Riverbend', 'Teacher Workday')",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD or null (for multi-day events like breaks)",
+      "title": "string — short, calendar-ready label (≤60 chars). Strip district boilerplate. Prefix with a category tag in brackets so the UI can style: [Closure], [Early Dismissal], [Milestone], [Teacher Workday], [Weather Makeup]. Examples: '[Closure] Thanksgiving Break', '[Early Dismissal] Parent Conferences', '[Milestone] First Day of School', '[Teacher Workday] PD Day'.",
+      "start_date": "YYYY-MM-DD — first day the kid is OUT of school for this event (bookended; see RANGE RULES)",
+      "end_date": "YYYY-MM-DD or null — last day the kid is out, INCLUSIVE. Null for single-day events.",
       "all_day": true,
-      "start_time": "HH:mm (24h) or null",
+      "start_time": "HH:mm (24h) or null — only for timed events",
       "end_time": "HH:mm (24h) or null",
-      "event_type": "school | sports | medical | activity | holiday | other",
+      "event_type": "school | sports | medical | activity | other",
       "location": "string or null",
-      "notes": "string or null (include any qualifier the document gives — 'early dismissal', 'away game', 'no school', 'half day', etc.)",
+      "notes": "string or null — ALWAYS include the source document's LITERAL date range here if you extended it (e.g. 'District lists: Nov 23–27'). Include qualifiers: early-dismissal time, opponent, break name.",
       "confidence": 0.0 to 1.0
     }
   ],
-  "summary": "1-2 sentence plain-English description of what this schedule covers (e.g. 'King George Elementary 2026–2027 academic calendar — holidays, breaks, workdays, and early dismissals.')",
-  "year_detected": "YYYY or YYYY-YYYY (the school/season year this document covers) or null",
-  "warnings": ["array of strings — flag ambiguous dates, missing year context, or rows you skipped"]
+  "summary": "1-2 sentence plain-English description (e.g. 'King George County Schools 2026–27 district calendar — holidays, breaks, quarter ends, workdays, parent-teacher conferences.')",
+  "year_detected": "YYYY or YYYY-YYYY or null",
+  "warnings": ["strings — flag ambiguous dates, missing year context, rows you skipped, or recurring-schedule items you couldn't expand"]
 }
 
-RULES
-- Every event MUST have start_date. If the document only gives day-of-week without a concrete date, skip it and note in warnings.
-- If a date appears without a year, use year_context (passed in user message) or infer from surrounding dates. If still ambiguous, skip and warn.
-- Anything that appears on a SCHOOL calendar → event_type: "school". This includes closures, breaks ("Thanksgiving Break", "Winter Break", "Spring Break"), teacher workdays, early dismissals, parent-teacher conferences, testing windows, first/last day of school, AND school-observed federal/religious holidays (because the calendar is the source — a parent needs to know whether THIS school has school that day). The qualifier goes in the notes field ("closure", "early dismissal at 12:30", "break"), not the type.
-- Reserve event_type: "holiday" for schedules that are EXPLICITLY lists of federal/religious/cultural holidays (e.g. a separate holiday document) — NOT for school-calendar rows. KidSync renders a separate virtual holiday layer; school-sourced closures should stay "school" to avoid doubling up.
-- Games, practices, meets, tournaments → event_type: "sports". Include opponent and home/away in notes when stated.
-- Lessons, classes, camps, programs → event_type: "activity".
-- Appointments, checkups → event_type: "medical".
-- Anything else date-specific → event_type: "other".
-- Multi-day ranges (spring break, winter break) → ONE event with end_date set. Do NOT expand into per-day duplicates.
-- Recurring items ("every Tuesday 4pm") are OUT OF SCOPE for this route — skip them and mention in warnings so the user adds them manually.
-- If the document lists times like "8:00 AM - 3:00 PM", normalize to 24h (08:00, 15:00) and set all_day: false.
-- Be generous with inclusion: parents want to see everything. Set confidence lower (0.4-0.6) for rows you're unsure about rather than dropping them.
-- Keep titles under 60 characters. Strip boilerplate ("King George Public Schools - " etc.) from titles; it belongs in the document context, not every row.`;
+═══════════════════════════════════════════════════════════════════════════
+RANGE RULES — this is the highest-value thing you can do for the parent.
+═══════════════════════════════════════════════════════════════════════════
 
-// Type-specific hint appended to the user message to bias extraction.
+When the source document states a multi-day range like "Thanksgiving Break November 23-27", that's the SCHOOL's framing. From the parent's calendar POV, the kid is also out the surrounding weekends. Extend the range:
+
+  SOURCE                              → YOUR OUTPUT
+  "Thanksgiving Break Nov 23-27"      → start: 2026-11-21 (Sat)
+                                        end:   2026-11-29 (Sun)
+                                        notes: "District lists: Nov 23–27"
+  "Spring Break Mar 22-29"            → start: 2027-03-20 (Sat)
+                                        end:   2027-03-28 (Sun)  — BUT if Mar 29
+                                                is itself listed as break, extend
+                                                further to Sun Apr 4.
+                                        notes: "District lists: Mar 22–29"
+  "Winter Break Dec 21-31"            → start: 2026-12-19 (Sat)
+                                        end:   2027-01-03 (Sun)  IF Jan 1 is
+                                                also listed as break, otherwise
+                                                end: 2026-12-31 and re-emit a
+                                                separate 'Winter Break continued
+                                                Jan 1' event — EXCEPT if ranges
+                                                are adjacent / contiguous with
+                                                just a weekend between them,
+                                                MERGE them into one extended
+                                                range with notes explaining.
+
+Rules for extending:
+1. If the source range starts on a MONDAY, extend back to the preceding SATURDAY.
+2. If the source range ends on a FRIDAY, extend forward to the following SUNDAY.
+3. If the source range starts on a TUESDAY–FRIDAY (mid-week), do NOT extend backward (school was in session the preceding Monday).
+4. If the source range ends on a MONDAY–THURSDAY (mid-week), do NOT extend forward (school resumes next day).
+5. If two source ranges are separated only by a weekend or a single workday gap, MERGE them into one extended range.
+6. Single-day closures (Veterans Day, MLK Day, Labor Day) → only extend if the closure is adjacent to a weekend (Friday or Monday) — e.g. "Labor Day Monday Sep 7" becomes start: 2026-09-05 (Sat), end: 2026-09-07 (Mon).
+7. ALWAYS put the district's literal date range in notes ("District lists: X–Y") so the parent can see both framings.
+
+═══════════════════════════════════════════════════════════════════════════
+TITLE CATEGORY PREFIXES — bracketed, at the start of the title.
+═══════════════════════════════════════════════════════════════════════════
+
+  [Closure]         full day, no school for students (breaks, federal holidays
+                    observed, parent-teacher conference days, general closures)
+  [Early Dismissal] partial day. Kid comes home early. Include the dismissal
+                    time in notes ('Dismissal at 12:35').
+  [Milestone]       school-year events that DON'T close school: first day of
+                    school, last day of school, quarter end, report cards,
+                    graduation, back-to-school night.
+  [Teacher Workday] staff workdays / professional development. Students out.
+                    Same calendar effect as Closure but tagged so the UI can
+                    style it differently.
+  [Weather Makeup]  POTENTIAL inclement weather make-up days. NOT guaranteed
+                    closures — fallback school days that only activate if
+                    weather closed school earlier. Emit ONLY if explicitly
+                    marked; confidence ≤ 0.5 since conditional.
+
+  For non-school schedules (sports, activities, medical) → no prefix.
+
+═══════════════════════════════════════════════════════════════════════════
+EARLY DISMISSAL HANDLING
+═══════════════════════════════════════════════════════════════════════════
+
+Early-dismissal days stay as all_day: true with the '[Early Dismissal]' title prefix. DO NOT emit them as timed events even if the document lists a dismissal time. The dismissal time goes in notes. Rationale: the parent's calendar needs to show these as a whole-day visual marker, not a 3pm→3:30pm bar.
+
+═══════════════════════════════════════════════════════════════════════════
+EVENT_TYPE RULES
+═══════════════════════════════════════════════════════════════════════════
+
+- Every row from a school calendar → event_type: 'school'. Don't emit 'holiday' — the app renders a separate virtual holiday layer already. The notes field carries the qualifier.
+- Games, practices, tournaments → 'sports'. Include opponent/home-away in notes when stated.
+- Lessons, classes, camps, programs → 'activity'.
+- Appointments → 'medical'.
+- Anything else → 'other'.
+
+═══════════════════════════════════════════════════════════════════════════
+GENERAL RULES
+═══════════════════════════════════════════════════════════════════════════
+
+- Every event MUST have start_date. Skip events that only give day-of-week without a concrete date; note in warnings.
+- If a date lacks a year, use year_context or infer from surrounding dates. If ambiguous, skip and warn.
+- PDF text comes in with columns/grids scrambled into one stream. Trust the "Month Day-Day Description" pattern ("November 23-27 Holiday: Thanksgiving Break") even when surrounded by grid-cell numbers. The summary "Holidays for 12 Month Employees" section is usually the cleanest machine-readable block in a US school calendar — prefer it over the monthly grids when both appear.
+- Recurring items ("every Tuesday 4pm") → skip and mention in warnings. Out of scope for this route.
+- Be generous with inclusion. Parents want to see everything. Lower confidence (0.3–0.6) rather than dropping shaky rows.
+- Keep titles under 60 characters. Strip district-name boilerplate.`;
+
 const TYPE_HINTS: Record<string, string> = {
   school:
-    "This is a SCHOOL calendar. Expect: first/last day of school, teacher workdays, early dismissals, parent-teacher conferences, breaks (fall/winter/spring), testing windows, and school-observed holidays. ALL rows from this document should be event_type: 'school' — the notes field carries the qualifier (closure, break, early dismissal, workday). Do NOT emit event_type: 'holiday' from a school calendar.",
+    "This is a SCHOOL calendar. ALL rows → event_type: 'school'. Apply RANGE RULES aggressively: parents care about actual out-of-school periods, not the district's framing. Every row gets a bracketed category prefix in its title ([Closure] / [Early Dismissal] / [Milestone] / [Teacher Workday] / [Weather Makeup]). Extract the 'Holidays for 12 Month Employees' or similar summary block first if present — it's usually the cleanest source.",
   sports:
-    "This is a SPORTS schedule. Expect: games (home/away), practices, tournaments, meets, playoff brackets. Every row should have event_type 'sports'. Include opponent and location when stated.",
+    "This is a SPORTS schedule. Every row → event_type: 'sports', subcategory: null. Include opponent and home/away in notes.",
   activity:
-    "This is an ACTIVITY / program schedule. Expect: weekly classes, camps, lessons, enrichment programs. Use event_type 'activity' unless rows are clearly sports or medical.",
+    "This is an ACTIVITY / program schedule. event_type: 'activity' per row, subcategory: null.",
   daycare:
-    "This is a DAYCARE / preschool schedule. Expect: closure days, parent events, field trips, staff development days. All rows → event_type: 'school' (daycare counts as school for scheduling purposes). The notes field carries the qualifier (closure, parent event, field trip).",
+    "This is a DAYCARE / preschool schedule. event_type: 'school' per row (daycare counts as school for scheduling). Apply bracketed category prefixes same as for school calendars — [Closure], [Early Dismissal], [Teacher Workday], [Milestone].",
   medical:
-    "This is a MEDICAL schedule. Expect: checkups, appointments, specialist visits, vaccine schedules. Every row should have event_type 'medical'.",
-  other: "This is a generic schedule. Infer event_type per row from context.",
+    "This is a MEDICAL schedule. event_type: 'medical', no title prefix.",
+  other:
+    "This is a generic schedule. Infer event_type per row. Use category prefix only for school event_type rows.",
 };
 
-// Keep MAX_INPUT_CHARS conservative — large calendars (20+ pages) approach
-// Claude's context cost curve fast. 50K is the same ceiling the custody route
-// uses and covers a typical K-12 annual calendar with headroom.
 const MAX_INPUT_CHARS = 50000;
 
 export async function POST(request: NextRequest) {
@@ -122,8 +190,6 @@ DOCUMENT TEXT:
 ${text.slice(0, MAX_INPUT_CHARS)}`;
 
     const message = await anthropic.messages.create({
-      // Sonnet 4.6 is plenty for structured extraction and keeps cost sane for
-      // a user-triggered upload. Bump to Opus only if accuracy complaints land.
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       system: SYSTEM_PROMPT,

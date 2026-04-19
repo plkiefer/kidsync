@@ -20,6 +20,7 @@ import {
   endOfWeek,
 } from "@/lib/dates";
 import { downloadICal } from "@/lib/ical";
+import { formatAllDayTimestamp } from "@/lib/allDay";
 import { expandRecurringEvents } from "@/lib/recurrence";
 import { generateTurnoverEvents, generateHolidayEvents } from "@/lib/virtualEvents";
 import MonthView from "@/components/MonthView";
@@ -142,8 +143,8 @@ export default function CalendarPage() {
           kid_ids: [kid.id],
           title: `${kid.name}'s Birthday${age > 0 ? ` (${age})` : ""}`,
           event_type: "other",
-          starts_at: `${dateStr}T12:00:00`,
-          ends_at: `${dateStr}T12:00:00`,
+          starts_at: formatAllDayTimestamp(dateStr),
+          ends_at: formatAllDayTimestamp(dateStr),
           all_day: true,
           location: null,
           notes: null,

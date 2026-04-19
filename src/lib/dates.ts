@@ -14,6 +14,7 @@ import {
   subWeeks,
   parseISO,
 } from "date-fns";
+import { allDayCoversDay } from "./allDay";
 
 export {
   format,
@@ -103,9 +104,8 @@ export function getHourFromDateStr(dateStr: string): number {
  *
  * Timed events: only on their start day (calendars traditionally anchor timed
  * events where they begin — a 6pm → 9pm event doesn't "span" two days).
- * All-day events: cover every day from starts_at date through ends_at date,
- * inclusive. Lets multi-day breaks / vacations / school closures render on
- * every cell in their range.
+ * All-day events: delegates to allDayCoversDay which extracts UTC-anchored
+ * dates from the stored timestamps, so the comparison is immune to viewer TZ.
  */
 export function eventCoversDay(
   starts_at: string,
@@ -113,15 +113,6 @@ export function eventCoversDay(
   all_day: boolean,
   day: Date
 ): boolean {
-  const start = parseTimestamp(starts_at);
-  if (!all_day) return isSameDay(start, day);
-  const end = parseTimestamp(ends_at);
-  // Compare at date-granularity. Zero out the hour portion so TZ noise from
-  // the timestamptz round-trip can't flip the comparison.
-  const dayKey = day.getFullYear() * 10000 + day.getMonth() * 100 + day.getDate();
-  const startKey =
-    start.getFullYear() * 10000 + start.getMonth() * 100 + start.getDate();
-  const endKey =
-    end.getFullYear() * 10000 + end.getMonth() * 100 + end.getDate();
-  return dayKey >= startKey && dayKey <= endKey;
+  if (!all_day) return isSameDay(parseTimestamp(starts_at), day);
+  return allDayCoversDay(starts_at, ends_at, day);
 }
