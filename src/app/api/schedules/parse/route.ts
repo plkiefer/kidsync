@@ -47,8 +47,8 @@ Return ONLY valid JSON (no markdown, no commentary) matching this exact shape:
 RULES
 - Every event MUST have start_date. If the document only gives day-of-week without a concrete date, skip it and note in warnings.
 - If a date appears without a year, use year_context (passed in user message) or infer from surrounding dates. If still ambiguous, skip and warn.
-- Closures, holidays, and "no school" days → event_type: "holiday", all_day: true.
-- First/last day of school, teacher workdays, early dismissals, parent-teacher conferences → event_type: "school".
+- Anything that appears on a SCHOOL calendar → event_type: "school". This includes closures, breaks ("Thanksgiving Break", "Winter Break", "Spring Break"), teacher workdays, early dismissals, parent-teacher conferences, testing windows, first/last day of school, AND school-observed federal/religious holidays (because the calendar is the source — a parent needs to know whether THIS school has school that day). The qualifier goes in the notes field ("closure", "early dismissal at 12:30", "break"), not the type.
+- Reserve event_type: "holiday" for schedules that are EXPLICITLY lists of federal/religious/cultural holidays (e.g. a separate holiday document) — NOT for school-calendar rows. KidSync renders a separate virtual holiday layer; school-sourced closures should stay "school" to avoid doubling up.
 - Games, practices, meets, tournaments → event_type: "sports". Include opponent and home/away in notes when stated.
 - Lessons, classes, camps, programs → event_type: "activity".
 - Appointments, checkups → event_type: "medical".
@@ -62,13 +62,13 @@ RULES
 // Type-specific hint appended to the user message to bias extraction.
 const TYPE_HINTS: Record<string, string> = {
   school:
-    "This is a SCHOOL calendar. Expect: first/last day of school, holidays, teacher workdays, early dismissals, parent-teacher conferences, breaks (fall/winter/spring), testing windows. Bias toward 'school' and 'holiday' event types.",
+    "This is a SCHOOL calendar. Expect: first/last day of school, teacher workdays, early dismissals, parent-teacher conferences, breaks (fall/winter/spring), testing windows, and school-observed holidays. ALL rows from this document should be event_type: 'school' — the notes field carries the qualifier (closure, break, early dismissal, workday). Do NOT emit event_type: 'holiday' from a school calendar.",
   sports:
     "This is a SPORTS schedule. Expect: games (home/away), practices, tournaments, meets, playoff brackets. Every row should have event_type 'sports'. Include opponent and location when stated.",
   activity:
     "This is an ACTIVITY / program schedule. Expect: weekly classes, camps, lessons, enrichment programs. Use event_type 'activity' unless rows are clearly sports or medical.",
   daycare:
-    "This is a DAYCARE / preschool schedule. Expect: closure days, holidays, parent events, field trips. Most rows will be 'holiday' (closure) or 'school' (non-closure events).",
+    "This is a DAYCARE / preschool schedule. Expect: closure days, parent events, field trips, staff development days. All rows → event_type: 'school' (daycare counts as school for scheduling purposes). The notes field carries the qualifier (closure, parent event, field trip).",
   medical:
     "This is a MEDICAL schedule. Expect: checkups, appointments, specialist visits, vaccine schedules. Every row should have event_type 'medical'.",
   other: "This is a generic schedule. Infer event_type per row from context.",
