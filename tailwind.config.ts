@@ -9,20 +9,19 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ['"Fraunces"', "serif"],
-        body: ['"DM Sans"', "sans-serif"],
-        mono: ['"JetBrains Mono"', "monospace"],
+        // Map to the CSS variables wired in layout.tsx via next/font.
+        display: ['var(--font-dm-serif)', 'Georgia', 'serif'],
+        body: ['var(--font-dm-sans)', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
-        slate: {
-          925: "#0B1120",
-          950: "#020617",
-        },
+        // Kid identity — KidSync's single chromatic affordance. Paper-tuned.
+        // Users can override per-row via Kid.color; these are the defaults.
         kid: {
-          ethan: "#3B82F6",
-          "ethan-light": "#DBEAFE",
-          harrison: "#F59E0B",
-          "harrison-light": "#FEF3C7",
+          ethan: "#8a6a1f",
+          "ethan-light": "rgba(138, 106, 31, 0.10)",
+          harrison: "#4a5a6a",
+          "harrison-light": "rgba(74, 90, 106, 0.10)",
         },
       },
       animation: {
@@ -43,6 +42,10 @@ const config: Config = {
           "0%": { transform: "scale(0.95)", opacity: "0" },
           "100%": { transform: "scale(1)", opacity: "1" },
         },
+      },
+      borderRadius: {
+        // Ink & Paper — hard edges by default. Avatars/circles still use "full".
+        none: "0",
       },
     },
   },

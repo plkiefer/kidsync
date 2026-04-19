@@ -2,122 +2,329 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Mulish:wght@400;500;600;700&display=swap');
+/* ─── KidSync — Ink & Paper ─────────────────────────────────────────────────
+   Adapted from Training Analytics v1.562. NYT / Vercel / Linear minimalism:
+   ink for type + accent, paper off-white for surface, no chromatic decoration.
+   One deliberate departure: kid-identity colors (--color-kid-1/2) survive as
+   the product's single chromatic affordance — two kids, two distinct hues —
+   analogous to TA keeping color only in data viz. Everything else is ink.
+   ─────────────────────────────────────────────────────────────────────── */
 
-/* ─── Gunmetal & Gold ─────────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --color-bg:           #F4F4F2;
-  --color-surface:      #FAFAF8;
-  --color-surface-alt:  #F0F0EE;
-  --color-input:        #ECECE8;
+  /* ─── Stone neutral scale ─── */
+  /* Warm-tinted but perceptually neutral — Tailwind "stone" values. */
+  --stone-50:  #fafaf9;
+  --stone-100: #f5f5f4;
+  --stone-150: #eeedec;
+  --stone-200: #e7e5e4;
+  --stone-300: #d6d3d1;
+  --stone-500: #78716c;
+  --stone-700: #44403c;
+  --stone-800: #292524;
+  --stone-900: #1c1917;
 
-  /* Borders & Dividers */
-  --color-border:       #DCDAD4;
-  --color-divider:      #E8E6E0;
+  /* ─── Ink (primary type + accent) ─── */
+  --ink:             #1a1a1a;
+  --ink-soft:        #2a2a2a;
 
-  /* Text */
-  --color-text:         #1C1C1C;
-  --color-text-muted:   #686460;
-  --color-text-faint:   #AAAA9A;
+  --accent:          var(--ink);
+  --accent-hover:    #0a0a0a;
+  --accent-pressed:  #000000;
+  --accent-tint:     var(--stone-100);
+  --accent-ink:      #ffffff;        /* text on ink fills */
 
-  /* Accent — Gunmetal */
-  --color-accent:       #383838;
-  --color-accent-text:  #F8F8F6;
-  --color-accent-soft:  #E0DDD6;
-  --color-today:        #D8D3C8;
+  /* ─── Surface + type ─── */
+  --bg:            var(--stone-50);       /* paper */
+  --bg-card:       var(--stone-50);       /* cards don't differ by color */
+  --bg-sunken:     var(--stone-100);      /* subtle wells (inputs, code) */
+  --border:        var(--stone-200);
+  --border-hover:  var(--stone-300);
+  --text:          var(--stone-800);
+  --text-muted:    var(--stone-500);
+  --text-faint:    var(--stone-500);
+  --heading:       var(--ink);
 
-  /* Kid colors */
-  --color-kid-1:        #C4A040;   /* warm gold  — Ethan */
-  --color-kid-2:        #607080;   /* steel blue — Liam  */
+  /* ─── Status (semantic only — never decoration) ─── */
+  --accent-amber:      #8a5e08;
+  --accent-red:        #a8382a;
+  --accent-amber-tint: rgba(138, 94, 8, 0.08);
+  --accent-red-tint:   rgba(168, 56, 42, 0.06);
+  --accent-ink-tint:   rgba(26, 26, 26, 0.04);
 
-  /* Status tags */
-  --color-tag-created-bg:   #E4EEE0;
-  --color-tag-created-text: #284020;
-  --color-tag-updated-bg:   #F4ECD8;
-  --color-tag-updated-text: #604010;
-  --color-tag-deleted-bg:   #F4E4E0;
-  --color-tag-deleted-text: #601010;
+  /* ─── Kid identity (the one chromatic exception) ─── */
+  /* Two distinct hues so the calendar can signal whose event is whose at a
+     glance. User-assignable per-kid via Kid.color; these are the paper-tuned
+     fallbacks. Kept muted (editorial, not highlighter) so they read on the
+     off-white surface alongside ink type without pulling focus. */
+  --color-kid-1:   #8a6a1f;   /* warm ink-gold — Ethan default */
+  --color-kid-2:   #4a5a6a;   /* deep slate   — Liam default  */
 
-  /* Shadows */
-  --shadow-card:  0 1px 4px rgba(28,28,28,0.06), 0 4px 16px rgba(28,28,28,0.04);
-  --shadow-modal: 0 8px 40px rgba(28,28,28,0.16);
+  /* ─── Tags ─── */
+  --tag-bg:  var(--stone-100);
+
+  /* ─── Focus ─── */
+  --focus-ring: rgba(26, 26, 26, 0.35);
+
+  /* ─── Shadows ─── */
+  /* Retained for now; Phase-3-equivalent pass can swap to 1px hairlines. */
+  --shadow-ring: 0 0 0 1px rgba(26, 26, 26, 0.06);
+  --shadow-sm:   0 1px 3px rgba(26, 26, 26, 0.06), 0 1px 2px rgba(26, 26, 26, 0.04);
+  --shadow-md:   0 2px 4px rgba(26, 26, 26, 0.04), 0 4px 12px rgba(26, 26, 26, 0.06);
+  --shadow-lg:   0 4px 8px rgba(26, 26, 26, 0.04), 0 8px 24px rgba(26, 26, 26, 0.08);
+  --shadow-card:  var(--shadow-sm);
+  --shadow-modal: var(--shadow-lg);
+
+  /* ─── Legacy aliases (kept for components still on the old names) ─── */
+  /* Kept live during the component pass. Retire them as components get
+     retargeted to the canonical tokens above. */
+  --color-bg:           var(--bg);
+  --color-surface:      var(--bg-card);
+  --color-surface-alt:  var(--stone-100);
+  --color-input:        var(--stone-100);
+  --color-border:       var(--border);
+  --color-divider:      var(--stone-150);
+  --color-text:         var(--text);
+  --color-text-muted:   var(--text-muted);
+  --color-text-faint:   var(--text-faint);
+  --color-accent:       var(--accent);
+  --color-accent-text:  var(--accent-ink);
+  --color-accent-soft:  var(--accent-tint);
+  --color-today:        var(--stone-150);
+
+  --color-tag-created-bg:   var(--stone-100);
+  --color-tag-created-text: var(--ink);
+  --color-tag-updated-bg:   var(--accent-amber-tint);
+  --color-tag-updated-text: var(--accent-amber);
+  --color-tag-deleted-bg:   var(--accent-red-tint);
+  --color-tag-deleted-text: var(--accent-red);
 }
 
-/* ─── Base ────────────────────────────────────────────────────────────────── */
+/* ─── Base ─────────────────────────────────────────────────────────────── */
 body {
-  font-family: 'Mulish', sans-serif;
-  background: var(--color-bg);
-  color: var(--color-text);
+  font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ─── Scrollbar ───────────────────────────────────────────────────────────── */
+/* ─── Scrollbar (kept from KidSync — functional, not decorative) ─── */
 ::-webkit-scrollbar        { width: 5px; }
 ::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: var(--color-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--color-text-faint); }
+::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
 
-/* ─── Form elements ───────────────────────────────────────────────────────── */
+/* ─── Form elements ────────────────────────────────────────────────────── */
 input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   filter: invert(0.4);
 }
 
 select {
-  background-color: var(--color-input);
+  background-color: var(--bg-sunken);
 }
-
 select option {
-  background-color: var(--color-surface);
-  color: var(--color-text);
+  background-color: var(--bg-card);
+  color: var(--text);
 }
 
-/* ─── Tailwind CSS variable overrides ────────────────────────────────────── */
+/* ─── Primitives (mirror TA) ───────────────────────────────────────────── */
+.card {
+  background: var(--bg-card);
+  border: none;
+  border-radius: 0;
+  box-shadow: var(--shadow-ring), var(--shadow-sm);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.card-interactive:hover {
+  box-shadow: var(--shadow-ring), var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.input-field {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text);
+  font-family: var(--font-dm-sans), sans-serif;
+  transition: all 0.2s ease;
+}
+.input-field:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.input-field::placeholder { color: var(--text-faint); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-weight: 600;
+  border-radius: 0;
+  letter-spacing: 0.3px;
+  transition: all 0.2s ease;
+}
+.btn-primary:hover:not(:disabled)   { background: var(--accent-hover); }
+.btn-primary:active:not(:disabled)  { background: var(--accent-pressed); }
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── Global focus ring (keyboard only) ─── */
+button:focus-visible,
+select:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0;
+}
+button:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) { outline: none; }
+
+/* ─── Type scale ───────────────────────────────────────────────────────── */
+/* Canonical tokens. Wherever a component has an inline fontSize / fontWeight
+   / letterSpacing / textTransform combo matching one of these, use the class.
+   .heading-serif  — display, serif, 28–48px
+   .t-heading      — section & card titles, sans 14–16px 600
+   .t-body         — paragraph text, sans 13px 400
+   .t-label-xl     — PAGE-level eyebrow, 13px 700 0.14em upper
+   .t-label        — SECTION-level eyebrow, 11px 600 0.12em upper
+   .t-label-sm     — FIELD-level eyebrow, 10px 600 0.10em upper
+   .t-caption      — secondary meta, 12px 500
+   .t-stat         — numeric display, 24px 700 tabular-nums
+   KidSync uses serif *sparingly* — wordmark + page title only. */
+
+.heading-serif {
+  font-family: var(--font-dm-serif), Georgia, serif;
+  font-weight: 400;
+  color: var(--heading);
+  letter-spacing: -0.3px;
+}
+
+.t-heading {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.t-body {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.t-label-xl {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.t-label {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.t-label-sm {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.t-caption {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.t-stat {
+  font-family: var(--font-dm-sans), -apple-system, sans-serif;
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* Back-compat — original KidSync utility. */
+.label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+/* ─── Tailwind legacy-class compat layer ───────────────────────────────────
+   KidSync components were originally authored against a dark slate palette.
+   The compat layer below retargets those class names to Ink & Paper tokens
+   so the port reads correctly before the per-component cleanup pass lands.
+   Retire these rules as components migrate off the legacy class names. */
 @layer base {
-  /* Map the old dark slate palette to Gunmetal & Gold variables */
+  .bg-slate-900\/50  { background-color: var(--bg-sunken) !important; }
+  .bg-slate-800      { background-color: var(--bg-card) !important; }
+  .bg-slate-800\/30  { background-color: color-mix(in srgb, var(--bg-card) 30%, transparent) !important; }
+  .bg-slate-700\/20  { background-color: color-mix(in srgb, var(--stone-100) 60%, transparent) !important; }
+  .bg-slate-700\/30  { background-color: var(--stone-100) !important; }
+  .bg-slate-700\/50  { background-color: var(--bg-sunken) !important; }
 
-  .bg-slate-900\/50  { background-color: var(--color-input) !important; }
-  .bg-slate-800      { background-color: var(--color-surface) !important; }
-  .bg-slate-800\/30  { background-color: color-mix(in srgb, var(--color-surface) 30%, transparent) !important; }
-  .bg-slate-700\/20  { background-color: color-mix(in srgb, var(--color-surface-alt) 60%, transparent) !important; }
-  .bg-slate-700\/30  { background-color: var(--color-surface-alt) !important; }
-  .bg-slate-700\/50  { background-color: var(--color-input) !important; }
+  .border-slate-700\/50  { border-color: var(--border) !important; }
+  .border-slate-700\/30  { border-color: var(--stone-150) !important; }
+  .border-slate-700\/20  { border-color: var(--stone-150) !important; }
 
-  .border-slate-700\/50  { border-color: var(--color-border) !important; }
-  .border-slate-700\/30  { border-color: var(--color-divider) !important; }
-  .border-slate-700\/20  { border-color: var(--color-divider) !important; }
+  .text-slate-100    { color: var(--text) !important; }
+  .text-slate-200    { color: var(--text) !important; }
+  .text-slate-300    { color: var(--text-muted) !important; }
+  .text-slate-400    { color: var(--text-muted) !important; }
+  .text-slate-500    { color: var(--text-faint) !important; }
+  .text-slate-600    { color: var(--text-faint) !important; }
 
-  .text-slate-100    { color: var(--color-text) !important; }
-  .text-slate-200    { color: var(--color-text) !important; }
-  .text-slate-300    { color: var(--color-text-muted) !important; }
-  .text-slate-400    { color: var(--color-text-muted) !important; }
-  .text-slate-500    { color: var(--color-text-faint) !important; }
-  .text-slate-600    { color: var(--color-text-faint) !important; }
+  .text-blue-400     { color: var(--accent) !important; }
+  .text-blue-300     { color: var(--accent) !important; }
+  .bg-blue-500\/15             { background-color: var(--accent-tint) !important; }
+  .bg-blue-500\/\[0\.06\]      { background-color: var(--accent-tint) !important; }
+  .bg-blue-500\/\[0\.04\]      { background-color: var(--accent-tint) !important; }
+  .bg-blue-500\/25             { background-color: var(--accent-tint) !important; }
+  .border-blue-500             { border-color: var(--accent) !important; }
+  .border-blue-500\/50         { border-color: var(--accent) !important; }
+  .shadow-blue-500\/25         { --tw-shadow-color: rgba(26,26,26,0.12) !important; }
+  .shadow-blue-500\/40         { --tw-shadow-color: rgba(26,26,26,0.20) !important; }
 
-  .text-blue-400     { color: var(--color-accent) !important; }
-  .text-blue-300     { color: var(--color-accent) !important; }
-  .bg-blue-500\/15   { background-color: var(--color-accent-soft) !important; }
-  .bg-blue-500\/\[0\.06\] { background-color: var(--color-accent-soft) !important; }
-  .bg-blue-500\/\[0\.04\] { background-color: var(--color-accent-soft) !important; }
-  .bg-blue-500\/25   { background-color: var(--color-accent-soft) !important; }
-  .border-blue-500   { border-color: var(--color-accent) !important; }
-  .border-blue-500\/50 { border-color: var(--color-accent) !important; }
-  .shadow-blue-500\/25 { --tw-shadow-color: rgba(56,56,56,0.15) !important; }
-  .shadow-blue-500\/40 { --tw-shadow-color: rgba(56,56,56,0.25) !important; }
+  .bg-emerald-500\/15  { background-color: var(--stone-100) !important; }
+  .text-emerald-400    { color: var(--ink) !important; }
+  .bg-amber-500\/15    { background-color: var(--accent-amber-tint) !important; }
+  .text-amber-400      { color: var(--accent-amber) !important; }
+  .bg-red-500\/15      { background-color: var(--accent-red-tint) !important; }
+  .text-red-400        { color: var(--accent-red) !important; }
 
-  .bg-emerald-500\/15  { background-color: var(--color-tag-created-bg) !important; }
-  .text-emerald-400    { color: var(--color-tag-created-text) !important; }
-  .bg-amber-500\/15    { background-color: var(--color-tag-updated-bg) !important; }
-  .text-amber-400      { color: var(--color-tag-updated-text) !important; }
-  .bg-red-500\/15      { background-color: var(--color-tag-deleted-bg) !important; }
-  .text-red-400        { color: var(--color-tag-deleted-text) !important; }
-
-  .focus\:border-blue-500\/50:focus { border-color: var(--color-accent) !important; }
-  .focus\:ring-blue-500\/20:focus   { --tw-ring-color: rgba(56,56,56,0.12) !important; }
-  .placeholder-slate-600::placeholder { color: var(--color-text-faint) !important; }
+  .focus\:border-blue-500\/50:focus { border-color: var(--accent) !important; }
+  .focus\:ring-blue-500\/20:focus   { --tw-ring-color: var(--focus-ring) !important; }
+  .placeholder-slate-600::placeholder { color: var(--text-faint) !important; }
 }
 
-/* ─── Animations (unchanged from original) ───────────────────────────────── */
+/* ─── Animations (kept from KidSync) ───────────────────────────────────── */
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -126,9 +333,45 @@ select option {
   from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }
 }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
-.animate-slide-up  { animation: slide-up  0.2s ease forwards; }
-.animate-scale-in  { animation: scale-in  0.18s ease forwards; }
+.animate-slide-up  { animation: slide-up 0.2s ease forwards; }
+.animate-scale-in  { animation: scale-in 0.18s ease forwards; }
+.toast             { animation: fadeIn 0.3s ease; }
 
-/* ─── Typography helpers ──────────────────────────────────────────────────── */
-.font-display { font-family: 'Libre Baskerville', serif; }
+/* ─── Legacy typography helper — retargeted to DM Serif ─── */
+.font-display { font-family: var(--font-dm-serif), Georgia, serif; }
+
+/* ─── Mobile ───────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+  .btn-primary {
+    min-height: 44px;
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+  .input-field {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+  .card {
+    border-radius: 0;
+    padding: 16px !important;
+  }
+  .label {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+}
+
+/* ─── Reduced motion ───────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
