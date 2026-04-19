@@ -93,11 +93,16 @@ function composeDateTime(date: string, time: string | null, fallback: string): s
 function toEventFormData(row: ReviewRow, kidIds: string[]): EventFormData {
   const startDate = row.start_date;
   const endDate = row.end_date || row.start_date;
+  // App convention (see virtualEvents.ts, calendar/page.tsx birthday events,
+  // CustodyOverrides): anchor all-day events at noon so TZ conversion from
+  // the timestamptz column never shifts the visible date across a boundary.
+  // T00:00 / T23:59 serialized as UTC renders as the PREVIOUS / NEXT day in
+  // any western timezone.
   const starts_at = row.all_day
-    ? `${startDate}T00:00`
+    ? `${startDate}T12:00:00`
     : composeDateTime(startDate, row.start_time, "09:00");
   const ends_at = row.all_day
-    ? `${endDate}T23:59`
+    ? `${endDate}T12:00:00`
     : composeDateTime(endDate, row.end_time, row.start_time ? addOneHour(row.start_time) : "10:00");
 
   return {

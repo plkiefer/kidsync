@@ -9,6 +9,7 @@ import {
   formatTime,
   parseTimestamp,
   getHourFromDateStr,
+  eventCoversDay,
 } from "@/lib/dates";
 
 interface WeekViewProps {
@@ -71,7 +72,11 @@ export default function WeekView({
 
   const getEventsForDay = (date: Date, allDay: boolean) =>
     events
-      .filter((e) => isSameDay(parseTimestamp(e.starts_at), date) && (allDay ? e.all_day : !e.all_day))
+      .filter(
+        (e) =>
+          eventCoversDay(e.starts_at, e.ends_at, e.all_day, date) &&
+          (allDay ? e.all_day : !e.all_day)
+      )
       .sort(
         (a, b) =>
           parseTimestamp(a.starts_at).getTime() - parseTimestamp(b.starts_at).getTime()

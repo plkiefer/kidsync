@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
-import { getCalendarDays, isSameDay, isSameMonth, isToday, parseTimestamp } from "@/lib/dates";
+import { getCalendarDays, isSameDay, isSameMonth, isToday, parseTimestamp, eventCoversDay } from "@/lib/dates";
 
 interface MonthViewProps {
   currentDate: Date;
@@ -39,7 +39,7 @@ export default function MonthView({
 
   const getEventsForDay = (date: Date) =>
     events
-      .filter((e) => isSameDay(parseTimestamp(e.starts_at), date))
+      .filter((e) => eventCoversDay(e.starts_at, e.ends_at, e.all_day, date))
       .sort((a, b) => {
         // All-day events first (holidays, birthdays), then timed events
         if (a.all_day && !b.all_day) return -1;
