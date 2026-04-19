@@ -33,6 +33,7 @@ import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
 import CustodySettings from "@/components/CustodySettings";
 import CustodyOverrides from "@/components/CustodyOverrides";
+import ScheduleImportModal from "@/components/ScheduleImportModal";
 import {
   ChevronLeft,
   ChevronRight,
@@ -44,6 +45,7 @@ import {
   Link2,
   Check,
   Settings,
+  Upload,
 } from "lucide-react";
 
 type ViewMode = "month" | "week" | "list";
@@ -100,6 +102,7 @@ export default function CalendarPage() {
   const [existingTravel, setExistingTravel] = useState<any>(null);
   const [showCustodySettings, setShowCustodySettings] = useState(false);
   const [showCustodyOverrides, setShowCustodyOverrides] = useState(false);
+  const [showScheduleImport, setShowScheduleImport] = useState(false);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
@@ -596,6 +599,14 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowScheduleImport(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            title="Import a schedule from PDF, DOCX, or TXT"
+          >
+            <Upload size={13} />
+            Import
+          </button>
+          <button
             onClick={() => setShowCustodyOverrides(true)}
             className="relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
           >
@@ -924,6 +935,15 @@ export default function CalendarPage() {
             setShowCustodyOverrides(false);
             await refetchCustody();
           }}
+        />
+      )}
+
+      {showScheduleImport && (
+        <ScheduleImportModal
+          kids={kids}
+          onCreateEvent={createEvent}
+          onClose={() => setShowScheduleImport(false)}
+          onDone={() => { refetch(); }}
         />
       )}
 
