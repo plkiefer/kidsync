@@ -25,21 +25,30 @@
 /**
  * Compose the DB-ready timestamptz string for an all-day event.
  *
- * Input:  "2026-11-23"                 (calendar date, any source)
- * Output: "2026-11-23T12:00:00.000Z"   (UTC noon, ready for Supabase insert)
+ * Input:  "2026-11-23"                   (calendar date, any source)
+ * Output: "2026-11-23T12:00:00.000Z"     (UTC noon, ready for Supabase insert)
+ * Output: "2026-11-23T12:00:00.001Z"     (asEnd=true, 1ms later)
  *
  * The explicit `.000Z` suffix is non-optional. A bare "T12:00:00" is parsed by
- * Supabase using the session timezone — which is UTC by default, so it works,
- * but relying on default session behavior is fragile. The Z makes the
- * serialization self-describing.
+ * Supabase using the session timezone — the Z makes the serialization
+ * self-describing.
+ *
+ * The `asEnd` flag adds 1 millisecond so single-day all-day events can satisfy
+ * the DB's `CHECK (ends_at > starts_at)` constraint. 1ms is still the same
+ * noon instant for every UTC-aware extractor, so the date round-trip is
+ * unaffected.
  */
-export function formatAllDayTimestamp(dateStr: string): string {
+export function formatAllDayTimestamp(
+  dateStr: string,
+  opts?: { asEnd?: boolean }
+): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     throw new Error(
       `formatAllDayTimestamp expects YYYY-MM-DD, got "${dateStr}"`
     );
   }
-  return `${dateStr}T12:00:00.000Z`;
+  const ms = opts?.asEnd ? "001" : "000";
+  return `${dateStr}T12:00:00.${ms}Z`;
 }
 
 /**

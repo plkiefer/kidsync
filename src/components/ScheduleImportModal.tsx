@@ -96,11 +96,14 @@ function toEventFormData(row: ReviewRow, kidIds: string[]): EventFormData {
   const endDate = row.end_date || row.start_date;
   // All-day events go through formatAllDayTimestamp (lib/allDay.ts) so the
   // T12:00 UTC convention is applied consistently with the rest of the app.
+  // Single-day events need ends_at padded by 1ms so the DB's CHECK constraint
+  // (ends_at > starts_at) doesn't reject them.
+  const isSingleDay = endDate === startDate;
   const starts_at = row.all_day
     ? formatAllDayTimestamp(startDate)
     : composeDateTime(startDate, row.start_time, "09:00");
   const ends_at = row.all_day
-    ? formatAllDayTimestamp(endDate)
+    ? formatAllDayTimestamp(endDate, { asEnd: isSingleDay })
     : composeDateTime(endDate, row.end_time, row.start_time ? addOneHour(row.start_time) : "10:00");
 
   return {
@@ -252,11 +255,28 @@ export default function ScheduleImportModal({
     // Batch insert — sequential per-row looping hits a token-refresh deadlock
     // with the events-table realtime subscription. One call, one realtime
     // event, no cascade.
+    //
+    // Wrap in a Promise.race against a 30s timeout so any remaining hang
+    // surfaces as an error instead of a spinner that never resolves.
     const payloads = toInsert.map((row) => toEventFormData(row, kidIds));
-    const { inserted, failed, error } = await onCreateEvents(payloads);
-    setInsertedCount(inserted);
-    setFailedCount(failed);
-    if (error) setInsertErrorMsg(error);
+    try {
+      const result = await Promise.race([
+        onCreateEvents(payloads),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Insert took longer than 30 seconds — likely a Supabase deadlock or network stall. Check DevTools → Network for the calendar_events POST.")),
+            30000
+          )
+        ),
+      ]);
+      setInsertedCount(result.inserted);
+      setFailedCount(result.failed);
+      if (result.error) setInsertErrorMsg(result.error);
+    } catch (err: any) {
+      setInsertedCount(0);
+      setFailedCount(toInsert.length);
+      setInsertErrorMsg(err.message || String(err));
+    }
     setStep("done");
   };
 

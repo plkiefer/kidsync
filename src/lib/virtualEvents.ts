@@ -199,7 +199,7 @@ export function generateHolidayEvents(
       title: holiday.name,
       event_type: "holiday" as const,
       starts_at: formatAllDayTimestamp(dateStr),
-      ends_at: formatAllDayTimestamp(dateStr),
+      ends_at: formatAllDayTimestamp(dateStr, { asEnd: true }),
       all_day: true,
       location: null,
       notes: tierLabel,

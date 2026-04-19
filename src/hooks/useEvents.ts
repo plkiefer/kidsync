@@ -298,17 +298,20 @@ export function useEvents(ready = true): EventsState {
           created_by: user.id,
         }));
 
-        const { data: inserted, error: insertErr } = await supabase
+        // No .select() — reading the inserted rows back while the realtime
+        // subscription is also firing a .select() on the same table causes
+        // supabase-js to serialize them, which can deadlock through the
+        // auth-refresh path. We don't need the returned rows; the subscription
+        // will re-fetch and the UI will see them within a tick.
+        const { error: insertErr } = await supabase
           .from("calendar_events")
-          .insert(payload)
-          .select("id");
+          .insert(payload);
 
         if (insertErr) throw insertErr;
 
-        const insertedCount = inserted?.length ?? 0;
         return {
-          inserted: insertedCount,
-          failed: rows.length - insertedCount,
+          inserted: rows.length,
+          failed: 0,
         };
       } catch (err) {
         console.error("Error batch-creating events:", err);

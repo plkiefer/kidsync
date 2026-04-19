@@ -144,7 +144,7 @@ export default function CalendarPage() {
           title: `${kid.name}'s Birthday${age > 0 ? ` (${age})` : ""}`,
           event_type: "other",
           starts_at: formatAllDayTimestamp(dateStr),
-          ends_at: formatAllDayTimestamp(dateStr),
+          ends_at: formatAllDayTimestamp(dateStr, { asEnd: true }),
           all_day: true,
           location: null,
           notes: null,
