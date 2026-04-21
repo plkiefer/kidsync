@@ -5,6 +5,7 @@ import {
   Kid,
   getEventKidIds,
   getEventIcon,
+  getEventTypeColor,
 } from "@/lib/types";
 import {
   getCalendarDays,
@@ -37,16 +38,10 @@ function kidSlot(kid: Kid | undefined, kids: Kid[]): KidId | undefined {
   return undefined;
 }
 
-/**
- * Event chip classes by kid slot. Solid dark kid colour as background with
- * white text — reads clearly against either custody tint, unlike the earlier
- * pale-bg variants which blended into the cell.
- */
-const kidChipClass: Record<"ethan" | "harrison" | "both" | "none", string> = {
-  ethan:    "bg-kid-ethan text-white border-kid-ethan",
-  harrison: "bg-kid-harrison text-white border-kid-harrison",
-  both:     "bg-[var(--ink)] text-[var(--accent-ink)] border-[var(--ink)]",
-  none:     "bg-[var(--bg)] text-[var(--text)] border-[var(--border-hover)]",
+/** Tailwind class for the "E"/"H" kid indicator chip inside an event. */
+const kidIndicatorClass: Record<"ethan" | "harrison", string> = {
+  ethan:    "bg-kid-ethan",
+  harrison: "bg-kid-harrison",
 };
 
 /** Format a Date to a compact calendar time like "3:00p" / "10:15a". */
@@ -115,15 +110,17 @@ export default function MonthView({
     return kidSlot(kid, kids);
   }
 
-  /** Pick chip variant for a regular event based on its kid set. */
-  function eventChipVariant(e: CalendarEvent): "ethan" | "harrison" | "both" | "none" {
-    if (e.id.startsWith("holiday-")) return "none";
+  /**
+   * Pick the single-kid indicator slot for an event, or null if:
+   *   - no kids on the event (holiday / unassigned)
+   *   - multi-kid event (the chip is omitted — event type color is enough)
+   */
+  function singleKidIndicator(e: CalendarEvent): "ethan" | "harrison" | null {
+    if (e.id.startsWith("holiday-")) return null;
     const evtKids = getEventKids(e);
-    if (evtKids.length === 0) return "none";
-    if (evtKids.length >= 2) return "both";
+    if (evtKids.length !== 1) return null;
     const slot = kidSlot(evtKids[0], kids);
-    if (slot === "ethan" || slot === "harrison") return slot;
-    return "none";
+    return slot === "ethan" || slot === "harrison" ? slot : null;
   }
 
   /**
@@ -236,9 +233,13 @@ export default function MonthView({
                       );
                     })}
 
-                    {/* Regular events (max 3) */}
+                    {/* Regular events (max 3) — color-coded by event type.
+                        Kid indicator chip (E/H) appears only for single-kid
+                        events; multi-kid events omit it (the type color
+                        carries the semantic). */}
                     {regular.slice(0, 3).map((evt) => {
-                      const variant = eventChipVariant(evt);
+                      const typeColor = getEventTypeColor(evt);
+                      const kidBadge = singleKidIndicator(evt);
                       const dashed = evt._tentative;
                       return (
                         <div
@@ -253,14 +254,31 @@ export default function MonthView({
                             px-1.5 py-[3px] mb-0.5
                             border-l-[2.5px]
                             ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                            ${kidChipClass[variant]}
                             cursor-pointer hover:translate-x-[1px] transition-transform
                             overflow-hidden
                           `}
+                          style={{
+                            backgroundColor: `${typeColor}20`,
+                            borderLeftColor: typeColor,
+                            color: typeColor,
+                          }}
                         >
                           <span className="text-[10.5px] opacity-80 shrink-0">
                             {getEventIcon(evt)}
                           </span>
+                          {kidBadge && (
+                            <span
+                              className={`
+                                inline-flex items-center justify-center shrink-0
+                                w-[14px] h-[14px] rounded-full
+                                text-[8px] font-bold text-white
+                                ${kidIndicatorClass[kidBadge]}
+                              `}
+                              title={kidBadge === "ethan" ? "Ethan" : "Harrison"}
+                            >
+                              {kidBadge === "ethan" ? "E" : "H"}
+                            </span>
+                          )}
                           <span className="truncate">{evt.title}</span>
                         </div>
                       );
