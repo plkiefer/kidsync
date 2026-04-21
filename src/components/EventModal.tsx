@@ -701,7 +701,7 @@ export default function EventModal({
             type="button"
             onClick={handleSubmit}
             disabled={isCustodyMode ? !custodyPickupDate || !custodyDropoffDate : !form.title.trim()}
-            className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-6 py-2.5 bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
           >
             {isCustodyMode ? "Submit Request" : isNew ? "Save" : "Save Changes"}
           </button>

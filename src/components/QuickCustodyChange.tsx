@@ -151,7 +151,7 @@ export default function QuickCustodyChange({
             </p>
             <button
               onClick={onClose}
-              className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+              className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
             >
               Done
             </button>
@@ -274,7 +274,7 @@ export default function QuickCustodyChange({
               <button
                 onClick={handleSubmit}
                 disabled={submitting || (!hasChanges && !note)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-4 py-2.5 rounded-xl bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {submitting ? (
                   <Loader2 size={14} className="animate-spin" />

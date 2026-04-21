@@ -370,7 +370,7 @@ export default function CustodySettings({
               />
               <button
                 onClick={() => fileRef.current?.click()}
-                className="px-6 py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                className="px-6 py-3 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Choose File
               </button>
@@ -421,7 +421,7 @@ export default function CustodySettings({
                 <button
                   onClick={handleApplySchedule}
                   disabled={saving}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {saving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -448,7 +448,7 @@ export default function CustodySettings({
               </p>
               <button
                 onClick={onClose}
-                className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Done
               </button>
@@ -467,7 +467,7 @@ export default function CustodySettings({
               </p>
               <button
                 onClick={() => { setStep(latestAgreement ? "current" : "upload"); setError(""); }}
-                className="px-6 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Try Again
               </button>

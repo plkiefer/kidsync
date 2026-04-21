@@ -389,7 +389,7 @@ export default function EventDetailModal({
                 {onEditOccurrence && (
                   <button
                     onClick={() => { onClose(); onEditOccurrence(event); }}
-                    className="flex-1 px-3 py-2 rounded-xl bg-[var(--color-accent)] text-white text-[10px] font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
+                    className="flex-1 px-3 py-2 bg-action text-action-fg text-[10px] font-semibold hover:bg-action-hover transition-colors flex items-center justify-center gap-1"
                   >
                     <Pencil size={11} />
                     Edit This
@@ -397,7 +397,7 @@ export default function EventDetailModal({
                 )}
                 <button
                   onClick={onEdit}
-                  className="flex-1 px-3 py-2 rounded-xl border border-[var(--color-accent)]/30 bg-[var(--color-accent)]/10 text-[var(--color-accent)] text-[10px] font-semibold hover:bg-[var(--color-accent)]/20 transition-colors flex items-center justify-center gap-1"
+                  className="flex-1 px-3 py-2 border border-action/30 bg-action-bg text-action text-[10px] font-semibold hover:bg-action/15 transition-colors flex items-center justify-center gap-1"
                 >
                   <Pencil size={11} />
                   Edit Series
@@ -429,7 +429,7 @@ export default function EventDetailModal({
 
               <button
                 onClick={onEdit}
-                className="px-5 py-2.5 rounded-xl bg-[var(--color-accent)] text-white text-xs font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all flex items-center gap-1.5"
+                className="px-5 py-2.5 bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
               >
                 <Pencil size={12} />
                 Edit Event
