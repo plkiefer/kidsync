@@ -429,7 +429,7 @@ export default function ScheduleImportModal({
               <button
                 onClick={handleParse}
                 disabled={!canParse}
-                className="btn-primary flex items-center gap-2"
+                className="btn-action flex items-center gap-2"
                 style={{ padding: "8px 16px", fontSize: 13 }}
               >
                 Extract events
@@ -454,7 +454,7 @@ export default function ScheduleImportModal({
               <button
                 onClick={handleInsert}
                 disabled={selectedCount === 0}
-                className="btn-primary flex items-center gap-2"
+                className="btn-action flex items-center gap-2"
                 style={{ padding: "8px 16px", fontSize: 13 }}
               >
                 Insert {selectedCount} event{selectedCount === 1 ? "" : "s"}
@@ -468,7 +468,7 @@ export default function ScheduleImportModal({
               <span />
               <button
                 onClick={handleClose}
-                className="btn-primary"
+                className="btn-action"
                 style={{ padding: "8px 16px", fontSize: 13 }}
               >
                 Done

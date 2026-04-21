@@ -664,7 +664,7 @@ export default function TravelModal({
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xs font-semibold shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 transition-all"
+            className="px-6 py-2.5 bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
           >
             Save Travel Details
           </button>
