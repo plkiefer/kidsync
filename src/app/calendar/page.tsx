@@ -764,6 +764,7 @@ export default function CalendarPage() {
                   onEventClick={handleEventClick}
                   getCustodyForDate={getCustodyForDate}
                   currentUserId={user?.id}
+                  themLabel={members.find((m) => m.id !== user?.id)?.full_name?.split(" ")[0]}
                 />
               )}
               {view === "week" && (

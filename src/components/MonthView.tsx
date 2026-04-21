@@ -1,7 +1,21 @@
 "use client";
 
-import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
-import { getCalendarDays, isSameDay, isSameMonth, isToday, parseTimestamp, eventCoversDay } from "@/lib/dates";
+import {
+  CalendarEvent,
+  Kid,
+  getEventKidIds,
+  getEventIcon,
+} from "@/lib/types";
+import {
+  getCalendarDays,
+  isSameMonth,
+  isToday,
+  parseTimestamp,
+  eventCoversDay,
+} from "@/lib/dates";
+import { WeekRibbon } from "./ui/WeekRibbon";
+import { TransitionPill } from "./ui/TransitionPill";
+import type { KidId } from "./ui/KidChip";
 
 interface MonthViewProps {
   currentDate: Date;
@@ -11,14 +25,38 @@ interface MonthViewProps {
   onEventClick: (event: CalendarEvent) => void;
   getCustodyForDate?: (date: Date) => Record<string, { parentId: string; isParentA: boolean }>;
   currentUserId?: string;
+  /** First-name of the co-parent — shown on the right edge of the custody ribbon. */
+  themLabel?: string;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-const PARENT_A_COLOR = "rgba(59, 130, 246, 0.12)";
-const PARENT_B_COLOR = "rgba(249, 115, 22, 0.12)";
-const PARENT_A_COLOR_STRONG = "rgba(59, 130, 246, 0.20)";
-const PARENT_B_COLOR_STRONG = "rgba(249, 115, 22, 0.20)";
+/** Map a kid to the Phase-1 KidId union used by the token system. */
+function kidSlot(kid: Kid | undefined, kids: Kid[]): KidId | undefined {
+  if (!kid) return undefined;
+  const idx = kids.findIndex((k) => k.id === kid.id);
+  if (idx === 0) return "ethan";
+  if (idx === 1) return "harrison";
+  return undefined;
+}
+
+/** Event chip classes by kid slot. Uses token-backed kid-bg/fg classes. */
+const kidChipClass: Record<"ethan" | "harrison" | "both" | "none", string> = {
+  ethan:    "bg-kid-ethan-bg text-kid-ethan-fg border-kid-ethan",
+  harrison: "bg-kid-harrison-bg text-kid-harrison-fg border-kid-harrison",
+  both:     "bg-[var(--bg-sunken)] text-[var(--ink)] border-[var(--ink)]",
+  none:     "bg-[var(--bg-sunken)] text-[var(--text-muted)] border-[var(--border-hover)]",
+};
+
+/** Format a Date to a compact calendar time like "3:00p" / "10:15a". */
+function formatShortTime(date: Date): string {
+  const h = date.getHours();
+  const m = date.getMinutes();
+  const meridian = h >= 12 ? "p" : "a";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = m.toString().padStart(2, "0");
+  return `${h12}:${mm}${meridian}`;
+}
 
 export default function MonthView({
   currentDate,
@@ -28,48 +66,74 @@ export default function MonthView({
   onEventClick,
   getCustodyForDate,
   currentUserId,
+  themLabel,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
-
-  // Group into weeks
   const weeks: Date[][] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    weeks.push(days.slice(i, i + 7));
-  }
+  for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
   const getEventsForDay = (date: Date) =>
     events
       .filter((e) => eventCoversDay(e.starts_at, e.ends_at, e.all_day, date))
       .sort((a, b) => {
-        // All-day events first (holidays, birthdays), then timed events
         if (a.all_day && !b.all_day) return -1;
         if (!a.all_day && b.all_day) return 1;
         return 0;
       });
 
-  const getEventKids = (event: CalendarEvent) => {
-    const kidIds = getEventKidIds(event);
-    return kids.filter((k) => kidIds.includes(k.id));
-  };
+  const getEventKids = (event: CalendarEvent) =>
+    kids.filter((k) => getEventKidIds(event).includes(k.id));
 
-  /** Check if a day has a custody turnover event */
-  const isTurnoverDay = (dayEvents: CalendarEvent[]) =>
-    dayEvents.some((e) => e.id.startsWith("turnover-"));
+  /** Split events into regular chips + transition pills. */
+  function partitionDayEvents(dayEvents: CalendarEvent[]) {
+    const transitions: CalendarEvent[] = [];
+    const regular: CalendarEvent[] = [];
+    for (const e of dayEvents) {
+      if (e.id.startsWith("turnover-")) transitions.push(e);
+      else regular.push(e);
+    }
+    return { transitions, regular };
+  }
 
-  const getAdjacentDay = (date: Date, offset: number): Date => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + offset);
-    return d;
-  };
+  /** For a turnover event on `eventDate`, figure out handoff vs drop-off. */
+  function transitionDirectionFor(e: CalendarEvent, eventDate: Date): "handoff" | "dropoff" {
+    if (!getCustodyForDate || !currentUserId) return "handoff";
+    const isPickup = e.id.endsWith("-pickup");
+    const checkDate = new Date(eventDate);
+    if (!isPickup) checkDate.setDate(checkDate.getDate() + 1);
+    const custody = getCustodyForDate(checkDate);
+    const kidIdInCustody = e.kid_id || Object.keys(custody)[0];
+    const newParentId = custody[kidIdInCustody]?.parentId;
+    return newParentId === currentUserId ? "handoff" : "dropoff";
+  }
+
+  /** Pick the kid slot for the transition pill (undefined = whole household). */
+  function transitionKidFor(e: CalendarEvent): KidId | undefined {
+    const kidIds = e.kid_ids && e.kid_ids.length > 0 ? e.kid_ids : (e.kid_id ? [e.kid_id] : []);
+    if (kidIds.length !== 1) return undefined; // multi-kid transition = whole household
+    const kid = kids.find((k) => k.id === kidIds[0]);
+    return kidSlot(kid, kids);
+  }
+
+  /** Pick chip variant for a regular event based on its kid set. */
+  function eventChipVariant(e: CalendarEvent): "ethan" | "harrison" | "both" | "none" {
+    if (e.id.startsWith("holiday-")) return "none";
+    const evtKids = getEventKids(e);
+    if (evtKids.length === 0) return "none";
+    if (evtKids.length >= 2) return "both";
+    const slot = kidSlot(evtKids[0], kids);
+    if (slot === "ethan" || slot === "harrison") return slot;
+    return "none";
+  }
 
   return (
-    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden flex flex-col flex-1">
-      {/* Day headers */}
-      <div className="grid grid-cols-7 shrink-0">
+    <div className="bg-[var(--bg)] border border-[var(--border)] overflow-hidden flex flex-col flex-1">
+      {/* Day-of-week header — heavy divider separates it from the first week */}
+      <div className="grid grid-cols-7 shrink-0 border-b-[3px] border-[var(--border-heavy)]">
         {DAY_HEADERS.map((d) => (
           <div
             key={d}
-            className="px-2 py-3 text-center text-sm font-bold text-[var(--color-text-muted)] uppercase tracking-wider border-b border-[var(--color-divider)]"
+            className="px-3 py-2.5 text-[10.5px] font-semibold text-[var(--text-faint)] uppercase tracking-[0.12em]"
           >
             {d}
           </div>
@@ -78,144 +142,113 @@ export default function MonthView({
 
       {/* Weeks */}
       <div className="flex-1 flex flex-col">
-      {weeks.map((week, wi) => (
-        <div key={wi} className="grid grid-cols-7 flex-1">
-          {week.map((day, di) => {
-            const dayEvents = getEventsForDay(day);
-            const today = isToday(day);
-            const inMonth = isSameMonth(day, currentDate);
-
-            // Custody underlay
-            let custodyBg: string | undefined;
-            let isSplitDay = false;
-
-            if (getCustodyForDate && !today) {
-              const custody = getCustodyForDate(day);
-              const kidIds = Object.keys(custody);
-              const hasTurnover = isTurnoverDay(dayEvents);
-
-              if (kidIds.length > 0) {
-                const allSame = kidIds.every(
-                  (k) => custody[k].isParentA === custody[kidIds[0]].isParentA
-                );
-
-                if (hasTurnover && allSame) {
-                  const isCurrentParentA = custody[kidIds[0]].isParentA;
-
-                  // Check previous day (for pickup: prev differs from today)
-                  const prevCustody = getCustodyForDate(getAdjacentDay(day, -1));
-                  const prevKids = Object.keys(prevCustody);
-                  const prevIsA = prevKids.length > 0 && prevKids.every((k) => prevCustody[k].isParentA) && prevCustody[prevKids[0]]?.isParentA;
-
-                  // Check next day (for dropoff: next differs from today)
-                  const nextCustody = getCustodyForDate(getAdjacentDay(day, 1));
-                  const nextKids = Object.keys(nextCustody);
-                  const nextIsA = nextKids.length > 0 && nextKids.every((k) => nextCustody[k].isParentA) && nextCustody[nextKids[0]]?.isParentA;
-
-                  if (prevIsA !== isCurrentParentA) {
-                    // PICKUP day: custody changes from prev parent → current parent
-                    isSplitDay = true;
-                    const topColor = prevIsA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
-                    const bottomColor = isCurrentParentA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
-                    custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
-                  } else if (nextIsA !== isCurrentParentA) {
-                    // DROPOFF day: custody changes from current parent → next parent
-                    isSplitDay = true;
-                    const topColor = isCurrentParentA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
-                    const bottomColor = nextIsA ? PARENT_A_COLOR_STRONG : PARENT_B_COLOR_STRONG;
-                    custodyBg = `linear-gradient(to bottom, ${topColor} 0%, ${topColor} 45%, transparent 45%, transparent 55%, ${bottomColor} 55%, ${bottomColor} 100%)`;
-                  }
-                }
-
-                if (!isSplitDay) {
-                  if (allSame) {
-                    custodyBg = custody[kidIds[0]].isParentA
-                      ? PARENT_A_COLOR
-                      : PARENT_B_COLOR;
-                  } else {
-                    custodyBg =
-                      "repeating-linear-gradient(135deg, rgba(59,130,246,0.10) 0px, rgba(59,130,246,0.10) 4px, rgba(249,115,22,0.10) 4px, rgba(249,115,22,0.10) 8px)";
-                  }
-                }
-              }
-            }
-
-            return (
-              <div
-                key={di}
-                onClick={() => onDayClick(day)}
-                className={`
-                  min-h-0 p-1.5 cursor-pointer transition-colors border-r border-b border-[var(--color-divider)]
-                  ${today ? "bg-[var(--color-today)]" : "hover:bg-[var(--color-surface-alt)]/60"}
-                  ${di === 6 ? "border-r-0" : ""}
-                  ${wi === weeks.length - 1 ? "border-b-0" : ""}
-                `}
-                style={custodyBg ? { background: custodyBg } : undefined}
-              >
-                {/* Day number */}
-                <div
-                  className={`
-                    w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold mb-1
-                    ${
-                      today
-                        ? "bg-[var(--color-accent)] text-white font-bold"
-                        : inMonth
-                        ? "text-[var(--color-text)]"
-                        : "text-[var(--color-text-faint)]"
-                    }
-                  `}
-                >
-                  {day.getDate()}
-                </div>
-
-                {/* Events */}
-                {dayEvents.slice(0, 3).map((evt) => {
-                  const evtKids = getEventKids(evt);
-                  const typeColor = getEventTypeColor(evt);
+        {weeks.map((week, wi) => {
+          const isLast = wi === weeks.length - 1;
+          return (
+            <div
+              key={wi}
+              className={`flex-1 flex flex-col ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
+            >
+              <WeekRibbon
+                week={week}
+                getCustodyForDate={getCustodyForDate}
+                currentUserId={currentUserId}
+                kids={kids}
+                themLabel={themLabel}
+              />
+              <div className="grid grid-cols-7 flex-1">
+                {week.map((day, di) => {
+                  const { transitions, regular } = partitionDayEvents(getEventsForDay(day));
+                  const today = isToday(day);
+                  const inMonth = isSameMonth(day, currentDate);
+                  const isLastCol = di === 6;
 
                   return (
                     <div
-                      key={evt.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEventClick(evt);
-                      }}
-                      className={`text-xs px-1.5 py-1 mb-0.5 rounded truncate cursor-pointer font-semibold transition-opacity hover:opacity-80 flex items-center gap-1 ${evt._tentative ? "opacity-60" : ""}`}
-                      style={{
-                        backgroundColor: `${typeColor}20`,
-                        borderLeft: evt._tentative
-                          ? `2.5px dashed ${typeColor}`
-                          : `2.5px solid ${typeColor}`,
-                        color: typeColor,
-                      }}
+                      key={di}
+                      onClick={() => onDayClick(day)}
+                      className={`
+                        min-h-0 p-1.5 cursor-pointer transition-colors
+                        ${isLastCol ? "" : "border-r border-[var(--border)]"}
+                        ${inMonth ? "" : "bg-[var(--bg-sunken)]/60"}
+                        hover:bg-[var(--bg-sunken)]/80
+                      `}
                     >
-                      {evt.event_type !== "holiday" && evtKids.map((k) => (
-                        <span
-                          key={k.id}
-                          className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full text-[9px] font-bold text-white shrink-0"
-                          style={{ backgroundColor: k.color }}
-                          title={k.name}
-                        >
-                          {k.name.charAt(0)}
-                        </span>
-                      ))}
-                      <span className="truncate ml-0.5">
-                        {getEventIcon(evt)} {evt.title}
-                      </span>
+                      {/* Day number */}
+                      <div
+                        className={`
+                          inline-flex items-center justify-center h-[26px] min-w-[26px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
+                          ${today ? "bg-action text-action-fg font-semibold rounded-full" : ""}
+                          ${!today && inMonth ? "text-[var(--ink)]" : ""}
+                          ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
+                        `}
+                      >
+                        {day.getDate()}
+                      </div>
+
+                      {/* Transition pills — rendered BEFORE regular events to surface handoffs */}
+                      {transitions.map((e) => {
+                        const startDate = parseTimestamp(e.starts_at);
+                        const time = formatShortTime(startDate);
+                        const direction = transitionDirectionFor(e, day);
+                        const kid = transitionKidFor(e);
+                        return (
+                          <div key={e.id} className="mb-1">
+                            <TransitionPill
+                              time={time}
+                              direction={direction}
+                              kid={kid}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onEventClick(e);
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+
+                      {/* Regular events (max 3) */}
+                      {regular.slice(0, 3).map((evt) => {
+                        const variant = eventChipVariant(evt);
+                        const dashed = evt._tentative;
+                        return (
+                          <div
+                            key={evt.id}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              onEventClick(evt);
+                            }}
+                            className={`
+                              flex items-center gap-1.5
+                              text-[11px] font-medium leading-tight
+                              px-1.5 py-[3px] mb-0.5
+                              border-l-[2.5px]
+                              ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                              ${kidChipClass[variant]}
+                              cursor-pointer hover:translate-x-[1px] transition-transform
+                              overflow-hidden
+                            `}
+                          >
+                            <span className="text-[10.5px] opacity-80 shrink-0">
+                              {getEventIcon(evt)}
+                            </span>
+                            <span className="truncate">{evt.title}</span>
+                          </div>
+                        );
+                      })}
+
+                      {regular.length > 3 && (
+                        <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
+                          +{regular.length - 3} more
+                        </div>
+                      )}
                     </div>
                   );
                 })}
-
-                {dayEvents.length > 3 && (
-                  <div className="text-xs text-[var(--color-text-faint)] pl-1.5">
-                    +{dayEvents.length - 3} more
-                  </div>
-                )}
               </div>
-            );
-          })}
-        </div>
-      ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
