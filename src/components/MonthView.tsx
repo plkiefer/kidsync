@@ -4,7 +4,6 @@ import {
   CalendarEvent,
   Kid,
   getEventKidIds,
-  getEventIcon,
   getEventTypeColor,
 } from "@/lib/types";
 import {
@@ -233,14 +232,20 @@ export default function MonthView({
                       );
                     })}
 
-                    {/* Regular events (max 3) — color-coded by event type.
-                        Kid indicator chip (E/H) appears only for single-kid
-                        events; multi-kid events omit it (the type color
-                        carries the semantic). */}
+                    {/* Regular events (max 3) — quieter "ticket" styling:
+                        paper bg with a type-color left border carries the
+                        type semantic without flooding the cell. Time prefix
+                        in tabular-nums before the title. Kid indicator chip
+                        (E/H) appears only for single-kid events. */}
                     {regular.slice(0, 3).map((evt) => {
                       const typeColor = getEventTypeColor(evt);
                       const kidBadge = singleKidIndicator(evt);
                       const dashed = evt._tentative;
+                      const isHoliday = evt.id.startsWith("holiday-");
+                      const showTime = !evt.all_day && !isHoliday;
+                      const timeStr = showTime
+                        ? formatShortTime(parseTimestamp(evt.starts_at))
+                        : null;
                       return (
                         <div
                           key={evt.id}
@@ -249,23 +254,22 @@ export default function MonthView({
                             onEventClick(evt);
                           }}
                           className={`
-                            flex items-center gap-1.5
+                            flex items-center gap-1
                             text-[11px] font-medium leading-tight
+                            bg-[var(--bg)] text-[var(--ink)]
                             px-1.5 py-[3px] mb-0.5
-                            border-l-[2.5px]
+                            border-l-[3px]
                             ${dashed ? "border-dashed opacity-75" : "border-solid"}
                             cursor-pointer hover:translate-x-[1px] transition-transform
                             overflow-hidden
                           `}
-                          style={{
-                            backgroundColor: `${typeColor}20`,
-                            borderLeftColor: typeColor,
-                            color: typeColor,
-                          }}
+                          style={{ borderLeftColor: typeColor }}
                         >
-                          <span className="text-[10.5px] opacity-80 shrink-0">
-                            {getEventIcon(evt)}
-                          </span>
+                          {timeStr && (
+                            <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
+                              {timeStr}
+                            </span>
+                          )}
                           {kidBadge && (
                             <span
                               className={`
