@@ -190,7 +190,7 @@ export default function LoginPage() {
                 <button
                   onClick={handleSignIn}
                   disabled={loading || !password}
-                  className="w-full py-3 rounded-xl bg-[var(--color-accent)] text-white text-sm font-semibold shadow-lg shadow-[var(--shadow-card)] hover:shadow-[rgba(56,56,56,0.25)] transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-action text-action-fg text-sm font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
                 >
                   {loading ? (
                     <>
