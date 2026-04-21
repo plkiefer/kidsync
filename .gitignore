@@ -24,3 +24,6 @@ supabase/.temp
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# design exploration — not production code
+/design-mockups/

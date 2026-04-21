@@ -19,10 +19,34 @@ const config: Config = {
         // Users can override per-row via Kid.color; these are the defaults.
         kid: {
           ethan: "#8a6a1f",
+          "ethan-bg": "#f6f1e3",
+          "ethan-fg": "#5c4614",
           "ethan-light": "rgba(138, 106, 31, 0.10)",
           harrison: "#4a5a6a",
+          "harrison-bg": "#eceef1",
+          "harrison-fg": "#303d4a",
           "harrison-light": "rgba(74, 90, 106, 0.10)",
         },
+        // Cerulean action — single chromatic anchor for interactive
+        // primitives (today, primary CTA, active nav, focus, toggle on).
+        action: {
+          DEFAULT: "#0369a1",
+          hover: "#075985",
+          pressed: "#0c4a6e",
+          fg: "#ffffff",
+          bg: "#eff6fb",
+        },
+        // Custody parent tints — ribbon fills + territory outlines.
+        custody: {
+          "you-bg": "#f7f2e8",
+          "you-line": "#c7b58c",
+          "you-text": "#7a6835",
+          "them-bg": "#eef1f5",
+          "them-line": "#93a4b3",
+          "them-text": "#45556a",
+        },
+        // Heavy border — calendar week dividers (4px).
+        "border-heavy": "#8a867b",
       },
       animation: {
         "slide-up": "slideUp 0.3s ease-out",

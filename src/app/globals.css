@@ -33,6 +33,31 @@
   --accent-tint:     var(--stone-100);
   --accent-ink:      #ffffff;        /* text on ink fills */
 
+  /* ─── Action (cerulean) — the single chromatic anchor for interactive
+     primitives only: today pill, primary CTA, active-nav underline, focus
+     ring, toggle on, view-toggle active. Editorial type (brand, nav text)
+     stays on --ink. Separate from --accent by design — ink carries type,
+     cerulean carries "you can do something here." ─────────────────────── */
+  --action:         #0369a1;
+  --action-hover:   #075985;
+  --action-pressed: #0c4a6e;
+  --action-fg:      #ffffff;
+  --action-bg:      #eff6fb;
+  --action-ring:    rgba(3, 105, 161, 0.22);
+
+  /* ─── Custody parent tints — ribbon-track segments + outlines ─────────
+     Warm cream for You, cool paper for Danielle (or whoever the co-parent
+     is). Dark "line" color = the ribbon outline (territory polygon). */
+  --you-bg:    #f7f2e8;
+  --you-line:  #c7b58c;
+  --you-text:  #7a6835;
+  --them-bg:   #eef1f5;
+  --them-line: #93a4b3;
+  --them-text: #45556a;
+
+  /* ─── Heavy border — calendar week dividers (4px) ─────────────────── */
+  --border-heavy: #8a867b;
+
   /* ─── Surface + type ─── */
   --bg:            var(--stone-50);       /* paper */
   --bg-card:       var(--stone-50);       /* cards don't differ by color */
@@ -57,7 +82,12 @@
      fallbacks. Kept muted (editorial, not highlighter) so they read on the
      off-white surface alongside ink type without pulling focus. */
   --color-kid-1:   #8a6a1f;   /* warm ink-gold — Ethan default */
-  --color-kid-2:   #4a5a6a;   /* deep slate   — Liam default  */
+  --color-kid-2:   #4a5a6a;   /* deep slate   — Harrison default  */
+  /* bg/fg variants — tinted fills + high-contrast ink for kid event chips */
+  --kid-1-bg: #f6f1e3;
+  --kid-1-fg: #5c4614;
+  --kid-2-bg: #eceef1;
+  --kid-2-fg: #303d4a;
 
   /* ─── Tags ─── */
   --tag-bg:  var(--stone-100);
@@ -171,6 +201,61 @@ select option {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── Action button (cerulean) — for primary CTAs that should draw the
+   eye as "tappable" rather than "text emphasis." Reserved for: New event,
+   Save, confirmation actions. Max one per screen. ─────────────────────── */
+.btn-action {
+  background: var(--action);
+  color: var(--action-fg);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-weight: 600;
+  border-radius: 0;
+  letter-spacing: 0.3px;
+  transition: all 0.2s ease;
+}
+.btn-action:hover:not(:disabled)   { background: var(--action-hover); }
+.btn-action:active:not(:disabled)  { background: var(--action-pressed); }
+.btn-action:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--action-ring);
+}
+.btn-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── Outline button — secondary action, stone border on paper ─────────── */
+.btn-outline {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-weight: 500;
+  border-radius: 0;
+  transition: all 0.2s ease;
+}
+.btn-outline:hover:not(:disabled)  { background: var(--bg-sunken); border-color: var(--border-hover); }
+.btn-outline:active:not(:disabled) { background: var(--stone-150); }
+.btn-outline:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ─── Ghost button — tertiary action, no chrome ────────────────────────── */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-dm-sans), sans-serif;
+  font-weight: 500;
+  border-radius: 0;
+  transition: all 0.2s ease;
+}
+.btn-ghost:hover:not(:disabled)  { background: var(--bg-sunken); color: var(--text); }
+.btn-ghost:active:not(:disabled) { background: var(--stone-150); }
+.btn-ghost:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ─── Global focus ring (keyboard only) ─── */
 button:focus-visible,
