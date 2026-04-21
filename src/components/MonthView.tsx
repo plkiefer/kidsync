@@ -13,7 +13,6 @@ import {
   parseTimestamp,
   eventCoversDay,
 } from "@/lib/dates";
-import { WeekRibbon } from "./ui/WeekRibbon";
 import { TransitionPill } from "./ui/TransitionPill";
 import type { KidId } from "./ui/KidChip";
 
@@ -25,8 +24,6 @@ interface MonthViewProps {
   onEventClick: (event: CalendarEvent) => void;
   getCustodyForDate?: (date: Date) => Record<string, { parentId: string; isParentA: boolean }>;
   currentUserId?: string;
-  /** First-name of the co-parent — shown on the right edge of the custody ribbon. */
-  themLabel?: string;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -66,7 +63,6 @@ export default function MonthView({
   onEventClick,
   getCustodyForDate,
   currentUserId,
-  themLabel,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
   const weeks: Date[][] = [];
@@ -126,6 +122,42 @@ export default function MonthView({
     return "none";
   }
 
+  /**
+   * Compute the custody background for a day cell.
+   *
+   * Uses the full-day cell as the custody canvas (replaces the short
+   * ribbon strip which read too small in real widths).
+   *
+   *  - Whole household with current user    → warm cream (var(--you-bg))
+   *  - Whole household with co-parent       → cool paper (var(--them-bg))
+   *  - Kids split between parents (rare)    → horizontal two-color band:
+   *       top half = kid-1's parent, bottom half = kid-2's parent
+   *  - No custody data                      → undefined (default bg)
+   */
+  function custodyBgFor(day: Date): string | undefined {
+    if (!getCustodyForDate || !currentUserId) return undefined;
+    const custody = getCustodyForDate(day);
+    const kidIds = Object.keys(custody);
+    if (kidIds.length === 0) return undefined;
+
+    // Check unified (all kids same parent)
+    const firstParentId = custody[kidIds[0]].parentId;
+    const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
+    if (allSame) {
+      return firstParentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    }
+
+    // Split: use kids array ordering for lane assignment
+    const orderedKidIds = kids.map((k) => k.id).filter((id) => custody[id]);
+    const topKidId = orderedKidIds[0];
+    const bottomKidId = orderedKidIds[1];
+    const topBg =
+      custody[topKidId]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    const bottomBg =
+      custody[bottomKidId]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    return `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`;
+  }
+
   return (
     <div className="bg-[var(--bg)] border border-[var(--border)] overflow-hidden flex flex-col flex-1">
       {/* Day-of-week header — heavy divider separates it from the first week */}
@@ -147,105 +179,97 @@ export default function MonthView({
           return (
             <div
               key={wi}
-              className={`flex-1 flex flex-col ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
+              className={`grid grid-cols-7 flex-1 ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
             >
-              <WeekRibbon
-                week={week}
-                getCustodyForDate={getCustodyForDate}
-                currentUserId={currentUserId}
-                kids={kids}
-                themLabel={themLabel}
-              />
-              <div className="grid grid-cols-7 flex-1">
-                {week.map((day, di) => {
-                  const { transitions, regular } = partitionDayEvents(getEventsForDay(day));
-                  const today = isToday(day);
-                  const inMonth = isSameMonth(day, currentDate);
-                  const isLastCol = di === 6;
+              {week.map((day, di) => {
+                const { transitions, regular } = partitionDayEvents(getEventsForDay(day));
+                const today = isToday(day);
+                const inMonth = isSameMonth(day, currentDate);
+                const isLastCol = di === 6;
+                const custodyBg = custodyBgFor(day);
 
-                  return (
+                return (
+                  <div
+                    key={di}
+                    onClick={() => onDayClick(day)}
+                    className={`
+                      min-h-0 p-1.5 cursor-pointer transition-colors
+                      ${isLastCol ? "" : "border-r border-[var(--border)]"}
+                      ${inMonth ? "" : "opacity-55"}
+                    `}
+                    style={custodyBg ? { background: custodyBg } : undefined}
+                  >
+                    {/* Day number */}
                     <div
-                      key={di}
-                      onClick={() => onDayClick(day)}
                       className={`
-                        min-h-0 p-1.5 cursor-pointer transition-colors
-                        ${isLastCol ? "" : "border-r border-[var(--border)]"}
-                        ${inMonth ? "" : "bg-[var(--bg-sunken)]/60"}
-                        hover:bg-[var(--bg-sunken)]/80
+                        inline-flex items-center justify-center h-[26px] min-w-[26px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
+                        ${today ? "bg-action text-action-fg font-semibold rounded-full" : ""}
+                        ${!today && inMonth ? "text-[var(--ink)]" : ""}
+                        ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
                       `}
                     >
-                      {/* Day number */}
-                      <div
-                        className={`
-                          inline-flex items-center justify-center h-[26px] min-w-[26px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
-                          ${today ? "bg-action text-action-fg font-semibold rounded-full" : ""}
-                          ${!today && inMonth ? "text-[var(--ink)]" : ""}
-                          ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
-                        `}
-                      >
-                        {day.getDate()}
-                      </div>
+                      {day.getDate()}
+                    </div>
 
-                      {/* Transition pills — rendered BEFORE regular events to surface handoffs */}
-                      {transitions.map((e) => {
-                        const startDate = parseTimestamp(e.starts_at);
-                        const time = formatShortTime(startDate);
-                        const direction = transitionDirectionFor(e, day);
-                        const kid = transitionKidFor(e);
-                        return (
-                          <div key={e.id} className="mb-1">
-                            <TransitionPill
-                              time={time}
-                              direction={direction}
-                              kid={kid}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                onEventClick(e);
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
-
-                      {/* Regular events (max 3) */}
-                      {regular.slice(0, 3).map((evt) => {
-                        const variant = eventChipVariant(evt);
-                        const dashed = evt._tentative;
-                        return (
-                          <div
-                            key={evt.id}
+                    {/* Transition pills — rendered BEFORE regular events to surface handoffs */}
+                    {transitions.map((e) => {
+                      const startDate = parseTimestamp(e.starts_at);
+                      const time = formatShortTime(startDate);
+                      const direction = transitionDirectionFor(e, day);
+                      const kid = transitionKidFor(e);
+                      return (
+                        <div key={e.id} className="mb-1">
+                          <TransitionPill
+                            time={time}
+                            direction={direction}
+                            kid={kid}
                             onClick={(ev) => {
                               ev.stopPropagation();
-                              onEventClick(evt);
+                              onEventClick(e);
                             }}
-                            className={`
-                              flex items-center gap-1.5
-                              text-[11px] font-medium leading-tight
-                              px-1.5 py-[3px] mb-0.5
-                              border-l-[2.5px]
-                              ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                              ${kidChipClass[variant]}
-                              cursor-pointer hover:translate-x-[1px] transition-transform
-                              overflow-hidden
-                            `}
-                          >
-                            <span className="text-[10.5px] opacity-80 shrink-0">
-                              {getEventIcon(evt)}
-                            </span>
-                            <span className="truncate">{evt.title}</span>
-                          </div>
-                        );
-                      })}
-
-                      {regular.length > 3 && (
-                        <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
-                          +{regular.length - 3} more
+                          />
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+
+                    {/* Regular events (max 3) */}
+                    {regular.slice(0, 3).map((evt) => {
+                      const variant = eventChipVariant(evt);
+                      const dashed = evt._tentative;
+                      return (
+                        <div
+                          key={evt.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onEventClick(evt);
+                          }}
+                          className={`
+                            flex items-center gap-1.5
+                            text-[11px] font-medium leading-tight
+                            px-1.5 py-[3px] mb-0.5
+                            border-l-[2.5px]
+                            ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                            ${kidChipClass[variant]}
+                            cursor-pointer hover:translate-x-[1px] transition-transform
+                            overflow-hidden
+                          `}
+                        >
+                          <span className="text-[10.5px] opacity-80 shrink-0">
+                            {getEventIcon(evt)}
+                          </span>
+                          <span className="truncate">{evt.title}</span>
+                        </div>
+                      );
+                    })}
+
+                    {regular.length > 3 && (
+                      <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
+                        +{regular.length - 3} more
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}
