@@ -37,12 +37,16 @@ function kidSlot(kid: Kid | undefined, kids: Kid[]): KidId | undefined {
   return undefined;
 }
 
-/** Event chip classes by kid slot. Uses token-backed kid-bg/fg classes. */
+/**
+ * Event chip classes by kid slot. Solid dark kid colour as background with
+ * white text — reads clearly against either custody tint, unlike the earlier
+ * pale-bg variants which blended into the cell.
+ */
 const kidChipClass: Record<"ethan" | "harrison" | "both" | "none", string> = {
-  ethan:    "bg-kid-ethan-bg text-kid-ethan-fg border-kid-ethan",
-  harrison: "bg-kid-harrison-bg text-kid-harrison-fg border-kid-harrison",
-  both:     "bg-[var(--bg-sunken)] text-[var(--ink)] border-[var(--ink)]",
-  none:     "bg-[var(--bg-sunken)] text-[var(--text-muted)] border-[var(--border-hover)]",
+  ethan:    "bg-kid-ethan text-white border-kid-ethan",
+  harrison: "bg-kid-harrison text-white border-kid-harrison",
+  both:     "bg-[var(--ink)] text-[var(--accent-ink)] border-[var(--ink)]",
+  none:     "bg-[var(--bg)] text-[var(--text)] border-[var(--border-hover)]",
 };
 
 /** Format a Date to a compact calendar time like "3:00p" / "10:15a". */
