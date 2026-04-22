@@ -149,7 +149,7 @@ export default function WeekView({
   };
 
   return (
-    <div className="bg-[var(--bg)] border border-[var(--border-strong)] overflow-hidden flex flex-col flex-1">
+    <div className="bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-sm)] overflow-hidden flex flex-col flex-1">
       {/* Day headers + all-day events */}
       <div className="shrink-0 border-b-[3px] border-[var(--border-heavy)]">
         <div className="grid" style={{ gridTemplateColumns: "52px repeat(7, 1fr)" }}>

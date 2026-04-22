@@ -586,7 +586,7 @@ export default function CalendarPage() {
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* ── HEADER ── */}
-      <header className="px-6 py-4 border-b border-[var(--color-divider)] flex items-center justify-between flex-wrap gap-3">
+      <header className="px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <span className="text-2xl">📅</span>
           <div>

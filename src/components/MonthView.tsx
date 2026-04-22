@@ -159,7 +159,7 @@ export default function MonthView({
   }
 
   return (
-    <div className="bg-[var(--bg)] border border-[var(--border-strong)] overflow-hidden flex flex-col flex-1">
+    <div className="bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-sm)] overflow-hidden flex flex-col flex-1">
       {/* Day-of-week header — heavy divider separates it from the first week */}
       <div className="grid grid-cols-7 shrink-0 border-b-[3px] border-[var(--border-heavy)]">
         {DAY_HEADERS.map((d) => (

@@ -64,7 +64,7 @@
      sit on the warmer --bg (stone-50) — appear distinctly as "paper on
      table." Borders on those containers use --border-strong so the edges
      read clearly against the whiter shell. */
-  --bg-page:       #fdfdfc;               /* near-white page shell */
+  --bg-page:       #ffffff;               /* pure white page shell */
   --bg:            var(--stone-50);       /* warm paper — containers */
   --bg-card:       var(--stone-50);       /* cards match containers */
   --bg-sunken:     var(--stone-100);      /* subtle wells (inputs, code) */
