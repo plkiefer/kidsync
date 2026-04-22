@@ -194,7 +194,7 @@ export default function MonthView({
                     onClick={() => onDayClick(day)}
                     className={`
                       min-h-0 p-1.5 cursor-pointer transition-colors
-                      ${isLastCol ? "" : "border-r border-[var(--border)]"}
+                      ${isLastCol ? "" : "border-r-[2px] border-[var(--border-strong)]"}
                       ${inMonth ? "" : "opacity-55"}
                     `}
                     style={custodyBg ? { background: custodyBg } : undefined}
@@ -256,10 +256,11 @@ export default function MonthView({
                           className={`
                             flex items-center gap-1
                             text-[11px] font-medium leading-tight
-                            bg-[var(--bg)] text-[var(--ink)]
+                            bg-white text-[var(--ink)]
                             px-1.5 py-[3px] mb-0.5
                             border-l-[3px]
                             ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                            shadow-[0_0_0_1px_var(--border)]
                             cursor-pointer hover:translate-x-[1px] transition-transform
                             overflow-hidden
                           `}

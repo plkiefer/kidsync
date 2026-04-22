@@ -160,7 +160,7 @@ export default function WeekView({
             return (
               <div
                 key={i}
-                className="px-1 py-2 text-center border-r border-[var(--border)] last:border-r-0"
+                className="px-1 py-2 text-center border-r-[2px] border-[var(--border-strong)] last:border-r-0"
               >
                 <div className="text-[10.5px] font-semibold text-[var(--text-faint)] uppercase tracking-[0.12em]">
                   {DAY_HEADERS[i]}
@@ -183,7 +183,7 @@ export default function WeekView({
                         <div
                           key={evt.id}
                           onClick={(e) => { e.stopPropagation(); onEventClick(evt); }}
-                          className="flex items-center gap-1 text-[10.5px] px-1 py-0.5 truncate cursor-pointer font-medium border-l-[3px] bg-[var(--bg)] text-[var(--ink)]"
+                          className="flex items-center gap-1 text-[10.5px] px-1 py-0.5 truncate cursor-pointer font-medium border-l-[3px] bg-white text-[var(--ink)] shadow-[0_0_0_1px_var(--border)]"
                           style={{ borderLeftColor: typeColor }}
                         >
                           {kidBadge && (
@@ -234,7 +234,7 @@ export default function WeekView({
             return (
               <div
                 key={i}
-                className="relative border-r border-[var(--border)] last:border-r-0"
+                className="relative border-r-[2px] border-[var(--border-strong)] last:border-r-0"
                 style={custodyBg ? { background: custodyBg } : undefined}
                 onClick={() => onDayClick?.(date)}
               >
@@ -261,9 +261,10 @@ export default function WeekView({
                       onClick={(e) => { e.stopPropagation(); onEventClick(evt); }}
                       className={`
                         absolute left-0.5 right-0.5 px-1 py-0.5 overflow-hidden
-                        bg-[var(--bg)] text-[var(--ink)]
+                        bg-white text-[var(--ink)]
                         border-l-[3px]
                         ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                        shadow-[0_0_0_1px_var(--border)]
                         cursor-pointer hover:translate-x-[1px] transition-transform
                       `}
                       style={{

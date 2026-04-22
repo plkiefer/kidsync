@@ -12,6 +12,21 @@ interface KidFilterProps {
   onViewChange: (view: ViewMode) => void;
 }
 
+/** Map a kid by position to the token-backed solid color class. */
+function kidSolidClass(kid: Kid, kids: Kid[]): string {
+  const idx = kids.findIndex((k) => k.id === kid.id);
+  if (idx === 0) return "bg-kid-ethan text-white";
+  if (idx === 1) return "bg-kid-harrison text-white";
+  return "bg-[var(--ink)] text-[var(--accent-ink)]";
+}
+
+/** Shared base class for all filter buttons (editorial outline). */
+const outlineBase =
+  "px-3 py-1.5 text-xs font-medium border border-[var(--border)] " +
+  "bg-[var(--bg)] text-[var(--text-muted)] " +
+  "hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] " +
+  "transition-colors";
+
 export default function KidFilter({
   kids,
   activeKid,
@@ -21,69 +36,58 @@ export default function KidFilter({
 }: KidFilterProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {/* Kid filter */}
+      {/* Kid filter — active kid uses solid kid color, matching the chip style */}
       <button
         onClick={() => onKidChange("all")}
-        className={`
-          px-3 py-1.5 rounded-lg text-xs font-semibold transition-all
-          ${
-            activeKid === "all"
-              ? "bg-[var(--color-accent-soft)] border-[var(--color-accent)] text-[var(--color-accent)]"
-              : "bg-transparent border-[var(--color-border)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)]"
-          }
-        `}
-        style={{
-          border: `1.5px solid ${
-            activeKid === "all" ? "#3B82F6" : "var(--color-border)"
-          }`,
-        }}
+        aria-pressed={activeKid === "all"}
+        className={
+          activeKid === "all"
+            ? "px-3 py-1.5 text-xs font-semibold border border-[var(--ink)] bg-[var(--ink)] text-[var(--accent-ink)]"
+            : outlineBase
+        }
       >
         All
       </button>
 
-      {kids.map((kid) => (
-        <button
-          key={kid.id}
-          onClick={() => onKidChange(kid.id)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-          style={{
-            border: `1.5px solid ${
-              activeKid === kid.id ? kid.color : "var(--color-border)"
-            }`,
-            backgroundColor:
-              activeKid === kid.id ? `${kid.color}22` : "transparent",
-            color: activeKid === kid.id ? kid.color : "var(--color-kid-2)",
-          }}
-        >
-          {kid.name}
-        </button>
-      ))}
+      {kids.map((kid) => {
+        const active = activeKid === kid.id;
+        return (
+          <button
+            key={kid.id}
+            onClick={() => onKidChange(kid.id)}
+            aria-pressed={active}
+            className={
+              active
+                ? `px-3 py-1.5 text-xs font-semibold border border-transparent ${kidSolidClass(kid, kids)}`
+                : outlineBase
+            }
+          >
+            {kid.name}
+          </button>
+        );
+      })}
 
       {/* Divider */}
-      <div className="w-px h-5 bg-[var(--color-input)] mx-1" />
+      <div className="w-px h-5 bg-[var(--border)] mx-1" />
 
-      {/* View toggle */}
-      {(["month", "week", "list"] as const).map((v) => (
-        <button
-          key={v}
-          onClick={() => onViewChange(v)}
-          className={`
-            px-2.5 py-1.5 rounded-lg text-[11px] font-semibold capitalize transition-all
-            ${
-              view === v
-                ? "bg-[var(--color-accent-soft)] border-[var(--color-accent)] text-[var(--color-accent)]"
-                : "bg-transparent border-[var(--color-border)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)]"
+      {/* View toggle — active view uses cerulean action */}
+      {(["month", "week", "list"] as const).map((v) => {
+        const active = view === v;
+        return (
+          <button
+            key={v}
+            onClick={() => onViewChange(v)}
+            aria-pressed={active}
+            className={
+              active
+                ? "px-2.5 py-1.5 text-[11px] font-semibold capitalize border border-action bg-action text-action-fg"
+                : "px-2.5 py-1.5 text-[11px] font-medium capitalize border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             }
-          `}
-          style={{
-            border: `1.5px solid ${
-              view === v ? "#3B82F6" : "var(--color-border)"
-            }`,
-          }}
-        >
-          {v}
-        </button>
-      ))}
+          >
+            {v}
+          </button>
+        );
+      })}
     </div>
   );
 }

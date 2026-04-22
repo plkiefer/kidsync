@@ -602,7 +602,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowScheduleImport(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             title="Import a schedule from PDF, DOCX, or TXT"
           >
             <Upload size={13} />
@@ -610,7 +610,7 @@ export default function CalendarPage() {
           </button>
           <button
             onClick={() => setShowCustodyOverrides(true)}
-            className="relative flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
+            className="relative flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <AlertCircle size={13} />
             Changes
@@ -622,7 +622,7 @@ export default function CalendarPage() {
           </button>
           <button
             onClick={() => setShowCustodySettings(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-xs font-semibold hover:bg-indigo-500/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <Shield size={13} />
             Custody
@@ -630,7 +630,7 @@ export default function CalendarPage() {
           <div className="relative">
             <button
               onClick={() => setShowICalMenu(!showICalMenu)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             >
               <Download size={13} />
               iCal
@@ -689,14 +689,14 @@ export default function CalendarPage() {
           </div>
           <button
             onClick={() => router.push("/settings")}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <Settings size={13} />
             Settings
           </button>
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/30 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <LogOut size={13} />
             Sign Out
@@ -711,7 +711,7 @@ export default function CalendarPage() {
           <button
             onClick={goBack}
             disabled={currentDate <= MIN_DATE}
-            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-8 h-8 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronLeft size={16} />
           </button>
@@ -721,13 +721,13 @@ export default function CalendarPage() {
           <button
             onClick={goForward}
             disabled={currentDate >= MAX_DATE}
-            className="w-8 h-8 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-8 h-8 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight size={16} />
           </button>
           <button
             onClick={goToday}
-            className="px-3 py-1.5 rounded-md border border-blue-500/30 bg-blue-500/10 text-[var(--color-accent)] text-[11px] font-semibold hover:bg-blue-500/20 transition-colors"
+            className="px-3 py-1.5 border border-action/40 bg-action-bg text-action text-[11px] font-semibold hover:bg-action hover:text-action-fg transition-colors"
           >
             Today
           </button>
@@ -807,7 +807,7 @@ export default function CalendarPage() {
           setEditingEvent(null);
           setShowEventModal(true);
         }}
-        className="fixed bottom-7 left-7 w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 text-white text-2xl flex items-center justify-center shadow-xl shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all"
+        className="fixed bottom-7 left-7 w-14 h-14 rounded-full bg-action text-action-fg text-2xl flex items-center justify-center shadow-lg shadow-black/10 hover:bg-action-hover hover:scale-105 transition-all focus-visible:outline-none focus-visible:shadow-[0_0_0_4px_var(--action-ring)]"
       >
         <Plus size={24} />
       </button>
