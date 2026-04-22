@@ -22,7 +22,7 @@ function kidSolidClass(kid: Kid, kids: Kid[]): string {
 
 /** Shared base class for all filter buttons (editorial outline). */
 const outlineBase =
-  "px-3 py-1.5 text-xs font-medium border border-[var(--border)] " +
+  "px-3 py-1.5 text-xs font-medium border border-[var(--border-strong)] " +
   "bg-[var(--bg)] text-[var(--text-muted)] " +
   "hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] " +
   "transition-colors";
@@ -81,7 +81,7 @@ export default function KidFilter({
             className={
               active
                 ? "px-2.5 py-1.5 text-[11px] font-semibold capitalize border border-action bg-action text-action-fg"
-                : "px-2.5 py-1.5 text-[11px] font-medium capitalize border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+                : "px-2.5 py-1.5 text-[11px] font-medium capitalize border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             }
           >
             {v}

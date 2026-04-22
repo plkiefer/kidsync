@@ -40,7 +40,7 @@ export default function ActivityFeed({
 
   return (
     <div className="w-72 shrink-0 self-start sticky top-4">
-      <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-5">
+      <div className="bg-[var(--bg)] border border-[var(--border-strong)] p-5">
         <h3 className="font-display text-sm text-[var(--color-text)] mb-3">
           Recent Activity
         </h3>

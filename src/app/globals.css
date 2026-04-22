@@ -59,8 +59,14 @@
   --border-heavy: #8a867b;
 
   /* ─── Surface + type ─── */
-  --bg:            var(--stone-50);       /* paper */
-  --bg-card:       var(--stone-50);       /* cards don't differ by color */
+  /* Two bg layers: the outermost page shell is nearly pure white so that
+     content containers (calendar, toolbar buttons, activity feed) — which
+     sit on the warmer --bg (stone-50) — appear distinctly as "paper on
+     table." Borders on those containers use --border-strong so the edges
+     read clearly against the whiter shell. */
+  --bg-page:       #fdfdfc;               /* near-white page shell */
+  --bg:            var(--stone-50);       /* warm paper — containers */
+  --bg-card:       var(--stone-50);       /* cards match containers */
   --bg-sunken:     var(--stone-100);      /* subtle wells (inputs, code) */
   --border:        var(--stone-200);
   --border-hover:  var(--stone-300);
@@ -132,7 +138,7 @@
 /* ─── Base ─────────────────────────────────────────────────────────────── */
 body {
   font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg);
+  background: var(--bg-page);
   color: var(--text);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;

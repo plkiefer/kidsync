@@ -602,7 +602,7 @@ export default function CalendarPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowScheduleImport(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             title="Import a schedule from PDF, DOCX, or TXT"
           >
             <Upload size={13} />
@@ -610,7 +610,7 @@ export default function CalendarPage() {
           </button>
           <button
             onClick={() => setShowCustodyOverrides(true)}
-            className="relative flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+            className="relative flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <AlertCircle size={13} />
             Changes
@@ -622,7 +622,7 @@ export default function CalendarPage() {
           </button>
           <button
             onClick={() => setShowCustodySettings(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <Shield size={13} />
             Custody
@@ -630,7 +630,7 @@ export default function CalendarPage() {
           <div className="relative">
             <button
               onClick={() => setShowICalMenu(!showICalMenu)}
-              className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
             >
               <Download size={13} />
               iCal
@@ -689,14 +689,14 @@ export default function CalendarPage() {
           </div>
           <button
             onClick={() => router.push("/settings")}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <Settings size={13} />
             Settings
           </button>
           <button
             onClick={handleSignOut}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <LogOut size={13} />
             Sign Out
@@ -711,7 +711,7 @@ export default function CalendarPage() {
           <button
             onClick={goBack}
             disabled={currentDate <= MIN_DATE}
-            className="w-8 h-8 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-8 h-8 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronLeft size={16} />
           </button>
@@ -721,7 +721,7 @@ export default function CalendarPage() {
           <button
             onClick={goForward}
             disabled={currentDate >= MAX_DATE}
-            className="w-8 h-8 border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            className="w-8 h-8 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <ChevronRight size={16} />
           </button>
