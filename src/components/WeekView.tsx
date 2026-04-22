@@ -160,7 +160,7 @@ export default function WeekView({
             return (
               <div
                 key={i}
-                className="px-1 py-2 text-center border-r-[2px] border-[var(--border-strong)] last:border-r-0"
+                className="px-1 py-2 text-center border-r border-[var(--border-strong)] last:border-r-0"
               >
                 <div className="text-[10.5px] font-semibold text-[var(--text-faint)] uppercase tracking-[0.12em]">
                   {DAY_HEADERS[i]}
@@ -190,7 +190,7 @@ export default function WeekView({
                             <span
                               className={`
                                 inline-flex items-center justify-center shrink-0
-                                w-[12px] h-[12px] rounded-full
+                                w-[12px] h-[12px] rounded-sm
                                 text-[7px] font-bold text-white
                                 ${kidIndicatorClass[kidBadge]}
                               `}
@@ -234,7 +234,7 @@ export default function WeekView({
             return (
               <div
                 key={i}
-                className="relative border-r-[2px] border-[var(--border-strong)] last:border-r-0"
+                className="relative border-r border-[var(--border-strong)] last:border-r-0"
                 style={custodyBg ? { background: custodyBg } : undefined}
                 onClick={() => onDayClick?.(date)}
               >
@@ -279,7 +279,7 @@ export default function WeekView({
                           <span
                             className={`
                               inline-flex items-center justify-center shrink-0
-                              w-[14px] h-[14px] rounded-full
+                              w-[14px] h-[14px] rounded-sm
                               text-[8px] font-bold text-white
                               ${kidIndicatorClass[kidBadge]}
                             `}

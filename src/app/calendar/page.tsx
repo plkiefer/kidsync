@@ -807,7 +807,7 @@ export default function CalendarPage() {
           setEditingEvent(null);
           setShowEventModal(true);
         }}
-        className="fixed bottom-7 left-7 w-14 h-14 rounded-full bg-action text-action-fg text-2xl flex items-center justify-center shadow-lg shadow-black/10 hover:bg-action-hover hover:scale-105 transition-all focus-visible:outline-none focus-visible:shadow-[0_0_0_4px_var(--action-ring)]"
+        className="fixed bottom-7 left-7 w-14 h-14 rounded-[6px] bg-action text-action-fg text-2xl flex items-center justify-center shadow-lg shadow-black/10 hover:bg-action-hover hover:scale-105 transition-all focus-visible:outline-none focus-visible:shadow-[0_0_0_4px_var(--action-ring)]"
       >
         <Plus size={24} />
       </button>

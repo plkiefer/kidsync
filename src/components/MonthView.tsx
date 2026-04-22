@@ -194,7 +194,7 @@ export default function MonthView({
                     onClick={() => onDayClick(day)}
                     className={`
                       min-h-0 p-1.5 cursor-pointer transition-colors
-                      ${isLastCol ? "" : "border-r-[2px] border-[var(--border-strong)]"}
+                      ${isLastCol ? "" : "border-r border-[var(--border-strong)]"}
                       ${inMonth ? "" : "opacity-55"}
                     `}
                     style={custodyBg ? { background: custodyBg } : undefined}
@@ -275,7 +275,7 @@ export default function MonthView({
                             <span
                               className={`
                                 inline-flex items-center justify-center shrink-0
-                                w-[14px] h-[14px] rounded-full
+                                w-[14px] h-[14px] rounded-sm
                                 text-[8px] font-bold text-white
                                 ${kidIndicatorClass[kidBadge]}
                               `}
