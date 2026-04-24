@@ -116,22 +116,40 @@ Rules:
 TITLE CATEGORY PREFIXES — bracketed, at the start of the title.
 ═══════════════════════════════════════════════════════════════════════════
 
-  [Closure]         full day, no school for students (breaks, federal holidays
-                    observed, parent-teacher conference days, general closures)
+A parent scanning their calendar wants ONE answer: "is my kid in school?"
+Every variant of "kid is out" — closure, holiday, teacher workday, staff
+workday, professional development day, potential weather makeup — collapses
+to the same prefix: [Closure]. The subtype (workday vs. break vs. potential
+makeup) goes in NOTES, never the prefix. There are exactly 3 prefixes:
+
+  [Closure]         The kid is OR may be out of school. Use for all of:
+                      - holiday breaks (Thanksgiving, Winter, Spring)
+                      - federal holiday observances (MLK, Presidents', Labor)
+                      - parent-teacher conference days
+                      - general closures
+                      - STAFF / TEACHER WORKDAYS, PROFESSIONAL DEVELOPMENT
+                      - POTENTIAL INCLEMENT WEATHER MAKEUP DAYS
+                    Subcategory goes in notes ('Staff workday', 'Teacher PD',
+                    'Potential weather makeup — only used if school closed
+                    earlier'). For weather makeup days specifically, set
+                    confidence ≤ 0.5 since the day is conditional.
+                    NEVER emit '[Teacher Workday]' or '[Weather Makeup]' as
+                    the prefix — those collapse into [Closure].
+
   [Early Dismissal] partial day. Kid comes home early. Include the dismissal
                     time in notes ('Dismissal at 12:35').
-  [Milestone]       school-year events that DON'T close school: first day of
-                    school, last day of school, quarter end, report cards,
-                    graduation, back-to-school night.
-  [Teacher Workday] staff workdays / professional development. Students out.
-                    Same calendar effect as Closure but tagged so the UI can
-                    style it differently.
-  [Weather Makeup]  POTENTIAL inclement weather make-up days. NOT guaranteed
-                    closures — fallback school days that only activate if
-                    weather closed school earlier. Emit ONLY if explicitly
-                    marked; confidence ≤ 0.5 since conditional.
+
+  [Milestone]       school-year events that DO NOT close school: first day
+                    of school, last day of school, quarter end, report
+                    cards, graduation, back-to-school night.
 
   For non-school schedules (sports, activities, medical) → no prefix.
+
+  When a single day is BOTH a closure AND a weather-makeup candidate (e.g.
+  Presidents' Day also flagged as potential makeup), emit ONE event tagged
+  [Closure] with notes capturing both ('Presidents' Day · also listed as
+  potential weather makeup'). Don't emit two competing rows for the same
+  day, and don't pick the weaker classification — closure wins.
 
 ═══════════════════════════════════════════════════════════════════════════
 NOTES RULES
@@ -146,6 +164,10 @@ Notes carry the per-row context that the (generic) title shed. Combine multiple 
   - Snack parent: 'Snack: Carter'
   - Instructor / coach / doctor: 'Instructor: Ms. Chen' / 'Coach Miller'
   - Dismissal time (early-dismissal): 'Dismissal at 12:35'
+  - School-closure subtype (carried in notes since [Closure] is the only
+    closure prefix): 'Staff workday' / 'Teacher PD' / 'Parent-teacher
+    conferences' / 'Potential weather makeup — only used if school
+    closed earlier'
   - Literal source date range (when you extended it): 'District lists: Nov 23–27'
   - Any other row-specific qualifier the source calls out.
 
@@ -218,13 +240,13 @@ GENERAL RULES
 
 const TYPE_HINTS: Record<string, string> = {
   school:
-    "This is a SCHOOL calendar. ALL rows → event_type: 'school'. Apply RANGE RULES aggressively: parents care about actual out-of-school periods, not the district's framing. Every row gets a bracketed category prefix in its title ([Closure] / [Early Dismissal] / [Milestone] / [Teacher Workday] / [Weather Makeup]). Extract the 'Holidays for 12 Month Employees' or similar summary block first if present — it's usually the cleanest source.",
+    "This is a SCHOOL calendar. ALL rows → event_type: 'school'. Apply RANGE RULES aggressively: parents care about actual out-of-school periods, not the district's framing. EVERY 'kid is out' day — closures, holidays, staff workdays, teacher PD, professional development, AND potential weather makeup days — uses the [Closure] prefix. Subtype goes in notes. Only [Early Dismissal] and [Milestone] differ. Extract the 'Holidays for 12 Month Employees' or similar summary block first if present — it's usually the cleanest source.",
   sports:
     "This is a SPORTS schedule. Every row → event_type: 'sports', subcategory: null. Include opponent and home/away in notes.",
   activity:
     "This is an ACTIVITY / program schedule. event_type: 'activity' per row, subcategory: null.",
   daycare:
-    "This is a DAYCARE / preschool schedule. event_type: 'school' per row (daycare counts as school for scheduling). Apply bracketed category prefixes same as for school calendars — [Closure], [Early Dismissal], [Teacher Workday], [Milestone].",
+    "This is a DAYCARE / preschool schedule. event_type: 'school' per row (daycare counts as school for scheduling). Same prefix rules as school calendars: [Closure] for all kid-out days (closures, staff workdays, weather makeup), [Early Dismissal] for early-pickup, [Milestone] for non-closing events.",
   medical:
     "This is a MEDICAL schedule. event_type: 'medical', no title prefix.",
   other:
