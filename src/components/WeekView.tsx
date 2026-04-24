@@ -122,11 +122,14 @@ export default function WeekView({
     return `${h} ${ampm}`;
   };
 
-  /** Token-based custody bg, flipped to match Phase-2 convention:
+  /** Token-based custody bg for a week-day column.
    *   You  → --you-bg  (cool paper)
    *   Them → --them-bg (warm cream)
-   *   Kids diverge → horizontal 50/50 split */
-  function custodyBgFor(day: Date): string | undefined {
+   *   Turnover this day → vertical gradient that splits at the handoff
+   *     time (top = pre-handoff parent, bottom = post-handoff parent).
+   *   Kids diverge (no turnover) → horizontal 50/50 split between kids.
+   */
+  function custodyBgFor(day: Date, dayEvents: CalendarEvent[]): string | undefined {
     if (!getCustodyForDate || !currentUserId) return undefined;
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
@@ -134,12 +137,43 @@ export default function WeekView({
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    if (allSame) {
-      return firstParentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    const colorFor = (parentId: string | undefined) =>
+      parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+
+    // If there's a turnover (custody transition) on this day, split the
+    // column vertically at the handoff time so each parent owns their
+    // portion of the column.
+    const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
+    if (turnoverEvt && allSame) {
+      const isPickup = turnoverEvt.id.endsWith("-pickup");
+      const turnoverHour = getHourFromDateStr(turnoverEvt.starts_at);
+      const rawPct = ((turnoverHour - startHour) / totalHours) * 100;
+      const splitPct = Math.max(0, Math.min(100, rawPct));
+
+      const adjacent = new Date(day);
+      adjacent.setDate(adjacent.getDate() + (isPickup ? -1 : 1));
+      const adjacentCustody = getCustodyForDate(adjacent);
+      const adjacentParentId = adjacentCustody[kidIds[0]]?.parentId;
+
+      const todayColor = colorFor(firstParentId);
+      const adjacentColor = colorFor(adjacentParentId);
+
+      // Pickup day: adjacent (yesterday) parent owns the top, today's
+      // parent owns the bottom. Dropoff day: today's parent owns the
+      // top, adjacent (tomorrow) parent owns the bottom.
+      const preBg = isPickup ? adjacentColor : todayColor;
+      const postBg = isPickup ? todayColor : adjacentColor;
+      return `linear-gradient(to bottom, ${preBg} 0%, ${preBg} ${splitPct}%, ${postBg} ${splitPct}%, ${postBg} 100%)`;
     }
+
+    if (allSame) {
+      return colorFor(firstParentId);
+    }
+
+    // Kid-split (rare) — split horizontally 50/50 for each kid's parent.
     const ordered = kids.map((k) => k.id).filter((id) => custody[id]);
-    const topBg = custody[ordered[0]]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
-    const bottomBg = custody[ordered[1]]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    const topBg = colorFor(custody[ordered[0]]?.parentId);
+    const bottomBg = colorFor(custody[ordered[1]]?.parentId);
     return `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`;
   }
 
@@ -229,7 +263,7 @@ export default function WeekView({
           {/* Day columns */}
           {days.map((date, i) => {
             const timedEvents = getEventsForDay(date, false);
-            const custodyBg = custodyBgFor(date);
+            const custodyBg = custodyBgFor(date, timedEvents);
 
             return (
               <div
