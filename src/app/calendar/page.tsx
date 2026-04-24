@@ -605,6 +605,24 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Primary action — filled cerulean to stand apart from the outline
+              config buttons (Import / Changes / Custody / …) that follow.
+              Sits first so the primary calendar action is the leftmost,
+              visually nearest to the day grid. */}
+          <button
+            onClick={() => {
+              const d = new Date();
+              d.setHours(9, 0, 0, 0);
+              setInitialDate(d);
+              setEditingEvent(null);
+              setShowEventModal(true);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--action)] bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
+            title="Create a new event"
+          >
+            <Plus size={13} />
+            New event
+          </button>
           <button
             onClick={() => setShowScheduleImport(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
@@ -802,20 +820,6 @@ export default function CalendarPage() {
           currentUserId={user?.id ?? ""}
         />
       </div>
-
-      {/* ── FAB ── */}
-      <button
-        onClick={() => {
-          const d = new Date();
-          d.setHours(9, 0, 0, 0);
-          setInitialDate(d);
-          setEditingEvent(null);
-          setShowEventModal(true);
-        }}
-        className="fixed bottom-7 left-7 w-14 h-14 rounded-[6px] bg-action text-action-fg text-2xl flex items-center justify-center shadow-lg shadow-black/10 hover:bg-action-hover hover:scale-105 transition-all focus-visible:outline-none focus-visible:shadow-[0_0_0_4px_var(--action-ring)]"
-      >
-        <Plus size={24} />
-      </button>
 
       {/* ── MODALS ── */}
       {showDetailModal && editingEvent && (
