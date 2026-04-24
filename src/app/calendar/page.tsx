@@ -641,7 +641,7 @@ export default function CalendarPage() {
               iCal
             </button>
             {showICalMenu && (
-              <div className="absolute right-0 top-10 z-30 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg py-1.5 min-w-[280px] animate-scale-in">
+              <div className="absolute right-0 top-10 z-30 bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm shadow-[var(--shadow-md)] py-1.5 min-w-[280px] animate-scale-in">
                 <button
                   onClick={() => { handleExportICal(); setShowICalMenu(false); }}
                   className="w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--color-surface-alt)] transition-colors text-[var(--color-text)] flex items-center gap-2"
@@ -753,7 +753,7 @@ export default function CalendarPage() {
         {/* Calendar area */}
         <div className="flex-1 min-w-0 flex flex-col">
           {eventsLoading ? (
-            <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-12 text-center">
+            <div className="bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-sm)] p-12 text-center">
               <div className="animate-pulse text-[var(--color-text-faint)] text-sm">
                 Loading events...
               </div>

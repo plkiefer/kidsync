@@ -311,7 +311,7 @@ export default function WeekView({
                 width: `calc((100% - 52px) / 7)`,
               }}
             >
-              <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-action" />
+              <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-sm bg-action" />
             </div>
           )}
         </div>
