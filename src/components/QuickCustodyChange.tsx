@@ -134,24 +134,24 @@ export default function QuickCustodyChange({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-sm border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--bg)] w-full max-w-sm border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        {/* Color bar */}
-        <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-indigo-500 to-amber-500" />
+        {/* Action identity bar */}
+        <div className="h-1.5 bg-action" />
 
         {submitted ? (
           <div className="p-6 text-center">
-            <CheckCircle size={36} className="text-green-500 mx-auto mb-3" />
+            <CheckCircle size={32} className="mx-auto mb-3" style={{ color: "#3D7A4F" }} />
             <h3 className="font-display text-base font-semibold mb-1">
               Change Requested
             </h3>
-            <p className="text-xs text-[var(--color-text-faint)] mb-5">
+            <p className="text-xs text-[var(--text-faint)] mb-5">
               {otherParent?.full_name?.split(" ")[0] || "The other parent"} will
               be notified and can approve or dispute this change.
             </p>
             <button
               onClick={onClose}
-              className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
+              className="px-6 py-2 rounded-sm bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
             >
               Done
             </button>
@@ -171,7 +171,8 @@ export default function QuickCustodyChange({
               </div>
               <button
                 onClick={onClose}
-                className="w-7 h-7 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+                className="w-7 h-7 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+                aria-label="Close"
               >
                 <X size={14} />
               </button>
@@ -191,16 +192,19 @@ export default function QuickCustodyChange({
                         <button
                           key={kid.id}
                           onClick={() => toggleKid(kid.id)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors border"
                           style={{
-                            backgroundColor: selected ? `${kid.color}22` : "var(--color-input)",
-                            color: selected ? kid.color : "var(--color-text-faint)",
-                            border: `1.5px solid ${selected ? kid.color : "transparent"}`,
+                            backgroundColor: selected ? kid.color : "var(--bg)",
+                            color: selected ? "#ffffff" : "var(--text-muted)",
+                            borderColor: selected ? kid.color : "var(--border)",
                           }}
                         >
                           <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: kid.color }}
+                            className="w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{
+                              backgroundColor: selected ? "#ffffff" : kid.color,
+                              opacity: selected ? 0.8 : 1,
+                            }}
                           />
                           {kid.name}
                         </button>
@@ -221,7 +225,7 @@ export default function QuickCustodyChange({
                     type="date"
                     value={newDate}
                     onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+                    className="w-full mt-1 px-3 py-2 rounded-sm bg-[var(--bg-sunken)] border border-[var(--border)] text-sm text-[var(--ink)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                 </div>
                 <div>
@@ -233,7 +237,7 @@ export default function QuickCustodyChange({
                     type="time"
                     value={newTime}
                     onChange={(e) => setNewTime(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)] text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-accent)]"
+                    className="w-full mt-1 px-3 py-2 rounded-sm bg-[var(--bg-sunken)] border border-[var(--border)] text-sm text-[var(--ink)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                 </div>
               </div>
@@ -248,15 +252,15 @@ export default function QuickCustodyChange({
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   placeholder="e.g., Doctor appointment, schedule conflict"
-                  className="w-full mt-1 px-3 py-2 rounded-lg bg-[var(--color-input)] border border-[var(--color-border)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)]"
+                  className="w-full mt-1 px-3 py-2 rounded-sm bg-[var(--bg-sunken)] border border-[var(--border)] text-sm text-[var(--ink)] placeholder:text-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                 />
               </div>
 
               {/* Compliance warning if date changed */}
               {hasChanges && (
-                <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5">
-                  <AlertTriangle size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-amber-300 leading-relaxed">
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-sm border border-[var(--accent-amber)]/30 bg-[var(--accent-amber-tint)]">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" style={{ color: "var(--accent-amber)" }} />
+                  <p className="text-[10.5px] leading-relaxed" style={{ color: "var(--accent-amber)" }}>
                     This change differs from the custody agreement.{" "}
                     {otherParent?.full_name?.split(" ")[0]} will be notified and
                     can approve or dispute.
@@ -265,7 +269,7 @@ export default function QuickCustodyChange({
               )}
 
               {error && (
-                <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                <div className="text-xs rounded-sm px-3 py-2 border border-[var(--accent-red)]/30 bg-[var(--accent-red-tint)]" style={{ color: "var(--accent-red)" }}>
                   {error}
                 </div>
               )}
@@ -274,7 +278,7 @@ export default function QuickCustodyChange({
               <button
                 onClick={handleSubmit}
                 disabled={submitting || (!hasChanges && !note)}
-                className="w-full px-4 py-2.5 rounded-xl bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 rounded-sm bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {submitting ? (
                   <Loader2 size={14} className="animate-spin" />

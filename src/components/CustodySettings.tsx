@@ -200,7 +200,7 @@ export default function CustodySettings({
   /** Reusable block that renders parsed terms */
   const renderTermsSummary = (t: ParsedCustodyTerms) => (
     <div className="space-y-3">
-      <div className="bg-[var(--color-input)] rounded-xl p-4">
+      <div className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-4">
         <div className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
           Summary
         </div>
@@ -210,7 +210,7 @@ export default function CustodySettings({
       </div>
 
       {t.alternating_weekends?.enabled && (
-        <div className="bg-[var(--color-input)] rounded-xl p-4">
+        <div className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-4">
           <div className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1">
             Weekend Schedule
           </div>
@@ -224,7 +224,7 @@ export default function CustodySettings({
       )}
 
       {t.holidays && t.holidays.length > 0 && (
-        <div className="bg-[var(--color-input)] rounded-xl p-4">
+        <div className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-4">
           <div className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
             Holiday Provisions
           </div>
@@ -244,7 +244,7 @@ export default function CustodySettings({
       )}
 
       {t.provisions && t.provisions.length > 0 && (
-        <div className="bg-[var(--color-input)] rounded-xl p-4">
+        <div className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-4">
           <div className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
             Key Provisions
           </div>
@@ -268,14 +268,14 @@ export default function CustodySettings({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--bg)] w-full max-w-lg max-h-[85vh] flex flex-col border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-divider)] shrink-0">
           <h2 className="font-display text-lg font-bold">Custody Settings</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="w-7 h-7 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <X size={16} />
           </button>
@@ -292,15 +292,15 @@ export default function CustodySettings({
                   Current Custody Agreement
                 </span>
                 {hasSchedule && (
-                  <span className="px-2 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-bold">
+                  <span className="px-1.5 py-[1px] rounded-sm border border-[#8ea18a]/50 bg-[#8ea18a]/15 text-[#3D7A4F] text-[10px] font-semibold uppercase tracking-[0.08em]">
                     Active
                   </span>
                 )}
               </div>
 
               {/* File info */}
-              <div className="flex items-center gap-3 bg-[var(--color-input)] rounded-xl p-3">
-                <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0">
+              <div className="flex items-center gap-3 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-3">
+                <div className="w-9 h-9 rounded-sm bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center shrink-0">
                   <FileText size={18} className="text-indigo-400" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -317,7 +317,7 @@ export default function CustodySettings({
                 {latestAgreement!.file_path && (
                   <button
                     onClick={handleDownloadAgreement}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors shrink-0"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-sm border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors shrink-0"
                   >
                     <ExternalLink size={11} />
                     View
@@ -332,13 +332,13 @@ export default function CustodySettings({
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors"
+                  className="px-4 py-2 rounded-sm border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
                 >
                   Close
                 </button>
                 <button
                   onClick={() => setStep("upload")}
-                  className="flex-1 px-4 py-2.5 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 text-xs font-semibold hover:bg-indigo-500/20 transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 rounded-sm border border-action/40 bg-action-bg text-action text-xs font-semibold hover:bg-action/10 transition-colors flex items-center justify-center gap-2"
                 >
                   <Upload size={14} />
                   Upload New Agreement
@@ -350,7 +350,7 @@ export default function CustodySettings({
           {/* ── Upload step ── */}
           {step === "upload" && (
             <div className="text-center py-8">
-              <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto mb-4">
+              <div className="w-14 h-14 rounded-sm bg-action-bg border border-action/30 flex items-center justify-center mx-auto mb-4 text-action">
                 <Upload size={28} className="text-indigo-500" />
               </div>
               <h3 className="font-display text-base font-semibold mb-2">
@@ -370,7 +370,7 @@ export default function CustodySettings({
               />
               <button
                 onClick={() => fileRef.current?.click()}
-                className="px-6 py-3 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
+                className="px-6 py-2.5 rounded-sm bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Choose File
               </button>
@@ -414,14 +414,14 @@ export default function CustodySettings({
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => { setStep("upload"); setTerms(null); }}
-                  className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-xs font-semibold text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)] transition-colors"
+                  className="px-4 py-2 rounded-sm border border-[var(--border)] text-xs font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
                 >
                   Re-upload
                 </button>
                 <button
                   onClick={handleApplySchedule}
                   disabled={saving}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 rounded-sm bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {saving ? (
                     <Loader2 size={14} className="animate-spin" />
@@ -448,7 +448,7 @@ export default function CustodySettings({
               </p>
               <button
                 onClick={onClose}
-                className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
+                className="px-6 py-2.5 rounded-sm bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Done
               </button>
@@ -462,12 +462,12 @@ export default function CustodySettings({
               <h3 className="font-display text-base font-semibold mb-2">
                 Something Went Wrong
               </h3>
-              <p className="text-xs text-red-400 mb-6 max-w-sm mx-auto">
+              <p className="text-xs mb-6 max-w-sm mx-auto" style={{ color: "var(--accent-red)" }}>
                 {error}
               </p>
               <button
                 onClick={() => { setStep(latestAgreement ? "current" : "upload"); setError(""); }}
-                className="px-6 py-2.5 rounded-xl bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
+                className="px-6 py-2.5 rounded-sm bg-action text-action-fg text-sm font-semibold hover:bg-action-hover transition-colors"
               >
                 Try Again
               </button>

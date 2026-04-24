@@ -45,26 +45,26 @@ const STATUS_CONFIG: Record<
 > = {
   pending: {
     label: "Pending",
-    color: "text-amber-400",
-    bg: "bg-amber-500/10",
+    color: "text-[var(--accent-amber)]",
+    bg: "bg-[var(--accent-amber-tint)] border-[var(--accent-amber)]/30",
     icon: Clock,
   },
   approved: {
     label: "Approved",
-    color: "text-green-400",
-    bg: "bg-green-500/10",
+    color: "text-[#3D7A4F]",
+    bg: "bg-[#8ea18a]/15 border-[#8ea18a]/50",
     icon: CheckCircle,
   },
   disputed: {
     label: "Disputed",
-    color: "text-red-400",
-    bg: "bg-red-500/10",
+    color: "text-[var(--accent-red)]",
+    bg: "bg-[var(--accent-red-tint)] border-[var(--accent-red)]/30",
     icon: XCircle,
   },
   withdrawn: {
     label: "Withdrawn",
-    color: "text-gray-400",
-    bg: "bg-gray-500/10",
+    color: "text-[var(--text-muted)]",
+    bg: "bg-[var(--bg-sunken)] border-[var(--border)]",
     icon: XCircle,
   },
 };
@@ -73,13 +73,13 @@ const COMPLIANCE_CONFIG: Record<
   ComplianceStatus,
   { label: string; color: string; icon: typeof Shield }
 > = {
-  unchecked: { label: "Not Checked", color: "text-gray-400", icon: Shield },
+  unchecked: { label: "Not Checked", color: "text-[var(--text-muted)]", icon: Shield },
   compliant: {
     label: "Compliant",
-    color: "text-green-400",
+    color: "text-[#3D7A4F]",
     icon: CheckCircle,
   },
-  flagged: { label: "Flagged", color: "text-red-400", icon: AlertTriangle },
+  flagged: { label: "Flagged", color: "text-[var(--accent-red)]", icon: AlertTriangle },
 };
 
 export default function CustodyOverrides({
@@ -199,7 +199,7 @@ export default function CustodyOverrides({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-2xl border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in max-h-[85vh] flex flex-col"
+        className="bg-[var(--bg)] w-full max-w-2xl border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in max-h-[85vh] flex flex-col"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-divider)] shrink-0">
@@ -208,14 +208,14 @@ export default function CustodyOverrides({
               Custody Change Requests
             </h2>
             {pendingCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold">
+              <span className="px-1.5 py-[1px] rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber-tint)] text-[var(--accent-amber)] text-[10px] font-semibold uppercase tracking-[0.08em]">
                 {pendingCount} needs response
               </span>
             )}
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="w-7 h-7 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <X size={16} />
           </button>
@@ -256,7 +256,7 @@ export default function CustodyOverrides({
                   return (
                     <div
                       key={override.id}
-                      className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 space-y-2.5"
+                      className="rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber-tint)] p-3 space-y-2.5"
                     >
                       <div className="flex items-start gap-2">
                         <Clock size={15} className="text-amber-400 shrink-0 mt-0.5" />
@@ -285,7 +285,7 @@ export default function CustodyOverrides({
                         }}
                         placeholder="Add a comment (required to dispute)..."
                         rows={1}
-                        className="w-full px-3 py-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-xs text-[var(--color-text)] placeholder:text-[var(--color-text-faint)] resize-none"
+                        className="w-full px-3 py-1.5 rounded-sm bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--ink)] placeholder:text-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] resize-none"
                       />
 
                       {/* Approve / Dispute — always visible */}
@@ -293,7 +293,7 @@ export default function CustodyOverrides({
                         <button
                           onClick={() => handleRespond(allIds, "approved")}
                           disabled={respondLoading}
-                          className="flex-1 px-3 py-2 rounded-lg bg-green-600 text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          className="flex-1 px-3 py-2 rounded-sm bg-[#3D7A4F] text-white text-xs font-semibold hover:bg-[#336942] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
                         >
                           {respondLoading && respondingTo === override.id ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -305,7 +305,7 @@ export default function CustodyOverrides({
                         <button
                           onClick={() => handleRespond(allIds, "disputed")}
                           disabled={respondLoading || !(respondingTo === override.id && responseNote.trim())}
-                          className="flex-1 px-3 py-2 rounded-lg bg-red-600 text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          className="flex-1 px-3 py-2 rounded-sm bg-[var(--accent-red)] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
                         >
                           {respondLoading && respondingTo === override.id ? (
                             <Loader2 size={12} className="animate-spin" />
@@ -323,7 +323,7 @@ export default function CustodyOverrides({
                 return (
                   <div
                     key={override.id}
-                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-input)]"
+                    className="rounded-sm border border-[var(--border)] bg-[var(--bg-sunken)]"
                   >
                     <button
                       onClick={() => setExpandedOverride(isExpanded ? null : override.id)}
@@ -338,7 +338,7 @@ export default function CustodyOverrides({
                           {requesterName} → {getMemberName(override.parent_id)}
                         </div>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCfg.bg} ${statusCfg.color}`}>
+                      <span className={`px-1.5 py-[1px] rounded-sm border text-[10px] font-semibold uppercase tracking-[0.08em] ${statusCfg.bg} ${statusCfg.color}`}>
                         {statusCfg.label}
                       </span>
                       {isExpanded ? <ChevronUp size={14} className="text-[var(--color-text-faint)]" /> : <ChevronDown size={14} className="text-[var(--color-text-faint)]" />}
@@ -362,7 +362,7 @@ export default function CustodyOverrides({
                           <button
                             onClick={() => handleRespond(allIds, "withdrawn")}
                             disabled={respondLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[10px] font-semibold text-[var(--color-text-faint)] hover:bg-[var(--color-surface-alt)] transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
                           >
                             <XCircle size={12} />
                             Withdraw Request
