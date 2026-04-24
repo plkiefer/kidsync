@@ -116,7 +116,9 @@ export default function MonthView({
   }
 
   /**
-   * Compute the custody background for a day cell.
+   * Compute the custody background for a day cell plus — when there's a
+   * time-based split — the split offset so the caller can position the
+   * TransitionPill exactly on that line.
    *
    *  - Whole household, no transition on this day → solid parent color.
    *  - Turnover event on this day → vertical gradient that splits at
@@ -126,11 +128,16 @@ export default function MonthView({
    *  - Kids diverge between parents (rare, no turnover) → horizontal
    *    50/50 for the two kids.
    */
-  function custodyBgFor(day: Date, dayEvents: CalendarEvent[]): string | undefined {
-    if (!getCustodyForDate || !currentUserId) return undefined;
+  function custodyInfoFor(
+    day: Date,
+    dayEvents: CalendarEvent[]
+  ): { background: string | undefined; splitPct: number | null } {
+    if (!getCustodyForDate || !currentUserId) {
+      return { background: undefined, splitPct: null };
+    }
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
-    if (kidIds.length === 0) return undefined;
+    if (kidIds.length === 0) return { background: undefined, splitPct: null };
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
@@ -157,18 +164,24 @@ export default function MonthView({
       // Dropoff: today owns top, adjacent (tomorrow) owns bottom.
       const preBg = isPickup ? adjacentColor : todayColor;
       const postBg = isPickup ? todayColor : adjacentColor;
-      return `linear-gradient(to bottom, ${preBg} 0%, ${preBg} ${splitPct}%, ${postBg} ${splitPct}%, ${postBg} 100%)`;
+      return {
+        background: `linear-gradient(to bottom, ${preBg} 0%, ${preBg} ${splitPct}%, ${postBg} ${splitPct}%, ${postBg} 100%)`,
+        splitPct,
+      };
     }
 
     if (allSame) {
-      return colorFor(firstParentId);
+      return { background: colorFor(firstParentId), splitPct: null };
     }
 
     // Kid-split: horizontal 50/50 for the two kids' parents.
     const orderedKidIds = kids.map((k) => k.id).filter((id) => custody[id]);
     const topBg = colorFor(custody[orderedKidIds[0]]?.parentId);
     const bottomBg = colorFor(custody[orderedKidIds[1]]?.parentId);
-    return `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`;
+    return {
+      background: `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`,
+      splitPct: null,
+    };
   }
 
   return (
@@ -199,14 +212,21 @@ export default function MonthView({
                 const today = isToday(day);
                 const inMonth = isSameMonth(day, currentDate);
                 const isLastCol = di === 6;
-                const custodyBg = custodyBgFor(day, dayEvents);
+                const { background: custodyBg, splitPct } = custodyInfoFor(day, dayEvents);
+                // Turnovers render as the pill on the split line (not in the
+                // chronological event stack) so the custody color transition
+                // and the handoff chip share one horizontal axis.
+                const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
+                const nonTurnoverEvents = turnoverEvt
+                  ? dayEvents.filter((e) => !e.id.startsWith("turnover-"))
+                  : dayEvents;
 
                 return (
                   <div
                     key={di}
                     onClick={() => onDayClick(day)}
                     className={`
-                      min-h-0 p-1.5 cursor-pointer transition-colors
+                      relative min-h-0 p-1.5 cursor-pointer transition-colors
                       ${isLastCol ? "" : "border-r border-[var(--border-strong)]"}
                       ${inMonth ? "" : "opacity-55"}
                     `}
@@ -224,32 +244,11 @@ export default function MonthView({
                       {day.getDate()}
                     </div>
 
-                    {/* Unified chronological list (max 3 items).
-                        Turnover events render as the cerulean TransitionPill,
-                        regular events as the paper "ticket" chip. They flow
-                        in time order so a 10am dentist → 3pm handoff → 5pm
-                        soccer lands top-to-bottom correctly, and the
-                        handoff pill naturally sits near the cell's
-                        background split. */}
-                    {dayEvents.slice(0, 3).map((evt) => {
-                      if (evt.id.startsWith("turnover-")) {
-                        const time = formatShortTime(parseTimestamp(evt.starts_at));
-                        const direction = transitionDirectionFor(evt, day);
-                        const kid = transitionKidFor(evt);
-                        return (
-                          <div key={evt.id} className="mb-1">
-                            <TransitionPill
-                              time={time}
-                              direction={direction}
-                              kid={kid}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                onEventClick(evt);
-                              }}
-                            />
-                          </div>
-                        );
-                      }
+                    {/* Chronological event stack (max 3). Turnovers are
+                        excluded from this list — they ride on the pill layer
+                        below. Events above the pill are pre-handoff, events
+                        below are post-handoff (natural chrono order). */}
+                    {nonTurnoverEvents.slice(0, 3).map((evt) => {
                       const typeColor = getEventTypeColor(evt);
                       const kidBadge = singleKidIndicator(evt);
                       const dashed = evt._tentative;
@@ -301,11 +300,45 @@ export default function MonthView({
                       );
                     })}
 
-                    {dayEvents.length > 3 && (
+                    {nonTurnoverEvents.length > 3 && (
                       <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
-                        +{dayEvents.length - 3} more
+                        +{nonTurnoverEvents.length - 3} more
                       </div>
                     )}
+
+                    {/* Turnover pill — absolutely positioned on the custody
+                        split line so the color transition and the handoff
+                        event read as one continuous horizontal rule. Clamped
+                        away from cell edges so the pill never collides with
+                        the day number or cuts off. */}
+                    {turnoverEvt && splitPct !== null && (() => {
+                      const time = formatShortTime(parseTimestamp(turnoverEvt.starts_at));
+                      const direction = transitionDirectionFor(turnoverEvt, day);
+                      const kid = transitionKidFor(turnoverEvt);
+                      const clampedTop = Math.max(18, Math.min(92, splitPct));
+                      return (
+                        <div
+                          className="absolute left-1.5 right-1.5 pointer-events-none"
+                          style={{
+                            top: `${clampedTop}%`,
+                            transform: "translateY(-50%)",
+                            zIndex: 5,
+                          }}
+                        >
+                          <div className="pointer-events-auto">
+                            <TransitionPill
+                              time={time}
+                              direction={direction}
+                              kid={kid}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onEventClick(turnoverEvt);
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
