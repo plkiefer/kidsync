@@ -81,6 +81,50 @@ const EVENT_TYPES: EventType[] = [
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
+const IMAGE_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+const DOC_EXTENSIONS = new Set(["pdf", "docx", "doc", "txt"]);
+const MAX_IMAGES = 8;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB per image raw → ~5.3 MB base64
+const FILE_ACCEPT = ".pdf,.docx,.doc,.txt,.jpg,.jpeg,.png,.webp,.gif";
+
+function fileExt(file: File): string {
+  return file.name.split(".").pop()?.toLowerCase() ?? "";
+}
+function isImageFile(file: File): boolean {
+  return IMAGE_EXTENSIONS.has(fileExt(file));
+}
+function isDocFile(file: File): boolean {
+  return DOC_EXTENSIONS.has(fileExt(file));
+}
+function fileMediaType(file: File): string {
+  // Trust the browser-provided MIME when present; fall back to extension
+  // mapping for environments that drop it.
+  if (file.type) return file.type;
+  const ext = fileExt(file);
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "png") return "image/png";
+  if (ext === "gif") return "image/gif";
+  if (ext === "webp") return "image/webp";
+  return "application/octet-stream";
+}
+/** Read a file as a base-64 string (no data-URI prefix). */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Failed to read file as text"));
+        return;
+      }
+      const commaIdx = result.indexOf(",");
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+    reader.readAsDataURL(file);
+  });
+}
+
 /**
  * Compose a datetime-local string ("YYYY-MM-DDTHH:mm") from separate date +
  * time components. For all-day rows we pin to 00:00 / 23:59 to match how the
@@ -144,7 +188,7 @@ export default function ScheduleImportModal({
   const [step, setStep] = useState<"configure" | "parsing" | "review" | "inserting" | "done">("configure");
 
   // Step 1 state
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [scheduleType, setScheduleType] = useState<ScheduleType>("school");
   const [kidIds, setKidIds] = useState<string[]>(kids.length > 0 ? [kids[0].id] : []);
   const [yearContext, setYearContext] = useState<string>("");
@@ -163,41 +207,86 @@ export default function ScheduleImportModal({
 
   // ── Derived ──
   const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
-  const canParse = !!file && kidIds.length > 0 && !!scheduleType;
-  const fileLabel = file ? `${file.name} (${(file.size / 1024).toFixed(0)} KB)` : "Choose PDF, DOCX, or TXT";
+  const allImages = files.length > 0 && files.every(isImageFile);
+  const singleDoc = files.length === 1 && isDocFile(files[0]);
+  const validUpload = allImages || singleDoc;
+  const canParse = validUpload && kidIds.length > 0 && !!scheduleType;
+  const fileLabel =
+    files.length === 0
+      ? "Choose PDF, DOCX, TXT, or photos"
+      : files.length === 1
+        ? `${files[0].name} (${(files[0].size / 1024).toFixed(0)} KB)`
+        : `${files.length} photos · ${(files.reduce((s, f) => s + f.size, 0) / 1024).toFixed(0)} KB total`;
 
   // ── Step 1 → Step 2: extract + parse ──
+  // Two paths into the parser:
+  //   Image mode: 1–N photos → base64 encode → send directly to /parse with
+  //               `images`. Claude vision reads the schedule off the photos.
+  //   Doc mode:   1 PDF/DOCX/TXT → /api/custody/extract (pdfjs / mammoth /
+  //               utf-8) → forward extracted text to /parse with `text`.
   const handleParse = async () => {
-    if (!file) return;
+    if (files.length === 0) return;
     setErrorMsg(null);
+
+    if (allImages && files.length > MAX_IMAGES) {
+      setErrorMsg(`Up to ${MAX_IMAGES} photos per import.`);
+      return;
+    }
+    if (allImages) {
+      const tooBig = files.find((f) => f.size > MAX_IMAGE_BYTES);
+      if (tooBig) {
+        setErrorMsg(
+          `"${tooBig.name}" is ${(tooBig.size / 1024 / 1024).toFixed(1)} MB — max 4 MB per photo. Try a lower-resolution shot.`
+        );
+        return;
+      }
+    }
+
     setStep("parsing");
 
     try {
-      // 1. Extract text via existing generic extractor (custody/extract is content-agnostic).
-      const formData = new FormData();
-      formData.append("file", file);
-      const extractRes = await fetch("/api/custody/extract", {
-        method: "POST",
-        body: formData,
-      });
-      if (!extractRes.ok) {
-        const err = await extractRes.json().catch(() => ({}));
-        throw new Error(err.error || `Text extraction failed (${extractRes.status})`);
-      }
-      const { text } = await extractRes.json();
-      if (!text || typeof text !== "string") {
-        throw new Error("No text could be extracted from the document.");
-      }
+      let parseBody: Record<string, unknown>;
 
-      // 2. Parse via Claude.
-      const parseRes = await fetch("/api/schedules/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      if (allImages) {
+        // Image mode — base64-encode every photo, preserve order.
+        const images = await Promise.all(
+          files.map(async (f) => ({
+            mediaType: fileMediaType(f),
+            data: await fileToBase64(f),
+          }))
+        );
+        parseBody = {
+          images,
+          scheduleType,
+          yearContext: yearContext.trim() || undefined,
+        };
+      } else {
+        // Doc mode — run through the existing text extractor first.
+        const formData = new FormData();
+        formData.append("file", files[0]);
+        const extractRes = await fetch("/api/custody/extract", {
+          method: "POST",
+          body: formData,
+        });
+        if (!extractRes.ok) {
+          const err = await extractRes.json().catch(() => ({}));
+          throw new Error(err.error || `Text extraction failed (${extractRes.status})`);
+        }
+        const { text } = await extractRes.json();
+        if (!text || typeof text !== "string") {
+          throw new Error("No text could be extracted from the document.");
+        }
+        parseBody = {
           text,
           scheduleType,
           yearContext: yearContext.trim() || undefined,
-        }),
+        };
+      }
+
+      const parseRes = await fetch("/api/schedules/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parseBody),
       });
       if (!parseRes.ok) {
         const err = await parseRes.json().catch(() => ({}));
@@ -333,10 +422,12 @@ export default function ScheduleImportModal({
         <div className="px-6 py-5">
           {step === "configure" && (
             <ConfigureStep
-              file={file}
-              onFileChange={setFile}
+              files={files}
+              onFilesChange={setFiles}
               fileInputRef={fileInputRef}
               fileLabel={fileLabel}
+              validUpload={validUpload}
+              allImages={allImages}
               scheduleType={scheduleType}
               onScheduleTypeChange={setScheduleType}
               kids={kids}
@@ -484,10 +575,12 @@ export default function ScheduleImportModal({
 // ─── Sub-components ────────────────────────────────────────────────────────
 
 function ConfigureStep(props: {
-  file: File | null;
-  onFileChange: (f: File | null) => void;
+  files: File[];
+  onFilesChange: (f: File[]) => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   fileLabel: string;
+  validUpload: boolean;
+  allImages: boolean;
   scheduleType: ScheduleType;
   onScheduleTypeChange: (t: ScheduleType) => void;
   kids: Kid[];
@@ -498,7 +591,7 @@ function ConfigureStep(props: {
   errorMsg: string | null;
 }) {
   const {
-    file, onFileChange, fileInputRef, fileLabel,
+    files, onFilesChange, fileInputRef, fileLabel, validUpload, allImages,
     scheduleType, onScheduleTypeChange,
     kids, kidIds, onKidIdsChange,
     yearContext, onYearContextChange,
@@ -509,6 +602,32 @@ function ConfigureStep(props: {
     if (kidIds.includes(id)) onKidIdsChange(kidIds.filter((k) => k !== id));
     else onKidIdsChange([...kidIds, id]);
   };
+
+  const handleFilesSelected = (selected: FileList | null) => {
+    if (!selected || selected.length === 0) return;
+    const incoming = Array.from(selected);
+    // If any new file is an image, go image-mode: accept incoming images and
+    // drop any previously-picked document. If any new file is a doc, go
+    // doc-mode: keep one doc only.
+    const newImages = incoming.filter(isImageFile);
+    const newDocs = incoming.filter(isDocFile);
+    if (newImages.length > 0) {
+      const existingImages = files.filter(isImageFile);
+      onFilesChange([...existingImages, ...newImages].slice(0, MAX_IMAGES));
+    } else if (newDocs.length > 0) {
+      onFilesChange([newDocs[0]]);
+    } else {
+      // Unknown type — let the API reject it by passing through to errorMsg.
+      onFilesChange(incoming.slice(0, 1));
+    }
+  };
+
+  const removeFile = (idx: number) => {
+    onFilesChange(files.filter((_, i) => i !== idx));
+  };
+
+  const showMixingHint =
+    files.length > 0 && !validUpload;
 
   return (
     <div className="flex flex-col gap-5">
@@ -527,12 +646,13 @@ function ConfigureStep(props: {
 
       {/* File picker */}
       <div>
-        <div className="t-label-sm mb-2">Document</div>
+        <div className="t-label-sm mb-2">Document or photos</div>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.doc,.txt"
-          onChange={(e) => onFileChange(e.target.files?.[0] || null)}
+          accept={FILE_ACCEPT}
+          multiple
+          onChange={(e) => handleFilesSelected(e.target.files)}
           className="hidden"
         />
         <button
@@ -541,14 +661,68 @@ function ConfigureStep(props: {
           style={{
             padding: "12px 14px",
             border: "1px solid var(--border)",
-            background: file ? "var(--stone-100)" : "var(--bg)",
+            background: files.length > 0 ? "var(--stone-100)" : "var(--bg)",
           }}
         >
-          {file ? <FileText size={16} style={{ color: "var(--ink)" }} /> : <Upload size={16} style={{ color: "var(--text-muted)" }} />}
-          <span className="t-body" style={{ color: file ? "var(--ink)" : "var(--text-muted)" }}>
+          {files.length > 0 ? (
+            <FileText size={16} style={{ color: "var(--ink)" }} />
+          ) : (
+            <Upload size={16} style={{ color: "var(--text-muted)" }} />
+          )}
+          <span className="t-body" style={{ color: files.length > 0 ? "var(--ink)" : "var(--text-muted)" }}>
             {fileLabel}
           </span>
         </button>
+
+        {/* Selected-files chips (only shown when the user has uploaded
+            multiple photos; a single file already reads clearly in the
+            button label above). */}
+        {files.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {files.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1.5 px-2 py-1 text-[11px]"
+                style={{
+                  background: "var(--bg-sunken)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text-muted)",
+                }}
+              >
+                <span style={{ fontWeight: 500, color: "var(--ink)" }}>
+                  {i + 1}.
+                </span>
+                <span className="truncate" style={{ maxWidth: 160 }}>
+                  {f.name}
+                </span>
+                <button
+                  onClick={() => removeFile(i)}
+                  aria-label={`Remove ${f.name}`}
+                  style={{ color: "var(--text-faint)" }}
+                >
+                  <X size={11} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showMixingHint && (
+          <div
+            className="t-caption mt-2"
+            style={{ color: "var(--accent-red)", fontSize: 11 }}
+          >
+            Upload one document (PDF / DOCX / TXT) <em>or</em> up to {MAX_IMAGES} photos — not a mix.
+          </div>
+        )}
+
+        {files.length > 0 && validUpload && (
+          <div className="t-caption mt-2" style={{ fontSize: 11, color: "var(--text-faint)" }}>
+            {allImages
+              ? `${files.length} photo${files.length === 1 ? "" : "s"} — Claude will read them as pages 1–${files.length}.`
+              : "Text will be extracted from the document, then parsed."}
+          </div>
+        )}
       </div>
 
       {/* Schedule type */}

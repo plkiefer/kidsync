@@ -146,21 +146,70 @@ const TYPE_HINTS: Record<string, string> = {
 };
 
 const MAX_INPUT_CHARS = 50000;
+const MAX_IMAGES = 8;
+const ALLOWED_IMAGE_MEDIA_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+type ImagePayload = { mediaType: string; data: string };
+type AnthropicContentBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: {
+        type: "base64";
+        media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+        data: string;
+      };
+    };
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { text, scheduleType, yearContext } = body as {
+    const { text, images, scheduleType, yearContext } = body as {
       text?: string;
+      images?: ImagePayload[];
       scheduleType?: string;
       yearContext?: string;
     };
 
-    if (!text || typeof text !== "string") {
+    const hasText = typeof text === "string" && text.trim().length > 0;
+    const hasImages = Array.isArray(images) && images.length > 0;
+
+    if (!hasText && !hasImages) {
       return NextResponse.json(
-        { error: "Missing extracted text" },
+        { error: "Provide either extracted text or at least one image." },
         { status: 400 }
       );
+    }
+
+    if (hasImages && images!.length > MAX_IMAGES) {
+      return NextResponse.json(
+        { error: `Too many images — max ${MAX_IMAGES} per request.` },
+        { status: 400 }
+      );
+    }
+
+    if (hasImages) {
+      for (const img of images!) {
+        if (!img?.mediaType || !ALLOWED_IMAGE_MEDIA_TYPES.has(img.mediaType)) {
+          return NextResponse.json(
+            {
+              error: `Unsupported image type: ${img?.mediaType || "unknown"}. Use JPEG, PNG, GIF, or WebP.`,
+            },
+            { status: 400 }
+          );
+        }
+        if (!img.data || typeof img.data !== "string") {
+          return NextResponse.json(
+            { error: "Each image must include base64 data." },
+            { status: 400 }
+          );
+        }
+      }
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -182,18 +231,52 @@ export async function POST(request: NextRequest) {
       ? `Year context: ${yearContext} (use this when dates omit the year).`
       : "Year context: not provided — infer from document headers / first mentioned full date.";
 
-    const userMessage = `${typeHint}
+    // Build the user message + content blocks. Two modes:
+    //   - Text mode:  one text block with extracted document text.
+    //   - Image mode: image blocks (one per uploaded photo, in order) followed
+    //                 by a text block explaining the input is photographs and
+    //                 repeating the type hint + year context. Claude vision
+    //                 reads the schedule directly off the image.
+    let contentBlocks: AnthropicContentBlock[];
+    if (hasImages) {
+      const preamble = `${typeHint}
+
+${yearLine}
+
+Input is ${images!.length} photograph${images!.length === 1 ? "" : "s"} of the schedule (treat them as pages 1…${images!.length} in the order attached). Read every visible piece of text — headings, table cells, handwritten notes, margin annotations — and extract every date-specific event per the rules in the system prompt. If any photo is blurry / partial / unreadable, still emit your best-guess events at lowered confidence and flag the issue in warnings.`;
+      contentBlocks = [
+        ...images!.map(
+          (img) =>
+            ({
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: img.mediaType as
+                  | "image/jpeg"
+                  | "image/png"
+                  | "image/gif"
+                  | "image/webp",
+                data: img.data,
+              },
+            }) satisfies AnthropicContentBlock
+        ),
+        { type: "text" as const, text: preamble },
+      ];
+    } else {
+      const userMessage = `${typeHint}
 
 ${yearLine}
 
 DOCUMENT TEXT:
-${text.slice(0, MAX_INPUT_CHARS)}`;
+${text!.slice(0, MAX_INPUT_CHARS)}`;
+      contentBlocks = [{ type: "text", text: userMessage }];
+    }
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMessage }],
+      messages: [{ role: "user", content: contentBlocks }],
     });
 
     const responseText =
