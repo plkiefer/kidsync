@@ -190,9 +190,45 @@ function addOneHour(hhmm: string): string {
 }
 
 function confidenceColor(c: number): string {
-  if (c >= 0.75) return "var(--color-text-muted)";
+  if (c >= 0.75) return "var(--ink)";
   if (c >= 0.5) return "var(--accent-amber)";
   return "var(--accent-red)";
+}
+
+/** Visual confidence bar — 36px wide, 4px tall, filled to percent. */
+function ConfidenceBar({ confidence }: { confidence: number }) {
+  const pct = Math.max(0, Math.min(1, confidence));
+  const color = confidenceColor(pct);
+  const label =
+    pct >= 0.75 ? "High confidence" :
+    pct >= 0.5  ? "Medium confidence" :
+                  "Low confidence";
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 shrink-0"
+      title={`${label} · ${Math.round(pct * 100)}%`}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: "block",
+          width: 36,
+          height: 4,
+          background: "var(--stone-150)",
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            width: `${pct * 100}%`,
+            height: "100%",
+            background: color,
+          }}
+        />
+      </span>
+    </span>
+  );
 }
 
 // ─── Near-duplicate matching ───────────────────────────────────────────────
@@ -653,48 +689,65 @@ export default function ScheduleImportModal({
             </div>
           )}
 
-          {step === "done" && (
-            <div className="flex flex-col items-center justify-center py-12">
-              {failedCount > 0 ? (
-                <AlertTriangle size={36} className="mb-4" style={{ color: "var(--accent-amber)" }} />
-              ) : (
-                <CheckCircle2 size={36} className="mb-4" style={{ color: "var(--ink)" }} />
-              )}
-              <div className="t-heading mb-1">
-                {failedCount > 0 && insertedCount === 0 && mergedCount === 0
-                  ? "Import failed"
-                  : "Import complete"}
-              </div>
-              <div className="t-caption text-center">
-                {insertedCount > 0 && (
-                  <>
-                    {insertedCount} event{insertedCount === 1 ? "" : "s"} added
-                  </>
-                )}
-                {insertedCount > 0 && mergedCount > 0 && " · "}
-                {mergedCount > 0 && (
-                  <>
-                    {mergedCount} merged into existing
-                  </>
-                )}
-                {failedCount > 0 && ` · ${failedCount} failed`}
-                {insertedCount === 0 && mergedCount === 0 && failedCount === 0 && "No events processed"}
-              </div>
-              {insertErrorMsg && (
-                <div
-                  className="t-body mt-3 px-3 py-2"
-                  style={{
-                    color: "var(--accent-red)",
-                    background: "var(--accent-red-tint)",
-                    border: "1px solid var(--accent-red)",
-                    maxWidth: 480,
-                  }}
-                >
-                  {insertErrorMsg}
+          {step === "done" && (() => {
+            const totalSuccess = insertedCount + mergedCount;
+            const fullFail = failedCount > 0 && totalSuccess === 0;
+            const partial = failedCount > 0 && totalSuccess > 0;
+            const iconColor = fullFail
+              ? "var(--accent-red)"
+              : partial
+                ? "var(--accent-amber)"
+                : "#3D7A4F";
+            const Icon = fullFail ? AlertTriangle : partial ? AlertTriangle : CheckCircle2;
+            const heading = fullFail
+              ? "Import failed"
+              : partial
+                ? "Partial success"
+                : "Import complete";
+
+            return (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Icon size={36} className="mb-4" style={{ color: iconColor }} />
+                <div className="t-heading mb-1">{heading}</div>
+                <div className="t-caption text-center">
+                  {insertedCount > 0 && (
+                    <>
+                      {insertedCount} event{insertedCount === 1 ? "" : "s"} added
+                    </>
+                  )}
+                  {insertedCount > 0 && mergedCount > 0 && " · "}
+                  {mergedCount > 0 && (
+                    <>
+                      {mergedCount} merged into existing
+                    </>
+                  )}
+                  {failedCount > 0 && ` · ${failedCount} failed`}
+                  {totalSuccess === 0 && failedCount === 0 && "No events processed"}
                 </div>
-              )}
-            </div>
-          )}
+
+                {insertErrorMsg && (
+                  <div
+                    className="t-body mt-3 px-3 py-2"
+                    style={{
+                      color: "var(--accent-red)",
+                      background: "var(--accent-red-tint)",
+                      border: "1px solid var(--accent-red)",
+                      maxWidth: 480,
+                      textAlign: "center",
+                    }}
+                  >
+                    {insertErrorMsg}
+                  </div>
+                )}
+
+                {fullFail && (
+                  <div className="t-caption mt-4" style={{ textAlign: "center", maxWidth: 420 }}>
+                    Head back to review — you can edit rows, tweak the schedule type, or start over with a different file.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* ── Footer ── */}
@@ -765,18 +818,36 @@ export default function ScheduleImportModal({
             );
           })()}
 
-          {step === "done" && (
-            <>
-              <span />
-              <button
-                onClick={handleClose}
-                className="btn-action"
-                style={{ padding: "8px 16px", fontSize: 13 }}
-              >
-                Done
-              </button>
-            </>
-          )}
+          {step === "done" && (() => {
+            const totalSuccess = insertedCount + mergedCount;
+            const fullFail = failedCount > 0 && totalSuccess === 0;
+            return (
+              <>
+                {fullFail ? (
+                  <button
+                    onClick={() => setStep("review")}
+                    className="t-caption"
+                    style={{
+                      padding: "8px 16px",
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                    }}
+                  >
+                    Back to review
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <button
+                  onClick={handleClose}
+                  className="btn-action"
+                  style={{ padding: "8px 16px", fontSize: 13 }}
+                >
+                  Done
+                </button>
+              </>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -1118,6 +1189,7 @@ function ReviewRowEditor(props: {
     fontSize: 12,
     fontFamily: "var(--font-dm-sans), sans-serif",
     color: "var(--text)",
+    minWidth: 0,
   } as const;
 
   const matchTime = row.match
@@ -1132,117 +1204,154 @@ function ReviewRowEditor(props: {
       })()
     : null;
 
+  const muted = row.selected && row.action !== "skip" ? 1 : 0.5;
+
   return (
     <div
-      className="grid gap-2 py-2.5"
+      className="flex flex-col gap-2 py-3"
       style={{
-        gridTemplateColumns: "28px 1fr 110px 90px 90px 90px 28px",
-        alignItems: "center",
         borderBottom: "1px solid var(--border)",
-        opacity: row.selected && row.action !== "skip" ? 1 : 0.5,
+        opacity: muted,
       }}
     >
-      {/* Select */}
-      <input type="checkbox" checked={row.selected} onChange={onToggle} />
-
-      {/* Title + notes + confidence + match chip + action selector */}
-      <div>
+      {/* Top row: [select] [title input] [confidence bar] [remove] */}
+      <div className="flex items-center gap-3">
+        <input
+          type="checkbox"
+          checked={row.selected}
+          onChange={onToggle}
+          className="shrink-0"
+          aria-label="Include this row"
+        />
         <input
           type="text"
           value={row.title}
           onChange={(e) => onUpdate({ title: e.target.value })}
-          style={{ ...inputStyle, width: "100%", fontWeight: 500 }}
+          placeholder="Event title"
+          style={{
+            ...inputStyle,
+            flex: 1,
+            fontWeight: 500,
+            fontSize: 13,
+            padding: "7px 10px",
+          }}
         />
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span
-            className="t-label-sm"
-            style={{
-              textTransform: "none",
-              letterSpacing: 0,
-              fontSize: 10,
-              color: confidenceColor(row.confidence),
-              fontWeight: 600,
-            }}
-          >
-            {Math.round(row.confidence * 100)}%
-          </span>
-          {row.match && (
-            <MatchActionBar
-              row={row}
-              matchTime={matchTime}
-              mergeDisabled={mergeDisabled}
-              onUpdate={onUpdate}
-            />
-          )}
-          {row.notes && (
-            <span className="t-caption" style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              · {row.notes}
-            </span>
-          )}
-        </div>
+        <ConfidenceBar confidence={row.confidence} />
+        <button
+          onClick={onRemove}
+          className="shrink-0"
+          style={{ color: "var(--text-muted)", padding: 4 }}
+          aria-label="Remove row"
+          title="Remove row"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
 
-      {/* Type */}
-      <select
-        value={row.event_type}
-        onChange={(e) => onUpdate({ event_type: e.target.value as EventType })}
-        style={inputStyle}
-      >
-        {EVENT_TYPES.map((t) => (
-          <option key={t} value={t}>{EVENT_TYPE_CONFIG[t]?.label || t}</option>
-        ))}
-      </select>
-
-      {/* Date */}
-      <input
-        type="date"
-        value={row.start_date}
-        onChange={(e) => onUpdate({ start_date: e.target.value })}
-        style={inputStyle}
-      />
-
-      {/* Start time or All-day */}
-      {row.all_day ? (
-        <button
-          onClick={() => onUpdate({ all_day: false })}
-          style={{ ...inputStyle, cursor: "pointer", color: "var(--text-muted)" }}
+      {/* Second row: [type] [date] [all-day/start time] [end time/end date]. Indented
+          under the checkbox so the title stays the row's visual anchor. */}
+      <div className="flex items-center gap-2 flex-wrap" style={{ paddingLeft: 28 }}>
+        <select
+          value={row.event_type}
+          onChange={(e) => onUpdate({ event_type: e.target.value as EventType })}
+          style={{ ...inputStyle, width: 120 }}
         >
-          All day
-        </button>
-      ) : (
-        <input
-          type="time"
-          value={row.start_time || ""}
-          onChange={(e) => onUpdate({ start_time: e.target.value })}
-          style={inputStyle}
-        />
-      )}
+          {EVENT_TYPES.map((t) => (
+            <option key={t} value={t}>{EVENT_TYPE_CONFIG[t]?.label || t}</option>
+          ))}
+        </select>
 
-      {/* End date (for multi-day) or End time */}
-      {row.all_day ? (
         <input
           type="date"
-          value={row.end_date || row.start_date}
-          onChange={(e) => onUpdate({ end_date: e.target.value })}
-          style={inputStyle}
+          value={row.start_date}
+          onChange={(e) => onUpdate({ start_date: e.target.value })}
+          style={{ ...inputStyle, width: 140 }}
         />
-      ) : (
-        <input
-          type="time"
-          value={row.end_time || ""}
-          onChange={(e) => onUpdate({ end_time: e.target.value })}
-          style={inputStyle}
-        />
+
+        {row.all_day ? (
+          <button
+            onClick={() => onUpdate({ all_day: false })}
+            style={{
+              ...inputStyle,
+              cursor: "pointer",
+              color: "var(--text-muted)",
+              width: 110,
+              fontWeight: 500,
+            }}
+            title="Click to set a start time"
+          >
+            All day
+          </button>
+        ) : (
+          <input
+            type="time"
+            value={row.start_time || ""}
+            onChange={(e) => onUpdate({ start_time: e.target.value })}
+            style={{ ...inputStyle, width: 110 }}
+          />
+        )}
+
+        {row.all_day ? (
+          <input
+            type="date"
+            value={row.end_date || row.start_date}
+            onChange={(e) => onUpdate({ end_date: e.target.value })}
+            style={{ ...inputStyle, width: 140 }}
+            aria-label="End date"
+          />
+        ) : (
+          <input
+            type="time"
+            value={row.end_time || ""}
+            onChange={(e) => onUpdate({ end_time: e.target.value })}
+            style={{ ...inputStyle, width: 110 }}
+            aria-label="End time"
+          />
+        )}
+
+        {!row.all_day && (
+          <button
+            onClick={() => onUpdate({ all_day: true })}
+            className="t-caption"
+            style={{
+              fontSize: 10,
+              color: "var(--text-faint)",
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+            }}
+            title="Mark as all-day"
+          >
+            all-day
+          </button>
+        )}
+      </div>
+
+      {/* Optional third/fourth rows: match action bar, then AI notes when present.
+          Indented to align with the second row. */}
+      {row.match && (
+        <div style={{ paddingLeft: 28 }}>
+          <MatchActionBar
+            row={row}
+            matchTime={matchTime}
+            mergeDisabled={mergeDisabled}
+            onUpdate={onUpdate}
+          />
+        </div>
       )}
 
-      {/* Remove */}
-      <button
-        onClick={onRemove}
-        style={{ color: "var(--text-muted)", padding: 4 }}
-        aria-label="Remove row"
-      >
-        <Trash2 size={14} />
-      </button>
+      {row.notes && (
+        <div
+          className="t-caption"
+          style={{
+            paddingLeft: 28,
+            fontSize: 11,
+            color: "var(--text-faint)",
+            fontStyle: "italic",
+          }}
+        >
+          {row.notes}
+        </div>
+      )}
     </div>
   );
 }
