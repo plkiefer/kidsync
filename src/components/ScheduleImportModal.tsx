@@ -22,6 +22,8 @@ import {
   Trash2,
   GitMerge,
   Plus,
+  MapPin,
+  StickyNote,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -1427,19 +1429,68 @@ function ReviewRowEditor(props: {
         </div>
       )}
 
-      {row.notes && (
+      {/* Location + notes row — editable so the user can add field numbers
+          the parser missed, clean up Imported: … notes, or fix typos before
+          anything hits the calendar. Indented to align with the metadata row
+          above. Icons prefix each field so they're scannable at a glance. */}
+      <div className="flex items-start gap-2" style={{ paddingLeft: 28 }}>
         <div
-          className="t-caption"
+          className="flex items-center gap-1.5 flex-1 min-w-0"
           style={{
-            paddingLeft: 28,
-            fontSize: 11,
-            color: "var(--text-faint)",
-            fontStyle: "italic",
+            border: "1px solid var(--border)",
+            background: "var(--bg)",
+            padding: "4px 8px",
           }}
         >
-          {row.notes}
+          <MapPin
+            size={12}
+            style={{ color: "var(--text-faint)", flexShrink: 0 }}
+            aria-hidden
+          />
+          <input
+            type="text"
+            value={row.location || ""}
+            onChange={(e) => onUpdate({ location: e.target.value || null })}
+            placeholder="Location"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none"
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--font-dm-sans), sans-serif",
+              color: "var(--text)",
+              padding: 0,
+            }}
+            aria-label="Location"
+          />
         </div>
-      )}
+        <div
+          className="flex items-center gap-1.5 flex-[1.2] min-w-0"
+          style={{
+            border: "1px solid var(--border)",
+            background: "var(--bg)",
+            padding: "4px 8px",
+          }}
+        >
+          <StickyNote
+            size={12}
+            style={{ color: "var(--text-faint)", flexShrink: 0 }}
+            aria-hidden
+          />
+          <input
+            type="text"
+            value={row.notes || ""}
+            onChange={(e) => onUpdate({ notes: e.target.value || null })}
+            placeholder="Notes"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none"
+            style={{
+              fontSize: 12,
+              fontFamily: "var(--font-dm-sans), sans-serif",
+              color: "var(--text)",
+              padding: 0,
+            }}
+            aria-label="Notes"
+          />
+        </div>
+      </div>
     </div>
   );
 }

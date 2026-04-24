@@ -18,6 +18,9 @@ interface EventsState {
   createEventsBatch: (
     rows: EventFormData[]
   ) => Promise<{ inserted: number; failed: number; error?: string }>;
+  updateEventsBatch: (
+    updates: Array<{ id: string; patch: Partial<EventFormData> }>
+  ) => Promise<{ updated: number; failed: number; error?: string }>;
   updateEvent: (
     id: string,
     data: Partial<EventFormData>
@@ -319,6 +322,89 @@ export function useEvents(ready = true): EventsState {
           inserted: 0,
           failed: rows.length,
           error: err instanceof Error ? err.message : "Batch insert failed",
+        };
+      }
+    },
+    [supabase]
+  );
+
+  /**
+   * Batch update — runs N updates in parallel from a single authenticated
+   * context. The per-row updateEvent call does its own auth.getUser() and
+   * select-back, which when looped sequentially over 5+ rows races with
+   * the realtime subscription's auth-token refresh and deadlocks (this is
+   * exactly why createEventsBatch exists for inserts). Schedule importer
+   * Phase B merge path needs this for non-trivial calendars where the user
+   * hits 8+ near-duplicate rows in one shot.
+   *
+   * Strategy:
+   *   1. Single auth call up front.
+   *   2. Each update runs as its own .update().eq() call (different patches
+   *      can't share one SQL statement) — but in parallel via Promise.all.
+   *   3. NO .select() on any update. The realtime subscription delivers the
+   *      patched rows without us reading them back, dodging the same
+   *      serialize-and-deadlock path createEventsBatch documents.
+   */
+  const updateEventsBatch = useCallback(
+    async (
+      updates: Array<{ id: string; patch: Partial<EventFormData> }>
+    ): Promise<{ updated: number; failed: number; error?: string }> => {
+      if (!updates.length) return { updated: 0, failed: 0 };
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Not authenticated");
+
+        const buildPayload = (patch: Partial<EventFormData>) => {
+          // Strip travel-only fields (the importer doesn't emit them, but the
+          // type allows them; keep this defensive in case a caller passes a
+          // mixed patch). updated_by always set so the activity log attributes
+          // the change to the right user.
+          const {
+            travel_departure_airport: _a,
+            travel_arrival_airport: _b,
+            travel_departure_time: _c,
+            travel_arrival_time: _d,
+            travel_lodging_name: _e,
+            travel_lodging_address: _f,
+            travel_lodging_phone: _g,
+            travel_lodging_confirmation: _h,
+            kid_ids,
+            ...rest
+          } = patch as any;
+          const payload: any = { ...rest, updated_by: user.id };
+          if (kid_ids) {
+            payload.kid_id = kid_ids[0];
+            payload.kid_ids = kid_ids;
+          }
+          return payload;
+        };
+
+        const results = await Promise.all(
+          updates.map(async ({ id, patch }) => {
+            const { error } = await supabase
+              .from("calendar_events")
+              .update(buildPayload(patch))
+              .eq("id", id);
+            return { ok: !error, error };
+          })
+        );
+
+        const updated = results.filter((r) => r.ok).length;
+        const failed = results.length - updated;
+        const firstErr = results.find((r) => !r.ok)?.error;
+        return {
+          updated,
+          failed,
+          error: firstErr?.message,
+        };
+      } catch (err) {
+        console.error("Error batch-updating events:", err);
+        return {
+          updated: 0,
+          failed: updates.length,
+          error: err instanceof Error ? err.message : "Batch update failed",
         };
       }
     },
@@ -714,6 +800,7 @@ export function useEvents(ready = true): EventsState {
     createEvent,
     createEventsBatch,
     updateEvent,
+    updateEventsBatch,
     deleteEvent,
     getEvent,
     saveTravelDetails,

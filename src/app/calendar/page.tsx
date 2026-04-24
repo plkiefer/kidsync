@@ -65,6 +65,7 @@ export default function CalendarPage() {
     createEvent,
     createEventsBatch,
     updateEvent,
+    updateEventsBatch,
     deleteEvent,
     saveTravelDetails,
     getTravelDetails,
@@ -953,26 +954,12 @@ export default function CalendarPage() {
         <ScheduleImportModal
           kids={kids}
           onCreateEvents={createEventsBatch}
-          onUpdateEvents={async (updates) => {
-            // Per-row update via the existing updateEvent hook. There's no
-            // bulk-update endpoint, but the realtime-deadlock risk that
-            // applies to createEvent doesn't apply here (updateEvent doesn't
-            // re-fetch profile per row).
-            let updated = 0;
-            let failed = 0;
-            let firstError: string | undefined;
-            for (const { id, patch } of updates) {
-              try {
-                const result = await updateEvent(id, patch);
-                if (result) updated += 1;
-                else failed += 1;
-              } catch (err: any) {
-                failed += 1;
-                if (!firstError) firstError = err?.message || String(err);
-              }
-            }
-            return { updated, failed, error: firstError };
-          }}
+          // Single auth call + parallel updates without read-back. Sequential
+          // looping over updateEvent deadlocked on Supabase auth-token
+          // refresh contention with the realtime subscription (8 merges =
+          // 8× auth.getUser() round-trips), tripping the modal's 30s timeout.
+          // See useEvents.updateEventsBatch for the full reasoning.
+          onUpdateEvents={updateEventsBatch}
           existingEvents={events}
           onClose={() => setShowScheduleImport(false)}
           onDone={() => { refetch(); }}
