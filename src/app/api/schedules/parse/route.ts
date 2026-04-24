@@ -30,7 +30,7 @@ Return ONLY valid JSON (no markdown, no commentary) matching this exact shape:
 {
   "events": [
     {
-      "title": "string — short, calendar-ready label (≤60 chars). Strip district boilerplate. Prefix with a category tag in brackets so the UI can style: [Closure], [Early Dismissal], [Milestone], [Teacher Workday], [Weather Makeup]. Examples: '[Closure] Thanksgiving Break', '[Early Dismissal] Parent Conferences', '[Milestone] First Day of School', '[Teacher Workday] PD Day'.",
+      "title": "string — describe WHAT the event IS, not the document header. See TITLE GENERATION below. (≤60 chars)",
       "start_date": "YYYY-MM-DD — first day the kid is OUT of school for this event (bookended; see RANGE RULES)",
       "end_date": "YYYY-MM-DD or null — last day the kid is out, INCLUSIVE. Null for single-day events.",
       "all_day": true,
@@ -38,7 +38,8 @@ Return ONLY valid JSON (no markdown, no commentary) matching this exact shape:
       "end_time": "HH:mm (24h) or null",
       "event_type": "school | sports | medical | activity | other",
       "location": "string or null — CAPTURE THE FULL VENUE DETAIL, not just the top-level facility name. Include field/court numbers ('Sealston - Field 2'), building + room ('Hannover HS - Gym 2', 'Smith Elementary - Cafeteria'), suite / office numbers, street addresses when listed, and home/away qualifier when stated. Use ' - ' to separate levels of detail. If the document gives a venue AND a sub-location in separate columns/lines (e.g. Location: 'Sealston', Field: 'Field 2'), COMBINE them into one string.",
-      "notes": "string or null — ALWAYS include the source document's LITERAL date range here if you extended it (e.g. 'District lists: Nov 23–27'). Include qualifiers: early-dismissal time, opponent, break name.",
+      "notes": "string or null — carry context the title shed: team/league/program name, source literal date range ('District lists: Nov 23–27'), opponent, uniform color, snack parent, dismissal time, break name. See NOTES RULES.",
+      "suggested_kid_ids": "array of kid IDs this event applies to, or [] if unsure. See KID ASSIGNMENT.",
       "confidence": 0.0 to 1.0
     }
   ],
@@ -83,6 +84,35 @@ Rules for extending:
 7. ALWAYS put the district's literal date range in notes ("District lists: X–Y") so the parent can see both framings.
 
 ═══════════════════════════════════════════════════════════════════════════
+TITLE GENERATION — critical. Titles describe WHAT the event IS, not the
+document's top banner.
+═══════════════════════════════════════════════════════════════════════════
+
+The title goes on a calendar chip 10–20 chars wide. A parent glancing at their week should immediately know "oh right, soccer game" — NOT have to read "U6 KING Soccer Schedule Spring 2026" on every single row. The team / league / program context goes in NOTES, never the title.
+
+  SOURCE                              → TITLE                     + NOTES
+  (document header:                   'Soccer Game'               'Team: U6 KING Xplosion'
+   'U6 KING Soccer Schedule           (nothing in source row
+    Spring 2026', each row            itself says 'game' — infer
+    is a date + location)              from schedule type = sports)
+  'Practice - Tuesday 5:30 PM'        'Soccer Practice'           'Team: U6 KING Xplosion'
+  'vs Riverside HOME 9:30 AM'         'Soccer Game'               'vs Riverside (Home) · Team: U6 KING Xplosion'
+  'Piano Lesson — Ms. Chen'           'Piano Lesson'              'Instructor: Ms. Chen'
+  'Ethan's 7th Birthday Party'        'Ethan's Birthday Party'    null (title already says it)
+  'Dr. Smith Well Visit'              'Pediatrician'              'Dr. Smith · Well visit'
+  'Swim Team Practice'                'Swim Practice'             'Team: [team name if given]'
+  'Boy Scout Troop 317 Meeting'       'Scouts Meeting'            'Troop 317'
+  'Science Fair Project Due'          'Science Fair Due'          null
+
+Rules:
+1. Default for sports: '[Sport] Game'. If the row is explicitly a practice, scrimmage, tournament, or meet, use that noun instead ('Soccer Practice', 'Soccer Tournament', 'Track Meet'). Short weekend time slots at a field default to 'Game'.
+2. Default for activity: a 2-word label combining the activity type + session noun ('Piano Lesson', 'Art Class', 'Dance Rehearsal', 'Scouts Meeting').
+3. Default for medical: the specialty, not the doctor's name ('Pediatrician', 'Dentist', 'Orthodontist', 'Physical Therapy'). Doctor/practice name goes in notes.
+4. Never use the document's overall schedule name ('U6 KING Soccer Schedule', 'Spring Recital Program', '2026 Camp Registration') as a per-row title. That's the source banner, not the event.
+5. Keep titles short and generic enough to scan. No dates, no times, no opponent names, no uniform colors, no addresses in the title.
+6. If the row itself is specific (a uniquely-named event like 'Back-to-School Night' or 'Graduation Ceremony'), keep that as the title — don't over-genericize.
+
+═══════════════════════════════════════════════════════════════════════════
 TITLE CATEGORY PREFIXES — bracketed, at the start of the title.
 ═══════════════════════════════════════════════════════════════════════════
 
@@ -102,6 +132,42 @@ TITLE CATEGORY PREFIXES — bracketed, at the start of the title.
                     marked; confidence ≤ 0.5 since conditional.
 
   For non-school schedules (sports, activities, medical) → no prefix.
+
+═══════════════════════════════════════════════════════════════════════════
+NOTES RULES
+═══════════════════════════════════════════════════════════════════════════
+
+Notes carry the per-row context that the (generic) title shed. Combine multiple qualifiers with ' · ' separators. Skip fields that weren't in the source.
+
+  Components to include when present in the source:
+  - Team / league / program name: 'Team: U6 KING Xplosion'
+  - Opponent + home/away: 'vs Riverside (Home)' or '@ Mountain View (Away)'
+  - Uniform / jersey color: 'Uniform: gold'
+  - Snack parent: 'Snack: Carter'
+  - Instructor / coach / doctor: 'Instructor: Ms. Chen' / 'Coach Miller'
+  - Dismissal time (early-dismissal): 'Dismissal at 12:35'
+  - Literal source date range (when you extended it): 'District lists: Nov 23–27'
+  - Any other row-specific qualifier the source calls out.
+
+═══════════════════════════════════════════════════════════════════════════
+KID ASSIGNMENT — suggested_kid_ids per event
+═══════════════════════════════════════════════════════════════════════════
+
+If the user provided a kid roster in the input context (name + age), infer which kid each event applies to based on signals in the row or document.
+
+Signals to match on (strongest first):
+1. Kid's NAME appearing in the row ('Ethan's practice', 'Harrison piano lesson') → that kid.
+2. Age band in the document header or row ('U6' = under 6, '10U' / '10&Under' = under 10, '7-9 yr olds'). Match to a kid whose age falls in the band. 'U6' means kids who are 5 or under at the start of the season — be generous and include a 6-yr-old too if they just turned 6.
+3. Grade mention ('1st grade', 'Kindergarten') → match to the kid in that grade (estimate grade from age: K=5, 1st=6, 2nd=7, 3rd=8, 4th=9, 5th=10, 6th=11, 7th=12, 8th=13).
+4. A sport or activity the user has flagged as kid-specific (see CONTEXT block in the user message if provided).
+5. Document is SPECIFICALLY a one-kid schedule (header names a team/class that only makes sense for one age) → assign that kid to every row.
+
+Output rules:
+- Emit suggested_kid_ids as an array of kid IDs (use the 'id' field the user provided, NOT the kid's name). Example: ['abc-123'] or ['abc-123', 'def-456'].
+- If the schedule clearly belongs to ONE kid → every row gets just that kid's id.
+- If ambiguous (can't tell from signals) → emit [] (empty array). The user will fall back to their modal-level selection.
+- If the schedule is a family event (both kids), emit both ids.
+- DO NOT guess. [] is better than a wrong assignment — empty just means 'defer to the user's default'.
 
 ═══════════════════════════════════════════════════════════════════════════
 EARLY DISMISSAL HANDLING
@@ -175,6 +241,12 @@ const ALLOWED_IMAGE_MEDIA_TYPES = new Set([
 ]);
 
 type ImagePayload = { mediaType: string; data: string };
+type KidPayload = {
+  id: string;
+  name: string;
+  /** YYYY-MM-DD; optional. When absent the parser falls back to name-only matching. */
+  birth_date?: string | null;
+};
 type AnthropicContentBlock =
   | { type: "text"; text: string }
   | {
@@ -189,11 +261,12 @@ type AnthropicContentBlock =
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { text, images, scheduleType, yearContext } = body as {
+    const { text, images, scheduleType, yearContext, kids } = body as {
       text?: string;
       images?: ImagePayload[];
       scheduleType?: string;
       yearContext?: string;
+      kids?: KidPayload[];
     };
 
     const hasText = typeof text === "string" && text.trim().length > 0;
@@ -251,6 +324,39 @@ export async function POST(request: NextRequest) {
       ? `Year context: ${yearContext} (use this when dates omit the year).`
       : "Year context: not provided — infer from document headers / first mentioned full date.";
 
+    // Build a KID CONTEXT block when the caller supplied a roster. Claude uses
+    // this to fill suggested_kid_ids per event (see KID ASSIGNMENT in the
+    // system prompt). We compute current age from birth_date so age-band
+    // matching ("U6", "10&Under") doesn't depend on Claude's training cutoff.
+    const validKids = (Array.isArray(kids) ? kids : []).filter(
+      (k): k is KidPayload =>
+        !!k && typeof k.id === "string" && typeof k.name === "string"
+    );
+    const validKidIds = new Set(validKids.map((k) => k.id));
+    const today = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const kidContextLine =
+      validKids.length > 0
+        ? `Kid roster (today is ${todayIso}):
+${validKids
+  .map((k) => {
+    let age: number | null = null;
+    if (k.birth_date && /^\d{4}-\d{2}-\d{2}$/.test(k.birth_date)) {
+      const [by, bm, bd] = k.birth_date.split("-").map(Number);
+      const birth = new Date(by, bm - 1, bd);
+      age = today.getFullYear() - birth.getFullYear();
+      const m = today.getMonth() - birth.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age -= 1;
+    }
+    const ageFrag = age !== null ? `, age ${age}` : "";
+    const dobFrag = k.birth_date ? ` (DOB ${k.birth_date})` : "";
+    return `  - id="${k.id}", name="${k.name}"${ageFrag}${dobFrag}`;
+  })
+  .join("\n")}
+
+Per KID ASSIGNMENT: fill suggested_kid_ids per event using name/age/grade signals. Emit [] (empty array) when you can't tell — [] is correct, guessing is wrong. Use the exact id values above (not names) in suggested_kid_ids.`
+        : `Kid roster not provided — set suggested_kid_ids to [] for every event. The user will assign kids themselves.`;
+
     // Build the user message + content blocks. Two modes:
     //   - Text mode:  one text block with extracted document text.
     //   - Image mode: image blocks (one per uploaded photo, in order) followed
@@ -262,6 +368,8 @@ export async function POST(request: NextRequest) {
       const preamble = `${typeHint}
 
 ${yearLine}
+
+${kidContextLine}
 
 Input is ${images!.length} photograph${images!.length === 1 ? "" : "s"} of the schedule (treat them as pages 1…${images!.length} in the order attached). Read every visible piece of text — headings, table cells, handwritten notes, margin annotations — and extract every date-specific event per the rules in the system prompt. If any photo is blurry / partial / unreadable, still emit your best-guess events at lowered confidence and flag the issue in warnings.`;
       contentBlocks = [
@@ -286,6 +394,8 @@ Input is ${images!.length} photograph${images!.length === 1 ? "" : "s"} of the s
       const userMessage = `${typeHint}
 
 ${yearLine}
+
+${kidContextLine}
 
 DOCUMENT TEXT:
 ${text!.slice(0, MAX_INPUT_CHARS)}`;
@@ -323,8 +433,20 @@ ${text!.slice(0, MAX_INPUT_CHARS)}`;
       );
     }
 
+    // Sanitize suggested_kid_ids on every event: filter to ids we actually
+    // sent in the roster (Claude occasionally echoes a name or hallucinates a
+    // uuid). Unknown ids would silently fan out to the wrong kid on insert.
+    const sanitizedEvents = parsed.events.map((ev: any) => {
+      const raw = Array.isArray(ev?.suggested_kid_ids) ? ev.suggested_kid_ids : [];
+      const suggested = raw.filter(
+        (id: unknown): id is string =>
+          typeof id === "string" && validKidIds.has(id)
+      );
+      return { ...ev, suggested_kid_ids: suggested };
+    });
+
     return NextResponse.json({
-      events: parsed.events,
+      events: sanitizedEvents,
       summary: parsed.summary ?? null,
       year_detected: parsed.year_detected ?? null,
       warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],

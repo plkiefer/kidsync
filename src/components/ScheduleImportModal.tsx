@@ -39,6 +39,12 @@ interface ExtractedEvent {
   location: string | null;
   notes: string | null;
   confidence: number;
+  /**
+   * Kid IDs the parser inferred from the document + roster (name/age/grade
+   * signals). Empty means "parser couldn't tell — use the user's default".
+   * Always validated server-side against the roster before reaching the client.
+   */
+  suggested_kid_ids?: string[];
 }
 
 interface ParseResponse {
@@ -57,6 +63,12 @@ interface ReviewRow extends ExtractedEvent {
   selected: boolean;
   match: CalendarEvent | null;   // existing event this row likely duplicates
   action: RowAction;             // what to do at insert time
+  /**
+   * Resolved per-row kid assignment. Seeded from suggested_kid_ids (when the
+   * parser inferred a kid) or from the modal-level default (when it didn't /
+   * when no roster was sent). User can override via the inline kid chip.
+   */
+  kid_ids: string[];
 }
 
 interface ScheduleImportModalProps {
@@ -455,6 +467,15 @@ export default function ScheduleImportModal({
     try {
       let parseBody: Record<string, unknown>;
 
+      // Kid roster for the parser. Sending name+birth_date lets Claude
+      // resolve age-band signals in the document ("U6", "10&Under", "1st
+      // grade") to a specific kid without having to know the family.
+      const kidRoster = kids.map((k) => ({
+        id: k.id,
+        name: k.name,
+        birth_date: k.birth_date,
+      }));
+
       if (allImages) {
         // Image mode — base64-encode every photo, preserve order.
         const images = await Promise.all(
@@ -467,6 +488,7 @@ export default function ScheduleImportModal({
           images,
           scheduleType,
           yearContext: yearContext.trim() || undefined,
+          kids: kidRoster,
         };
       } else {
         // Doc mode — run through the existing text extractor first.
@@ -488,6 +510,7 @@ export default function ScheduleImportModal({
           text,
           scheduleType,
           yearContext: yearContext.trim() || undefined,
+          kids: kidRoster,
         };
       }
 
@@ -509,17 +532,24 @@ export default function ScheduleImportModal({
       // 3. Seed review rows — all selected by default, and run near-duplicate
       //    detection so rows that match an existing calendar event default to
       //    "merge" (falling back to "insert" when the caller didn't wire an
-      //    update handler).
+      //    update handler). Resolve per-row kid_ids: parser suggestion wins
+      //    when non-empty, otherwise fall back to the modal-level default.
+      const validKidIds = new Set(kids.map((k) => k.id));
       const seeded: ReviewRow[] = parsed.events.map((e, i) => {
         const match = findMatch(e, existingEvents);
         const defaultAction: RowAction =
           match && onUpdateEvents ? "merge" : "insert";
+        const suggested = (e.suggested_kid_ids || []).filter((id) =>
+          validKidIds.has(id)
+        );
+        const resolvedKidIds = suggested.length > 0 ? suggested : [...kidIds];
         return {
           ...e,
           id: `row-${i}-${e.start_date}`,
           selected: true,
           match,
           action: defaultAction,
+          kid_ids: resolvedKidIds,
         };
       });
 
@@ -569,10 +599,19 @@ export default function ScheduleImportModal({
       (r) => r.action === "merge" && r.match && onUpdateEvents
     );
 
-    const insertPayloads = inserts.map((row) => toEventFormData(row, kidIds));
+    // Per-row kid assignment (falls back to modal-level kidIds if a row
+    // somehow ended up with an empty list — shouldn't happen post-seed, but
+    // defensive).
+    const insertPayloads = inserts.map((row) =>
+      toEventFormData(row, row.kid_ids.length > 0 ? row.kid_ids : kidIds)
+    );
     const mergePayloads = merges.map((row) => ({
       id: row.match!.id,
-      patch: buildMergePatch(row.match!, row, kidIds),
+      patch: buildMergePatch(
+        row.match!,
+        row,
+        row.kid_ids.length > 0 ? row.kid_ids : kidIds
+      ),
     }));
 
     const insertPromise: Promise<{ inserted: number; failed: number; error?: string }> =
@@ -700,6 +739,7 @@ export default function ScheduleImportModal({
           {step === "review" && (
             <ReviewStep
               rows={rows}
+              kids={kids}
               onToggleRow={toggleRow}
               onToggleAll={toggleAll}
               onUpdateRow={updateRow}
@@ -1113,6 +1153,7 @@ function ConfigureStep(props: {
 
 function ReviewStep(props: {
   rows: ReviewRow[];
+  kids: Kid[];
   onToggleRow: (id: string) => void;
   onToggleAll: (next: boolean) => void;
   onUpdateRow: (id: string, patch: Partial<ReviewRow>) => void;
@@ -1122,7 +1163,7 @@ function ReviewStep(props: {
   yearDetected: string | null;
   mergeDisabled: boolean;
 }) {
-  const { rows, onToggleRow, onToggleAll, onUpdateRow, onRemoveRow, summary, warnings, yearDetected, mergeDisabled } = props;
+  const { rows, kids, onToggleRow, onToggleAll, onUpdateRow, onRemoveRow, summary, warnings, yearDetected, mergeDisabled } = props;
   const allSelected = rows.length > 0 && rows.every((r) => r.selected);
   const matchedCount = rows.filter((r) => r.match).length;
 
@@ -1195,6 +1236,7 @@ function ReviewStep(props: {
           <ReviewRowEditor
             key={row.id}
             row={row}
+            kids={kids}
             mergeDisabled={mergeDisabled}
             onToggle={() => onToggleRow(row.id)}
             onUpdate={(patch) => onUpdateRow(row.id, patch)}
@@ -1208,12 +1250,13 @@ function ReviewStep(props: {
 
 function ReviewRowEditor(props: {
   row: ReviewRow;
+  kids: Kid[];
   mergeDisabled: boolean;
   onToggle: () => void;
   onUpdate: (patch: Partial<ReviewRow>) => void;
   onRemove: () => void;
 }) {
-  const { row, mergeDisabled, onToggle, onUpdate, onRemove } = props;
+  const { row, kids, mergeDisabled, onToggle, onUpdate, onRemove } = props;
   const inputStyle = {
     padding: "6px 8px",
     border: "1px solid var(--border)",
@@ -1356,6 +1399,19 @@ function ReviewRowEditor(props: {
             all-day
           </button>
         )}
+
+        {/* Per-row kid chips — letter initials, click to toggle membership.
+            Shows whether this row's kid assignment came from the parser's
+            inference (suggested_kid_ids) or the modal-level default. */}
+        <KidChipPicker
+          kids={kids}
+          selectedIds={row.kid_ids}
+          aiSuggested={
+            Array.isArray(row.suggested_kid_ids) &&
+            row.suggested_kid_ids.length > 0
+          }
+          onChange={(next) => onUpdate({ kid_ids: next })}
+        />
       </div>
 
       {/* Optional third/fourth rows: match action bar, then AI notes when present.
@@ -1468,6 +1524,87 @@ function MatchActionBar(props: {
           </button>
         );
       })}
+    </span>
+  );
+}
+
+/**
+ * Inline per-row kid picker. Renders one toggle chip per kid (first-letter
+ * badge in the kid's color, active when selected). Sits in the row's metadata
+ * strip next to type/date/time so each imported event shows at a glance which
+ * kid it's headed for.
+ *
+ * Signals:
+ *   - aiSuggested: parser inferred this from the document (age band, name
+ *     mention, grade) — shown with a subtle "· suggested" tag so the user
+ *     knows their modal-level default didn't drive this row.
+ */
+function KidChipPicker(props: {
+  kids: Kid[];
+  selectedIds: string[];
+  aiSuggested: boolean;
+  onChange: (next: string[]) => void;
+}) {
+  const { kids, selectedIds, aiSuggested, onChange } = props;
+  if (kids.length === 0) return null;
+  const toggle = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((k) => k !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      title={
+        aiSuggested
+          ? "Assigned by the parser from document signals — click to adjust."
+          : "Using the default from step 1 — click to adjust per event."
+      }
+    >
+      {kids.map((kid) => {
+        const active = selectedIds.includes(kid.id);
+        return (
+          <button
+            key={kid.id}
+            type="button"
+            onClick={() => toggle(kid.id)}
+            aria-pressed={active}
+            aria-label={`${active ? "Remove" : "Add"} ${kid.name}`}
+            style={{
+              width: 22,
+              height: 22,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 11,
+              fontWeight: 700,
+              fontFamily: "var(--font-dm-sans), sans-serif",
+              border: `1.5px solid ${active ? kid.color : "var(--border)"}`,
+              background: active ? `${kid.color}1f` : "transparent",
+              color: active ? kid.color : "var(--text-faint)",
+              lineHeight: 1,
+            }}
+          >
+            {kid.name.charAt(0).toUpperCase()}
+          </button>
+        );
+      })}
+      {aiSuggested && (
+        <span
+          className="t-caption"
+          style={{
+            fontSize: 9,
+            color: "var(--text-faint)",
+            textTransform: "uppercase",
+            letterSpacing: 0.4,
+            marginLeft: 2,
+          }}
+        >
+          suggested
+        </span>
+      )}
     </span>
   );
 }
