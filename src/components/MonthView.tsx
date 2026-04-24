@@ -66,28 +66,21 @@ export default function MonthView({
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
+  /** All-day events first (holidays, birthdays), then timed events in
+   *  chronological order. Keeps turnover events + regular events in a
+   *  single unified list so a 3 PM handoff naturally sits between a
+   *  10 AM dentist and a 5 PM soccer practice. */
   const getEventsForDay = (date: Date) =>
     events
       .filter((e) => eventCoversDay(e.starts_at, e.ends_at, e.all_day, date))
       .sort((a, b) => {
         if (a.all_day && !b.all_day) return -1;
         if (!a.all_day && b.all_day) return 1;
-        return 0;
+        return parseTimestamp(a.starts_at).getTime() - parseTimestamp(b.starts_at).getTime();
       });
 
   const getEventKids = (event: CalendarEvent) =>
     kids.filter((k) => getEventKidIds(event).includes(k.id));
-
-  /** Split events into regular chips + transition pills. */
-  function partitionDayEvents(dayEvents: CalendarEvent[]) {
-    const transitions: CalendarEvent[] = [];
-    const regular: CalendarEvent[] = [];
-    for (const e of dayEvents) {
-      if (e.id.startsWith("turnover-")) transitions.push(e);
-      else regular.push(e);
-    }
-    return { transitions, regular };
-  }
 
   /** For a turnover event on `eventDate`, figure out handoff vs drop-off. */
   function transitionDirectionFor(e: CalendarEvent, eventDate: Date): "handoff" | "dropoff" {
@@ -125,36 +118,56 @@ export default function MonthView({
   /**
    * Compute the custody background for a day cell.
    *
-   * Uses the full-day cell as the custody canvas (replaces the short
-   * ribbon strip which read too small in real widths).
-   *
-   *  - Whole household with current user    → warm cream (var(--you-bg))
-   *  - Whole household with co-parent       → cool paper (var(--them-bg))
-   *  - Kids split between parents (rare)    → horizontal two-color band:
-   *       top half = kid-1's parent, bottom half = kid-2's parent
-   *  - No custody data                      → undefined (default bg)
+   *  - Whole household, no transition on this day → solid parent color.
+   *  - Turnover event on this day → vertical gradient that splits at
+   *    (handoff-hour / 24) of the cell. Top = pre-handoff parent,
+   *    bottom = post-handoff parent. Matches the Week view's time-
+   *    based split exactly, just scaled to the compact cell.
+   *  - Kids diverge between parents (rare, no turnover) → horizontal
+   *    50/50 for the two kids.
    */
-  function custodyBgFor(day: Date): string | undefined {
+  function custodyBgFor(day: Date, dayEvents: CalendarEvent[]): string | undefined {
     if (!getCustodyForDate || !currentUserId) return undefined;
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
     if (kidIds.length === 0) return undefined;
 
-    // Check unified (all kids same parent)
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    if (allSame) {
-      return firstParentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    const colorFor = (parentId: string | undefined) =>
+      parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+
+    // Time-based split at the handoff
+    const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
+    if (turnoverEvt && allSame) {
+      const isPickup = turnoverEvt.id.endsWith("-pickup");
+      const turnoverDate = parseTimestamp(turnoverEvt.starts_at);
+      const hourFrac = turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
+      const splitPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
+
+      const adjacent = new Date(day);
+      adjacent.setDate(adjacent.getDate() + (isPickup ? -1 : 1));
+      const adjacentCustody = getCustodyForDate(adjacent);
+      const adjacentParentId = adjacentCustody[kidIds[0]]?.parentId;
+
+      const todayColor = colorFor(firstParentId);
+      const adjacentColor = colorFor(adjacentParentId);
+
+      // Pickup: adjacent (yesterday) owns top, today owns bottom.
+      // Dropoff: today owns top, adjacent (tomorrow) owns bottom.
+      const preBg = isPickup ? adjacentColor : todayColor;
+      const postBg = isPickup ? todayColor : adjacentColor;
+      return `linear-gradient(to bottom, ${preBg} 0%, ${preBg} ${splitPct}%, ${postBg} ${splitPct}%, ${postBg} 100%)`;
     }
 
-    // Split: use kids array ordering for lane assignment
+    if (allSame) {
+      return colorFor(firstParentId);
+    }
+
+    // Kid-split: horizontal 50/50 for the two kids' parents.
     const orderedKidIds = kids.map((k) => k.id).filter((id) => custody[id]);
-    const topKidId = orderedKidIds[0];
-    const bottomKidId = orderedKidIds[1];
-    const topBg =
-      custody[topKidId]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
-    const bottomBg =
-      custody[bottomKidId]?.parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    const topBg = colorFor(custody[orderedKidIds[0]]?.parentId);
+    const bottomBg = colorFor(custody[orderedKidIds[1]]?.parentId);
     return `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`;
   }
 
@@ -182,11 +195,11 @@ export default function MonthView({
               className={`grid grid-cols-7 flex-1 ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
             >
               {week.map((day, di) => {
-                const { transitions, regular } = partitionDayEvents(getEventsForDay(day));
+                const dayEvents = getEventsForDay(day);
                 const today = isToday(day);
                 const inMonth = isSameMonth(day, currentDate);
                 const isLastCol = di === 6;
-                const custodyBg = custodyBgFor(day);
+                const custodyBg = custodyBgFor(day, dayEvents);
 
                 return (
                   <div
@@ -211,33 +224,32 @@ export default function MonthView({
                       {day.getDate()}
                     </div>
 
-                    {/* Transition pills — rendered BEFORE regular events to surface handoffs */}
-                    {transitions.map((e) => {
-                      const startDate = parseTimestamp(e.starts_at);
-                      const time = formatShortTime(startDate);
-                      const direction = transitionDirectionFor(e, day);
-                      const kid = transitionKidFor(e);
-                      return (
-                        <div key={e.id} className="mb-1">
-                          <TransitionPill
-                            time={time}
-                            direction={direction}
-                            kid={kid}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              onEventClick(e);
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-
-                    {/* Regular events (max 3) — quieter "ticket" styling:
-                        paper bg with a type-color left border carries the
-                        type semantic without flooding the cell. Time prefix
-                        in tabular-nums before the title. Kid indicator chip
-                        (E/H) appears only for single-kid events. */}
-                    {regular.slice(0, 3).map((evt) => {
+                    {/* Unified chronological list (max 3 items).
+                        Turnover events render as the cerulean TransitionPill,
+                        regular events as the paper "ticket" chip. They flow
+                        in time order so a 10am dentist → 3pm handoff → 5pm
+                        soccer lands top-to-bottom correctly, and the
+                        handoff pill naturally sits near the cell's
+                        background split. */}
+                    {dayEvents.slice(0, 3).map((evt) => {
+                      if (evt.id.startsWith("turnover-")) {
+                        const time = formatShortTime(parseTimestamp(evt.starts_at));
+                        const direction = transitionDirectionFor(evt, day);
+                        const kid = transitionKidFor(evt);
+                        return (
+                          <div key={evt.id} className="mb-1">
+                            <TransitionPill
+                              time={time}
+                              direction={direction}
+                              kid={kid}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onEventClick(evt);
+                              }}
+                            />
+                          </div>
+                        );
+                      }
                       const typeColor = getEventTypeColor(evt);
                       const kidBadge = singleKidIndicator(evt);
                       const dashed = evt._tentative;
@@ -289,9 +301,9 @@ export default function MonthView({
                       );
                     })}
 
-                    {regular.length > 3 && (
+                    {dayEvents.length > 3 && (
                       <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
-                        +{regular.length - 3} more
+                        +{dayEvents.length - 3} more
                       </div>
                     )}
                   </div>
