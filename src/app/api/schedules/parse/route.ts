@@ -37,7 +37,7 @@ Return ONLY valid JSON (no markdown, no commentary) matching this exact shape:
       "start_time": "HH:mm (24h) or null — only for timed events",
       "end_time": "HH:mm (24h) or null",
       "event_type": "school | sports | medical | activity | other",
-      "location": "string or null",
+      "location": "string or null — CAPTURE THE FULL VENUE DETAIL, not just the top-level facility name. Include field/court numbers ('Sealston - Field 2'), building + room ('Hannover HS - Gym 2', 'Smith Elementary - Cafeteria'), suite / office numbers, street addresses when listed, and home/away qualifier when stated. Use ' - ' to separate levels of detail. If the document gives a venue AND a sub-location in separate columns/lines (e.g. Location: 'Sealston', Field: 'Field 2'), COMBINE them into one string.",
       "notes": "string or null — ALWAYS include the source document's LITERAL date range here if you extended it (e.g. 'District lists: Nov 23–27'). Include qualifiers: early-dismissal time, opponent, break name.",
       "confidence": 0.0 to 1.0
     }
@@ -108,6 +108,26 @@ EARLY DISMISSAL HANDLING
 ═══════════════════════════════════════════════════════════════════════════
 
 Early-dismissal days stay as all_day: true with the '[Early Dismissal]' title prefix. DO NOT emit them as timed events even if the document lists a dismissal time. The dismissal time goes in notes. Rationale: the parent's calendar needs to show these as a whole-day visual marker, not a 3pm→3:30pm bar.
+
+═══════════════════════════════════════════════════════════════════════════
+LOCATION RULES
+═══════════════════════════════════════════════════════════════════════════
+
+The location field is the single most useful thing on game day — a parent needs to know which field, which gym, which room. Extract the COMPLETE venue string, not just the top-level facility.
+
+  SOURCE                                              → YOUR OUTPUT
+  Location column: 'Sealston - Field 1'               → 'Sealston - Field 1'
+  Location: 'Sealston', Field column: 'Field 2'       → 'Sealston - Field 2'
+  'Cedell Brooks - Field 2b'                          → 'Cedell Brooks - Field 2b'
+  'Home vs. Eagles @ King George HS Gym 2'            → 'King George HS - Gym 2 (Home)'
+  'Dr. Smith · 1234 Main St · Suite 200'              → 'Dr. Smith - 1234 Main St, Suite 200'
+
+Rules:
+1. If the source has a separate 'Field', 'Court', 'Room', 'Building', or 'Gym' column alongside a venue/facility column, MERGE them into one ' - '-separated string.
+2. Preserve exact field designations including letter suffixes ('Field 2b', 'Court 1a').
+3. Keep location under ~80 chars. If the source is verbose, trim to: [Facility] - [Sub-location]. Street address only if no facility name is available.
+4. Put home/away qualifier in parentheses at the end ('(Home)' / '(Away)') ONLY if the source states it — otherwise leave it out and mention in notes if relevant.
+5. If the source gives ONLY a top-level venue with no sub-location, that's fine — just don't lose any detail that IS present.
 
 ═══════════════════════════════════════════════════════════════════════════
 EVENT_TYPE RULES

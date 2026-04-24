@@ -300,6 +300,30 @@ function findMatch(row: ExtractedEvent, existing: CalendarEvent[]): CalendarEven
 }
 
 /**
+ * True when `candidate` is a strictly more detailed version of `existing` —
+ * same place, more specificity. Examples:
+ *   "Sealston"                  vs "Sealston - Field 2"         → true
+ *   "Cedell Brooks"             vs "Cedell Brooks - Field 2b"   → true
+ *   "Sealston - Field 1"        vs "Sealston - Field 2"         → false (conflict)
+ *   "Dr. Smith"                 vs "Main St Clinic"             → false (different)
+ * Logic: candidate must either contain existing as a contiguous substring,
+ * OR contain every significant token (length ≥ 3) from existing. Both
+ * signals indicate the import is the same venue with more detail.
+ */
+function isMoreSpecificLocation(existing: string, candidate: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  const e = normalize(existing);
+  const c = normalize(candidate);
+  if (!e || !c) return false;
+  if (e === c) return false;
+  if (c.length <= e.length) return false;
+  if (c.includes(e)) return true;
+  const eTokens = e.split(/[\s,\-–—/]+/).filter((t) => t.length >= 3);
+  if (eTokens.length === 0) return false;
+  return eTokens.every((tok) => c.includes(tok));
+}
+
+/**
  * Build an update patch for a merge. Purely additive — existing fields are
  * only replaced when they're empty / less specific. The parent's original
  * title survives; the new row's text is appended to notes as the imported
@@ -312,9 +336,17 @@ function buildMergePatch(
 ): Partial<EventFormData> {
   const patch: Partial<EventFormData> = {};
 
-  // Location: fill if empty.
-  if (!existing.location && row.location) {
-    patch.location = row.location;
+  // Location: fill if empty, OR upgrade when the import is the same venue
+  // with more detail ("Sealston" → "Sealston - Field 2"). Never clobber a
+  // user-saved location with something unrelated.
+  if (row.location) {
+    const existingLoc = (existing.location || "").trim();
+    const newLoc = row.location.trim();
+    if (!existingLoc) {
+      patch.location = newLoc;
+    } else if (isMoreSpecificLocation(existingLoc, newLoc)) {
+      patch.location = newLoc;
+    }
   }
 
   // Notes: append imported context with a prefix so the provenance is clear.
