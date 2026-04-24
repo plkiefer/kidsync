@@ -45,18 +45,21 @@
   --action-bg:      #eff6fb;
   --action-ring:    rgba(3, 105, 161, 0.22);
 
-  /* ─── Custody parent tints — tints applied to full day-cell bg.
-     Cool paper for You, warm cream for the co-parent. Dark "line" is
-     the hairline outline variant if ever needed. */
-  --you-bg:    #eef1f5;
+  /* ─── Custody parent tints — applied to full day-cell bg.
+     Refined for more editorial saturation so the two parents read
+     at-a-glance against the near-white page shell. Cool misty blue
+     for You, warm sunlit cream for the co-parent. */
+  --you-bg:    #e6ecf2;
   --you-line:  #93a4b3;
-  --you-text:  #45556a;
-  --them-bg:   #f7f2e8;
+  --you-text:  #374a5d;
+  --them-bg:   #faefd1;
   --them-line: #c7b58c;
-  --them-text: #7a6835;
+  --them-text: #6b5a2c;
 
-  /* ─── Heavy border — calendar week dividers (4px) ─────────────────── */
-  --border-heavy: #8a867b;
+  /* ─── Heavy border — calendar week dividers. Neutral-gray (not warm
+     tan) so it reads cleanly against the near-white page shell without
+     pulling toward beige. */
+  --border-heavy: #8e8e8c;
 
   /* ─── Surface + type ─── */
   /* Two bg layers: the outermost page shell is nearly pure white so that

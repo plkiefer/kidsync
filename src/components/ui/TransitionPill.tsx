@@ -70,11 +70,13 @@ export function TransitionPill({
       type="button"
       aria-label={ariaLabel}
       className={[
-        "inline-flex items-center gap-1",
-        "pl-0.5 pr-1.5 py-0",
-        "text-[10.5px] font-semibold leading-tight",
-        "border border-action bg-[var(--bg)] text-action",
-        "transition-colors hover:bg-[var(--action-bg)]",
+        "inline-flex items-center gap-1 w-full",
+        "px-1.5 py-[3px]",
+        "text-[11px] font-medium leading-tight text-[var(--ink)]",
+        // Match event-chip shape: white bg + 3px cerulean left border + hairline ring.
+        "bg-white border-l-[3px] border-action",
+        "shadow-[0_0_0_1px_var(--border)]",
+        "cursor-pointer hover:translate-x-[1px] transition-transform",
         "focus:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]",
         className,
       ]
@@ -82,25 +84,27 @@ export function TransitionPill({
         .join(" ")}
       {...rest}
     >
-      <span
-        className="px-1 py-[1px] font-bold tabular-nums text-[10.5px] bg-action text-action-fg"
-      >
+      <span className="text-[10px] tabular-nums font-semibold text-action shrink-0">
         {time}
       </span>
       {kid && kid !== "all" && (
         <span
           className={[
-            "px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider",
-            kidChipBg[kid],
+            "inline-flex items-center justify-center shrink-0",
+            "w-[14px] h-[14px] rounded-sm",
+            "text-[8px] font-bold text-white",
+            kid === "ethan" ? "bg-kid-ethan" : "bg-kid-harrison",
           ].join(" ")}
         >
           {kid === "ethan" ? "E" : "H"}
         </span>
       )}
-      <span className="inline-flex items-center text-action">
+      <span className="inline-flex items-center text-action shrink-0">
         <IconArrow direction={direction} />
       </span>
-      <span className="font-semibold text-[10px]">{displayLabel}</span>
+      <span className="truncate text-[10.5px] font-medium text-action">
+        {displayLabel}
+      </span>
     </button>
   );
 }

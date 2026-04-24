@@ -588,13 +588,18 @@ export default function CalendarPage() {
       {/* ── HEADER ── */}
       <header className="px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">📅</span>
+          <span
+            aria-hidden
+            className="inline-flex items-center justify-center w-7 h-7 bg-[var(--ink)] text-[var(--accent-ink)] font-display text-sm"
+          >
+            K
+          </span>
           <div>
-            <h1 className="font-display text-xl font-bold tracking-tight">
+            <h1 className="font-display text-xl font-bold tracking-tight leading-none mb-0.5">
               KidSync
             </h1>
-            <p className="text-[11px] text-[var(--color-text-faint)]">
-              Logged in as {profile?.full_name}
+            <p className="t-label-sm">
+              Signed in · {profile?.full_name?.split(" ")[0] ?? ""}
             </p>
           </div>
         </div>

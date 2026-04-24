@@ -202,8 +202,8 @@ export default function MonthView({
                     {/* Day number */}
                     <div
                       className={`
-                        inline-flex items-center justify-center h-[26px] min-w-[26px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
-                        ${today ? "bg-action text-action-fg font-semibold rounded-full" : ""}
+                        inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
+                        ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
                         ${!today && inMonth ? "text-[var(--ink)]" : ""}
                         ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
                       `}

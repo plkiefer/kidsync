@@ -36,17 +36,17 @@ const config: Config = {
           fg: "#ffffff",
           bg: "#eff6fb",
         },
-        // Custody parent tints — tints applied to full day-cell bg.
+        // Custody parent tints — applied to full day-cell bg.
         custody: {
-          "you-bg": "#eef1f5",
+          "you-bg": "#e6ecf2",
           "you-line": "#93a4b3",
-          "you-text": "#45556a",
-          "them-bg": "#f7f2e8",
+          "you-text": "#374a5d",
+          "them-bg": "#faefd1",
           "them-line": "#c7b58c",
-          "them-text": "#7a6835",
+          "them-text": "#6b5a2c",
         },
-        // Heavy border — calendar week dividers (4px).
-        "border-heavy": "#8a867b",
+        // Heavy border — calendar week dividers (neutral gray).
+        "border-heavy": "#8e8e8c",
       },
       animation: {
         "slide-up": "slideUp 0.3s ease-out",

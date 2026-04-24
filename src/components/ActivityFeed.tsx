@@ -11,16 +11,17 @@ interface ActivityFeedProps {
 }
 
 function ActionBadge({ action }: { action: string }) {
+  // Editorial pills: subtle tinted bg + semantic text color, sharp corners.
   const colors: Record<string, string> = {
-    created: "bg-[var(--color-tag-created-bg)] text-[var(--color-tag-created-text)]",
-    updated: "bg-[var(--color-tag-updated-bg)] text-[var(--color-tag-updated-text)]",
-    deleted: "bg-[var(--color-tag-deleted-bg)] text-red-400",
+    created: "bg-[var(--stone-100)] text-[var(--ink)] border-[var(--border-strong)]",
+    updated: "bg-[var(--accent-amber-tint)] text-[var(--accent-amber)] border-[var(--accent-amber)]/30",
+    deleted: "bg-[var(--accent-red-tint)] text-[var(--accent-red)] border-[var(--accent-red)]/30",
   };
 
   return (
     <span
-      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-        colors[action] || "bg-[var(--color-input)] text-[var(--color-text-muted)]"
+      className={`text-[9.5px] font-semibold uppercase tracking-[0.08em] px-1.5 py-[1px] rounded-sm border ${
+        colors[action] || "bg-[var(--bg-sunken)] text-[var(--text-muted)] border-[var(--border)]"
       }`}
     >
       {action}

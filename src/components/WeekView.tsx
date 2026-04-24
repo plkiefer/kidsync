@@ -167,8 +167,8 @@ export default function WeekView({
                 </div>
                 <div
                   className={`
-                    inline-flex items-center justify-center w-9 h-9 text-base font-semibold tabular-nums
-                    ${today ? "bg-action text-action-fg rounded-full" : "text-[var(--ink)]"}
+                    inline-flex items-center justify-center w-8 h-8 text-base font-semibold tabular-nums
+                    ${today ? "bg-action text-action-fg rounded-sm" : "text-[var(--ink)]"}
                   `}
                 >
                   {date.getDate()}
