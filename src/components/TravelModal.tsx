@@ -59,7 +59,7 @@ function emptyPackingItem(): PackingItem {
 }
 
 const inputCls =
-  "w-full px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]";
+  "w-full px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors";
 
 const labelCls =
   "block text-[10px] font-semibold text-[var(--color-text-faint)] uppercase tracking-wider mb-1";
@@ -78,7 +78,7 @@ function Section({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className="border border-[var(--color-divider)] rounded-xl overflow-hidden">
+    <div className="border border-[var(--border)] rounded-sm overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -228,7 +228,7 @@ export default function TravelModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-lg max-h-[92vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--bg)] w-full max-w-lg max-h-[92vh] flex flex-col border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 pb-4 border-b border-[var(--color-divider)] shrink-0">
@@ -242,7 +242,7 @@ export default function TravelModal({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="w-7 h-7 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             <X size={16} />
           </button>
@@ -253,12 +253,12 @@ export default function TravelModal({
           {/* ── FLIGHTS ── */}
           <Section
             title="Flights"
-            icon={<Plane size={14} className="text-cyan-400" />}
+            icon={<Plane size={14} className="text-action" />}
           >
             {form.flights.map((flight, i) => (
               <div
                 key={i}
-                className="p-3 bg-[var(--color-surface-alt)] rounded-lg border border-[var(--color-divider)] space-y-2"
+                className="p-3 bg-[var(--bg-sunken)] rounded-sm border border-[var(--border)] space-y-2"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase">
@@ -268,7 +268,7 @@ export default function TravelModal({
                     <button
                       type="button"
                       onClick={() => removeFlight(i)}
-                      className="text-red-400/60 hover:text-red-400"
+                      style={{ color: "var(--accent-red)", opacity: 0.6 }} onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = "1")} onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = "0.6")}
                     >
                       <Trash2 size={12} />
                     </button>
@@ -471,7 +471,7 @@ export default function TravelModal({
           {/* ── EMERGENCY CONTACT ── */}
           <Section
             title="Emergency Contact"
-            icon={<Phone size={14} className="text-red-400" />}
+            icon={<Phone size={14} style={{ color: "var(--accent-red)" }} />}
           >
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -530,7 +530,7 @@ export default function TravelModal({
             {form.documents.map((doc, i) => (
               <div
                 key={i}
-                className="flex items-start gap-2 p-2 bg-[var(--color-surface-alt)] rounded-lg"
+                className="flex items-start gap-2 p-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm"
               >
                 <div className="flex-1 grid grid-cols-2 gap-2">
                   <div>
@@ -586,7 +586,10 @@ export default function TravelModal({
                 <button
                   type="button"
                   onClick={() => removeDocument(i)}
-                  className="mt-5 text-red-400/60 hover:text-red-400 p-1"
+                  className="mt-5 p-1"
+                  style={{ color: "var(--accent-red)", opacity: 0.6 }}
+                  onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = "1")}
+                  onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = "0.6")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -616,7 +619,7 @@ export default function TravelModal({
                     w-5 h-5 rounded border shrink-0 flex items-center justify-center transition-all text-xs
                     ${
                       item.packed
-                        ? "bg-emerald-500/20 border-emerald-500 text-[var(--color-tag-created-text)]"
+                        ? "bg-[#8ea18a]/20 border-[#8ea18a] text-[#3D7A4F]"
                         : "border-[var(--color-border)] hover:border-[var(--color-text-faint)]"
                     }
                   `}
@@ -636,7 +639,7 @@ export default function TravelModal({
                 <button
                   type="button"
                   onClick={() => removePackingItem(i)}
-                  className="text-red-400/60 hover:text-red-400 p-1"
+                  className="p-1" style={{ color: "var(--accent-red)", opacity: 0.6 }} onMouseEnter={(e) => ((e.currentTarget as HTMLElement).style.opacity = "1")} onMouseLeave={(e) => ((e.currentTarget as HTMLElement).style.opacity = "0.6")}
                 >
                   <Trash2 size={12} />
                 </button>
@@ -657,7 +660,7 @@ export default function TravelModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="px-4 py-2 rounded-sm border border-[var(--border)] text-[var(--text-muted)] text-xs font-semibold hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             Cancel
           </button>
