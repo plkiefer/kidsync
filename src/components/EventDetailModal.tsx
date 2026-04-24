@@ -61,19 +61,20 @@ export default function EventDetailModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--bg)] w-full max-w-md max-h-[85vh] flex flex-col border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        <div className="h-2 rounded-t-2xl shrink-0" style={colorBarStyle} />
+        <div className="h-1.5 shrink-0" style={colorBarStyle} />
 
         <div className="flex-1 overflow-y-auto p-6">
           {/* Top row */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">{getEventIcon(event)}</span>
+              <span className="text-xl" aria-hidden>{getEventIcon(event)}</span>
               <span
-                className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"
+                className="text-[10px] font-semibold uppercase tracking-[0.08em] px-1.5 py-[2px] rounded-sm border"
                 style={{
-                  backgroundColor: `${typeColor}20`,
+                  backgroundColor: `${typeColor}18`,
+                  borderColor: `${typeColor}55`,
                   color: typeColor,
                 }}
               >
@@ -82,7 +83,8 @@ export default function EventDetailModal({
             </div>
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-lg bg-[var(--color-input)] text-[var(--color-text-muted)] flex items-center justify-center hover:bg-[var(--color-surface-alt)] transition-colors"
+              className="w-7 h-7 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[var(--text-muted)] flex items-center justify-center hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+              aria-label="Close"
             >
               <X size={16} />
             </button>
@@ -100,7 +102,7 @@ export default function EventDetailModal({
                 {eventKids.map((kid) => (
                   <div
                     key={kid.id}
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    className="w-7 h-7 rounded-sm flex items-center justify-center text-xs font-bold text-white"
                     style={{ backgroundColor: kid.color }}
                     title={kid.name}
                   >
@@ -124,7 +126,7 @@ export default function EventDetailModal({
 
             {/* Date & Time */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)]">
+              <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)]">
                 <Clock size={14} />
               </div>
               <div>
@@ -146,7 +148,7 @@ export default function EventDetailModal({
             {/* Recurrence */}
             {event.recurring_rule && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)]">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)]">
                   <Repeat size={14} />
                 </div>
                 <div>
@@ -161,7 +163,7 @@ export default function EventDetailModal({
             {/* Location */}
             {event.location && (
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)]">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)]">
                   <MapPin size={14} />
                 </div>
                 <div>
@@ -176,7 +178,7 @@ export default function EventDetailModal({
               <>
                 {firstFlight && firstFlight.departure_airport && (
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600">
+                    <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--ink)]">
                       <Plane size={14} />
                     </div>
                     <div>
@@ -194,7 +196,7 @@ export default function EventDetailModal({
                 )}
                 {travel.lodging_name && (
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600">
+                    <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--ink)]">
                       <Building2 size={14} />
                     </div>
                     <div>
@@ -214,7 +216,7 @@ export default function EventDetailModal({
             {/* Notes */}
             {event.notes && (
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                   <FileText size={14} />
                 </div>
                 <div>
@@ -229,7 +231,7 @@ export default function EventDetailModal({
             {/* Attachments */}
             {event.attachments && event.attachments.length > 0 && (
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                   <Paperclip size={14} />
                 </div>
                 <div className="flex-1">
@@ -239,7 +241,7 @@ export default function EventDetailModal({
                       <button
                         key={i}
                         onClick={() => onDownloadAttachment?.(att)}
-                        className="flex items-center gap-2 text-xs text-[var(--color-accent)] bg-[var(--color-accent-soft)] rounded-lg px-2.5 py-1.5 w-full text-left hover:opacity-80 transition-opacity"
+                        className="flex items-center gap-2 text-xs text-action bg-action-bg border border-action/30 rounded-sm px-2.5 py-1.5 w-full text-left hover:bg-action/10 transition-colors"
                       >
                         <Download size={10} />
                         <span className="flex-1 truncate">{att.name}</span>
@@ -255,7 +257,7 @@ export default function EventDetailModal({
 
             {/* Created by */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)]">
+              <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)]">
                 <User size={14} />
               </div>
               <div>
@@ -289,39 +291,39 @@ export default function EventDetailModal({
                 {grouped.map((o) => (
                   <div
                     key={o.id}
-                    className={`text-[11px] px-3 py-2 rounded-lg border ${
+                    className={`text-[11px] px-3 py-2 rounded-sm border ${
                       o.status === "approved"
-                        ? "border-green-500/20 bg-green-500/5"
+                        ? "border-[#8ea18a]/50 bg-[#8ea18a]/10"
                         : o.status === "disputed"
-                        ? "border-red-500/20 bg-red-500/5"
+                        ? "border-[var(--accent-red)]/30 bg-[var(--accent-red-tint)]"
                         : o.status === "pending"
-                        ? "border-amber-500/20 bg-amber-500/5"
-                        : "border-[var(--color-border)] bg-[var(--color-input)]"
+                        ? "border-[var(--accent-amber)]/30 bg-[var(--accent-amber-tint)]"
+                        : "border-[var(--border)] bg-[var(--bg-sunken)]"
                     }`}
                   >
-                    <div className="text-[var(--color-text)]">
+                    <div className="text-[var(--ink)]">
                       {o.note || "Schedule change"}
                     </div>
-                    <div className="text-[var(--color-text-faint)] mt-1 space-y-0.5">
+                    <div className="text-[var(--text-faint)] mt-1 space-y-0.5">
                       <div>
                         Requested {o.created_at ? format(parseISO(o.created_at), "MMM d") : ""}
                         {o.created_by ? ` by ${getMemberName(o.created_by)}` : ""}
                       </div>
                       {o.status === "approved" && o.responded_at && (
-                        <div className="text-green-400">
+                        <div style={{ color: "#3D7A4F" }}>
                           Approved {format(parseISO(o.responded_at), "MMM d")}
                           {o.responded_by ? ` by ${getMemberName(o.responded_by)}` : ""}
                         </div>
                       )}
                       {o.status === "disputed" && (
-                        <div className="text-red-400">
+                        <div style={{ color: "var(--accent-red)" }}>
                           Rejected {o.responded_at ? format(parseISO(o.responded_at), "MMM d") : ""}
                           {o.responded_by ? ` by ${getMemberName(o.responded_by)}` : ""}
                           {o.response_note ? ` — ${o.response_note}` : ""}
                         </div>
                       )}
                       {o.status === "pending" && (
-                        <div className="text-amber-400">Awaiting response</div>
+                        <div style={{ color: "var(--accent-amber)" }}>Awaiting response</div>
                       )}
                     </div>
                   </div>
@@ -339,7 +341,7 @@ export default function EventDetailModal({
                   {onRequestCustodyChange && (
                     <button
                       onClick={() => { onClose(); onRequestCustodyChange(); }}
-                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-semibold hover:bg-amber-500/20 transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber-tint)] text-[var(--accent-amber)] text-xs font-semibold hover:bg-[var(--accent-amber)]/20 transition-colors"
                     >
                       <AlertCircle size={13} />
                       Request Schedule Change
@@ -348,7 +350,7 @@ export default function EventDetailModal({
                   {onCancelExchange && (
                     <button
                       onClick={() => onCancelExchange(event)}
-                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs font-semibold hover:bg-red-500/20 transition-colors"
+                      className="w-full flex items-center justify-center gap-1.5 px-4 py-2 rounded-sm border border-[var(--accent-red)]/40 bg-[var(--accent-red-tint)] text-[var(--accent-red)] text-xs font-semibold hover:bg-[var(--accent-red)]/15 transition-colors"
                     >
                       <Trash2 size={13} />
                       Cancel This Exchange
@@ -371,7 +373,7 @@ export default function EventDetailModal({
                 {onDeleteOccurrence && (
                   <button
                     onClick={() => onDeleteOccurrence(event)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-[10px] font-semibold hover:bg-red-500/20 transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 px-3 py-2 rounded-sm border border-[var(--accent-red)]/40 bg-[var(--accent-red-tint)] text-[var(--accent-red)] text-[10px] font-semibold hover:bg-[var(--accent-red)]/15 transition-colors flex items-center justify-center gap-1"
                   >
                     <Trash2 size={11} />
                     Delete This
@@ -379,7 +381,7 @@ export default function EventDetailModal({
                 )}
                 <button
                   onClick={handleDelete}
-                  className="flex-1 px-3 py-2 rounded-xl border border-red-500/30 bg-red-500/5 text-red-300 text-[10px] font-semibold hover:bg-red-500/10 transition-colors flex items-center justify-center gap-1"
+                  className="flex-1 px-3 py-2 rounded-sm border border-[var(--accent-red)]/30 bg-[var(--accent-red-tint)]/60 text-[var(--accent-red)] text-[10px] font-semibold hover:bg-[var(--accent-red-tint)] transition-colors flex items-center justify-center gap-1"
                 >
                   <Trash2 size={11} />
                   Delete Series
@@ -389,7 +391,7 @@ export default function EventDetailModal({
                 {onEditOccurrence && (
                   <button
                     onClick={() => { onClose(); onEditOccurrence(event); }}
-                    className="flex-1 px-3 py-2 bg-action text-action-fg text-[10px] font-semibold hover:bg-action-hover transition-colors flex items-center justify-center gap-1"
+                    className="flex-1 px-3 py-2 rounded-sm bg-action text-action-fg text-[10px] font-semibold hover:bg-action-hover transition-colors flex items-center justify-center gap-1"
                   >
                     <Pencil size={11} />
                     Edit This
@@ -397,7 +399,7 @@ export default function EventDetailModal({
                 )}
                 <button
                   onClick={onEdit}
-                  className="flex-1 px-3 py-2 border border-action/30 bg-action-bg text-action text-[10px] font-semibold hover:bg-action/15 transition-colors flex items-center justify-center gap-1"
+                  className="flex-1 px-3 py-2 rounded-sm border border-action/40 bg-action-bg text-action text-[10px] font-semibold hover:bg-action/10 transition-colors flex items-center justify-center gap-1"
                 >
                   <Pencil size={11} />
                   Edit Series
@@ -409,7 +411,7 @@ export default function EventDetailModal({
             <div className="flex items-center gap-3 pt-4 border-t border-[var(--color-divider)]">
               <button
                 onClick={handleDelete}
-                className="px-3.5 py-2.5 rounded-xl border border-[var(--color-tag-deleted-bg)] bg-red-500/10 text-[var(--color-tag-deleted-text)] text-xs font-semibold hover:bg-red-500/20 transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-sm border border-[var(--accent-red)]/40 bg-[var(--accent-red-tint)] text-[var(--accent-red)] text-xs font-semibold hover:bg-[var(--accent-red)]/15 transition-colors flex items-center gap-1.5"
               >
                 <Trash2 size={12} />
                 Delete
@@ -418,7 +420,7 @@ export default function EventDetailModal({
               {event.event_type === "travel" && onOpenTravel && (
                 <button
                   onClick={() => onOpenTravel(event.id)}
-                  className="px-3.5 py-2.5 rounded-xl border border-[var(--color-border)] bg-cyan-500/10 text-[var(--color-text-muted)] text-xs font-semibold hover:bg-cyan-500/20 transition-colors flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-sm border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-semibold hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors flex items-center gap-1.5"
                 >
                   <Plane size={12} />
                   Travel Details
@@ -429,7 +431,7 @@ export default function EventDetailModal({
 
               <button
                 onClick={onEdit}
-                className="px-5 py-2.5 bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
+                className="px-5 py-2 rounded-sm bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors flex items-center gap-1.5 focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
               >
                 <Pencil size={12} />
                 Edit Event

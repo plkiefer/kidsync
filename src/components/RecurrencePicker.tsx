@@ -226,15 +226,15 @@ export default function RecurrencePicker({
         onClick={() => setShowPresets(!showPresets)}
         className="flex items-center gap-2 w-full text-left group"
       >
-        <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+        <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
           <Repeat size={14} />
         </div>
-        <span className={`text-sm flex-1 ${value ? "text-[var(--color-text)]" : "text-[var(--color-text-faint)]"}`}>
+        <span className={`text-sm flex-1 ${value ? "text-[var(--ink)]" : "text-[var(--text-faint)]"}`}>
           {summary}
         </span>
         <ChevronDown
           size={14}
-          className="text-[var(--color-text-faint)] group-hover:text-[var(--color-text-muted)] transition-colors"
+          className="text-[var(--text-faint)] group-hover:text-[var(--text-muted)] transition-colors"
         />
       </button>
 
@@ -242,29 +242,29 @@ export default function RecurrencePicker({
       {showPresets && (
         <div
           ref={presetsRef}
-          className="absolute left-10 top-10 z-10 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-lg py-1 min-w-[240px] animate-scale-in"
+          className="absolute left-9 top-9 z-10 bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-md)] py-1 min-w-[240px] animate-scale-in"
         >
           {presets.map((p) => (
             <button
               key={p.rrule + p.label}
               type="button"
               onClick={() => handlePresetSelect(p.rrule)}
-              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-[var(--color-surface-alt)] transition-colors ${
+              className={`w-full text-left px-4 py-2 text-sm hover:bg-[var(--bg-sunken)] transition-colors ${
                 value === p.rrule
-                  ? "text-[var(--color-accent)] font-medium"
-                  : "text-[var(--color-text)]"
+                  ? "text-action font-semibold"
+                  : "text-[var(--ink)]"
               }`}
             >
               {p.label}
             </button>
           ))}
-          <div className="border-t border-[var(--color-divider)] mt-1 pt-1">
+          <div className="border-t border-[var(--border)] mt-1 pt-1">
             <button
               type="button"
               onClick={handleOpenCustom}
-              className="w-full text-left px-4 py-2.5 text-sm text-[var(--color-accent)] font-medium hover:bg-[var(--color-surface-alt)] transition-colors"
+              className="w-full text-left px-4 py-2 text-sm text-action font-semibold hover:bg-[var(--bg-sunken)] transition-colors"
             >
-              Custom...
+              Custom…
             </button>
           </div>
         </div>
@@ -272,7 +272,7 @@ export default function RecurrencePicker({
 
       {/* Custom recurrence dialog */}
       {showCustom && (
-        <div className="mt-3 ml-10 p-4 bg-[var(--color-surface-alt)] border border-[var(--color-border)] rounded-xl space-y-4 animate-scale-in">
+        <div className="mt-3 ml-9 p-4 bg-[var(--bg-sunken)] border border-[var(--border-strong)] rounded-sm space-y-4 animate-scale-in">
           {/* Repeat every N freq */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-[var(--color-text-muted)] font-medium">
@@ -284,12 +284,12 @@ export default function RecurrencePicker({
               max={99}
               value={interval}
               onChange={(e) => setInterval(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-14 px-2 py-1.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm text-center focus:outline-none focus:border-[var(--color-accent)]"
+              className="w-14 px-2 py-1.5 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm text-center focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)]"
             />
             <select
               value={freq}
               onChange={(e) => setFreq(e.target.value)}
-              className="px-3 py-1.5 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+              className="px-3 py-1.5 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)]"
             >
               {FREQ_OPTIONS.map((f) => (
                 <option key={f.value} value={f.value}>
@@ -311,10 +311,10 @@ export default function RecurrencePicker({
                     key={day.key}
                     type="button"
                     onClick={() => toggleDay(day.key)}
-                    className={`w-9 h-9 rounded-full text-xs font-bold transition-all ${
+                    className={`w-8 h-8 rounded-sm text-xs font-bold transition-colors border ${
                       byDay.includes(day.key)
-                        ? "bg-[var(--color-accent)] text-white"
-                        : "bg-[var(--color-input)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)]"
+                        ? "bg-action text-action-fg border-action"
+                        : "bg-[var(--bg)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--ink)] hover:bg-[var(--bg-sunken)]"
                     }`}
                   >
                     {day.label}
@@ -336,7 +336,7 @@ export default function RecurrencePicker({
                   name="recurrence-end"
                   checked={endMode === "never"}
                   onChange={() => setEndMode("never")}
-                  className="accent-[var(--color-accent)]"
+                  className="accent-[var(--action)]"
                 />
                 <span className="text-sm text-[var(--color-text)]">Never</span>
               </label>
@@ -347,7 +347,7 @@ export default function RecurrencePicker({
                   name="recurrence-end"
                   checked={endMode === "until"}
                   onChange={() => setEndMode("until")}
-                  className="accent-[var(--color-accent)]"
+                  className="accent-[var(--action)]"
                 />
                 <span className="text-sm text-[var(--color-text)]">On</span>
                 {endMode === "until" && (
@@ -355,7 +355,7 @@ export default function RecurrencePicker({
                     type="date"
                     value={until}
                     onChange={(e) => setUntil(e.target.value)}
-                    className="px-2 py-1 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)]"
+                    className="px-2 py-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)]"
                   />
                 )}
               </label>
@@ -366,7 +366,7 @@ export default function RecurrencePicker({
                   name="recurrence-end"
                   checked={endMode === "count"}
                   onChange={() => setEndMode("count")}
-                  className="accent-[var(--color-accent)]"
+                  className="accent-[var(--action)]"
                 />
                 <span className="text-sm text-[var(--color-text)]">After</span>
                 {endMode === "count" && (
@@ -377,7 +377,7 @@ export default function RecurrencePicker({
                       max={999}
                       value={count}
                       onChange={(e) => setCount(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-16 px-2 py-1 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm text-center focus:outline-none focus:border-[var(--color-accent)]"
+                      className="w-16 px-2 py-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm text-center focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)]"
                     />
                     <span className="text-sm text-[var(--color-text-muted)]">
                       occurrences
@@ -393,14 +393,14 @@ export default function RecurrencePicker({
             <button
               type="button"
               onClick={() => setShowCustom(false)}
-              className="px-3 py-1.5 text-xs font-semibold text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors mr-2"
+              className="px-3 py-1.5 text-xs font-semibold text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors mr-2"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleCustomDone}
-              className="px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-white text-xs font-semibold transition-all hover:opacity-90"
+              className="px-4 py-1.5 rounded-sm bg-action text-action-fg text-xs font-semibold hover:bg-action-hover transition-colors"
             >
               Done
             </button>
