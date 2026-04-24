@@ -93,7 +93,7 @@ export default function SettingsPage() {
   }
 
   const inputCls =
-    "w-full px-4 py-3 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[rgba(56,56,56,0.12)] transition-all";
+    "w-full px-4 py-2.5 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors";
 
   return (
     <div className="min-h-screen p-6 max-w-lg mx-auto">
@@ -101,7 +101,7 @@ export default function SettingsPage() {
       <div className="flex items-center gap-3 mb-8">
         <Link
           href="/calendar"
-          className="p-2 -ml-2 rounded-xl text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)] transition-all"
+          className="p-2 -ml-2 rounded-sm text-[var(--text-muted)] hover:text-[var(--ink)] hover:bg-[var(--bg-sunken)] transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
@@ -123,7 +123,7 @@ export default function SettingsPage() {
 
       <div className="space-y-5">
         {/* Change Email Card */}
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+        <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm shadow-[var(--shadow-sm)] p-5">
           <div className="flex items-center gap-2 mb-1">
             <Mail className="w-4 h-4 text-[var(--color-text-muted)]" />
             <h2 className="font-display text-base font-semibold text-[var(--color-text)]">
@@ -147,13 +147,13 @@ export default function SettingsPage() {
             />
 
             {emailError && (
-              <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+              <div className="text-xs rounded-sm p-2.5 border" style={{ color: "var(--accent-red)", background: "var(--accent-red-tint)", borderColor: "color-mix(in srgb, var(--accent-red) 30%, transparent)" }}>
                 {emailError}
               </div>
             )}
 
             {emailSuccess && (
-              <div className="text-emerald-300 text-xs bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5 flex items-center gap-2">
+              <div className="text-xs rounded-sm p-2.5 border flex items-center gap-2" style={{ color: "#3D7A4F", background: "rgba(142, 161, 138, 0.15)", borderColor: "rgba(142, 161, 138, 0.5)" }}>
                 <Check className="w-3.5 h-3.5 flex-shrink-0" />
                 {emailSuccess}
               </div>
@@ -174,7 +174,7 @@ export default function SettingsPage() {
         </div>
 
         {/* Change Password Card */}
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+        <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm shadow-[var(--shadow-sm)] p-5">
           <div className="flex items-center gap-2 mb-4">
             <Lock className="w-4 h-4 text-[var(--color-text-muted)]" />
             <h2 className="font-display text-base font-semibold text-[var(--color-text)]">
@@ -203,20 +203,20 @@ export default function SettingsPage() {
             />
 
             {passwordError && (
-              <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+              <div className="text-xs rounded-sm p-2.5 border" style={{ color: "var(--accent-red)", background: "var(--accent-red-tint)", borderColor: "color-mix(in srgb, var(--accent-red) 30%, transparent)" }}>
                 {passwordError}
               </div>
             )}
 
             {passwordSuccess && (
-              <div className="text-emerald-300 text-xs bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-2.5 flex items-center gap-2">
+              <div className="text-xs rounded-sm p-2.5 border flex items-center gap-2" style={{ color: "#3D7A4F", background: "rgba(142, 161, 138, 0.15)", borderColor: "rgba(142, 161, 138, 0.5)" }}>
                 <Check className="w-3.5 h-3.5 flex-shrink-0" />
                 {passwordSuccess}
               </div>
             )}
 
             {confirmPassword && newPassword !== confirmPassword && (
-              <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+              <div className="text-xs rounded-sm p-2.5 border" style={{ color: "var(--accent-red)", background: "var(--accent-red-tint)", borderColor: "color-mix(in srgb, var(--accent-red) 30%, transparent)" }}>
                 Passwords do not match.
               </div>
             )}

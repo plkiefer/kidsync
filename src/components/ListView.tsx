@@ -38,7 +38,7 @@ export default function ListView({
 
   if (monthEvents.length === 0) {
     return (
-      <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] p-12 text-center">
+      <div className="bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-sm)] p-12 text-center">
         <span className="text-4xl mb-3 block">📅</span>
         <p className="text-[var(--color-text-muted)] text-sm">No events this month</p>
         <p className="text-[var(--color-text-faint)] text-xs mt-1">
@@ -49,7 +49,7 @@ export default function ListView({
   }
 
   return (
-    <div className="bg-[var(--color-surface)]/30 rounded-2xl border border-[var(--color-border)] overflow-hidden">
+    <div className="bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-sm)] overflow-hidden">
       {monthEvents.map((evt, i) => {
         const evtKids = getEventKidsFor(evt);
         const creator = getMember(evt.created_by);
@@ -77,9 +77,10 @@ export default function ListView({
                   {evt.title}
                 </span>
                 <span
-                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full shrink-0"
+                  className="text-[9.5px] font-semibold uppercase tracking-[0.08em] px-1.5 py-[1px] rounded-sm border shrink-0"
                   style={{
-                    backgroundColor: `${typeColor}20`,
+                    backgroundColor: `${typeColor}18`,
+                    borderColor: `${typeColor}55`,
                     color: typeColor,
                   }}
                 >
@@ -103,16 +104,14 @@ export default function ListView({
                 {evt.event_type !== "holiday" && evtKids.map((kid) => (
                   <div
                     key={kid.id}
-                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md"
+                    className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-sm border"
                     style={{
-                      backgroundColor: `${kid.color}22`,
-                      color: kid.color,
+                      backgroundColor: kid.color,
+                      borderColor: kid.color,
+                      color: "#ffffff",
                     }}
                   >
-                    <span
-                      className="inline-flex items-center justify-center w-[16px] h-[16px] rounded-full text-[8px] font-bold text-white"
-                      style={{ backgroundColor: kid.color }}
-                    >
+                    <span className="inline-flex items-center justify-center w-[14px] h-[14px] rounded-sm text-[8px] font-bold bg-white/20">
                       {kid.name.charAt(0)}
                     </span>
                     {kid.name}

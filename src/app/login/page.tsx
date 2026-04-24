@@ -11,20 +11,22 @@ interface FamilyMember {
   email: string;
 }
 
+// Two-parent visual identity. Uses the custody parent tints so the login
+// page foreshadows the color each parent will see throughout the calendar.
 const CARD_ACCENTS = [
   {
-    bg: "bg-indigo-500/10",
-    border: "border-indigo-500/30",
-    hover: "hover:border-indigo-400/50 hover:bg-indigo-500/15",
-    avatar: "bg-indigo-500/20 text-indigo-300",
-    ring: "ring-indigo-500/40",
+    bg: "bg-[var(--them-bg)]",
+    border: "border-[var(--them-line)]",
+    hover: "hover:bg-[var(--them-bg)]/80",
+    avatar: "bg-[var(--them-line)] text-white",
+    text: "text-[var(--them-text)]",
   },
   {
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/30",
-    hover: "hover:border-amber-400/50 hover:bg-amber-500/15",
-    avatar: "bg-amber-500/20 text-amber-300",
-    ring: "ring-amber-500/40",
+    bg: "bg-[var(--you-bg)]",
+    border: "border-[var(--you-line)]",
+    hover: "hover:bg-[var(--you-bg)]/80",
+    avatar: "bg-[var(--you-line)] text-white",
+    text: "text-[var(--you-text)]",
   },
 ];
 
@@ -107,22 +109,22 @@ export default function LoginPage() {
                   <button
                     key={member.id}
                     onClick={() => setSelectedParent(member)}
-                    className={`group relative flex flex-col items-center gap-4 p-6 rounded-2xl border transition-all duration-200 cursor-pointer ${accent.bg} ${accent.border} ${accent.hover} shadow-[var(--shadow-card)]`}
+                    className={`group relative flex flex-col items-center gap-4 p-6 border rounded-sm transition-colors cursor-pointer shadow-[var(--shadow-sm)] ${accent.bg} ${accent.border} ${accent.hover}`}
                   >
-                    {/* Avatar */}
+                    {/* Avatar — editorial square, not circle */}
                     <div
-                      className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold ${accent.avatar} transition-transform duration-200 group-hover:scale-110`}
+                      className={`w-14 h-14 rounded-sm flex items-center justify-center text-2xl font-bold font-display ${accent.avatar}`}
                     >
                       {initial}
                     </div>
 
                     {/* Name */}
-                    <span className="text-[var(--color-text)] font-semibold text-lg">
+                    <span className={`font-display text-lg font-semibold ${accent.text}`}>
                       {member.full_name}
                     </span>
 
                     {/* Subtle icon */}
-                    <User className="absolute top-3 right-3 w-4 h-4 text-[var(--color-text-faint)] opacity-40" />
+                    <User className="absolute top-3 right-3 w-4 h-4 text-[var(--text-faint)] opacity-40" />
                   </button>
                 );
               })}
@@ -145,7 +147,7 @@ export default function LoginPage() {
               Back
             </button>
 
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-[var(--shadow-card)]">
+            <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm p-6 shadow-[var(--shadow-sm)]">
               {/* Selected parent avatar */}
               {(() => {
                 const idx = members.findIndex((m) => m.id === selectedParent.id);
@@ -154,7 +156,7 @@ export default function LoginPage() {
 
                 return (
                   <div
-                    className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4 ${accent.avatar}`}
+                    className={`w-12 h-12 rounded-sm flex items-center justify-center text-xl font-bold font-display mx-auto mb-4 ${accent.avatar}`}
                   >
                     {initial}
                   </div>
@@ -174,7 +176,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Password"
                     autoFocus
-                    className="w-full pl-10 pr-4 py-3 bg-[var(--color-input)] border border-[var(--color-border)] rounded-xl text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-1 focus:ring-[rgba(56,56,56,0.12)] transition-all"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleSignIn();
                     }}
@@ -182,7 +184,7 @@ export default function LoginPage() {
                 </div>
 
                 {error && (
-                  <div className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+                  <div className="text-xs rounded-sm p-2.5 border" style={{ color: "var(--accent-red)", background: "var(--accent-red-tint)", borderColor: "color-mix(in srgb, var(--accent-red) 30%, transparent)" }}>
                     {error}
                   </div>
                 )}
