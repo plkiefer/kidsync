@@ -197,17 +197,17 @@ export default function EventModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-[var(--color-surface)] rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col border border-[var(--color-border)] shadow-[var(--shadow-modal)] animate-scale-in"
+        className="bg-[var(--bg)] w-full max-w-md max-h-[90vh] flex flex-col border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
       >
-        {/* Color bar */}
-        <div className="h-2 rounded-t-2xl shrink-0" style={colorBarStyle} />
+        {/* Kid identity bar */}
+        <div className="h-1.5 shrink-0" style={colorBarStyle} />
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-6">
           {/* Title — hidden in custody mode */}
           {isCustodyMode ? (
-            <h2 className="text-xl font-display text-[var(--color-text)] pb-2 mb-5 border-b-2 border-indigo-500/30">
-              🔄 Custom Custody Exchange
+            <h2 className="text-xl font-display text-[var(--ink)] pb-2 mb-5 border-b border-[var(--border-strong)]">
+              Custom Custody Exchange
             </h2>
           ) : (
             <input
@@ -216,7 +216,7 @@ export default function EventModal({
               onChange={(e) => update("title", e.target.value)}
               placeholder="Add title"
               autoFocus
-              className="w-full text-xl font-display text-[var(--color-text)] placeholder-[var(--color-text-faint)] bg-transparent border-0 border-b-2 border-[var(--color-border)] focus:border-[var(--color-accent)] focus:outline-none pb-2 mb-5 transition-colors"
+              className="w-full text-xl font-display text-[var(--ink)] placeholder-[var(--text-faint)] bg-transparent border-0 border-b border-[var(--border-strong)] focus:border-[var(--action)] focus:outline-none pb-2 mb-5 transition-colors"
             />
           )}
 
@@ -228,15 +228,16 @@ export default function EventModal({
                 type="button"
                 onClick={() => update("event_type", type)}
                 className={`
-                  px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all
+                  inline-flex items-center gap-1 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border
                   ${
                     form.event_type === type
-                      ? "bg-[var(--color-accent)] text-white"
-                      : "bg-[var(--color-input)] text-[var(--color-text-faint)] hover:text-[var(--color-text-muted)] hover:bg-[var(--color-surface-alt)]"
+                      ? "bg-[var(--ink)] text-[var(--accent-ink)] border-[var(--ink)]"
+                      : "bg-[var(--bg)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--ink)] hover:bg-[var(--bg-sunken)]"
                   }
                 `}
               >
-                {config.icon} {config.label}
+                <span aria-hidden>{config.icon}</span>
+                {config.label}
               </button>
             ))}
           </div>
@@ -247,22 +248,14 @@ export default function EventModal({
               <button
                 type="button"
                 onClick={selectAllKids}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                style={{
-                  backgroundColor:
+                className={`
+                  inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors border
+                  ${
                     form.kid_ids.length === kids.length
-                      ? "var(--color-accent-soft)"
-                      : "var(--color-input)",
-                  color:
-                    form.kid_ids.length === kids.length
-                      ? "var(--color-accent)"
-                      : "var(--color-text-faint)",
-                  border: `1.5px solid ${
-                    form.kid_ids.length === kids.length
-                      ? "var(--color-accent)"
-                      : "transparent"
-                  }`,
-                }}
+                      ? "bg-[var(--ink)] text-[var(--accent-ink)] border-[var(--ink)]"
+                      : "bg-[var(--bg)] text-[var(--text-muted)] border-[var(--border)] hover:text-[var(--ink)] hover:bg-[var(--bg-sunken)]"
+                  }
+                `}
               >
                 All Kids
               </button>
@@ -274,18 +267,19 @@ export default function EventModal({
                   key={kid.id}
                   type="button"
                   onClick={() => toggleKid(kid.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors border"
                   style={{
-                    backgroundColor: selected
-                      ? `${kid.color}22`
-                      : "var(--color-input)",
-                    color: selected ? kid.color : "var(--color-text-faint)",
-                    border: `1.5px solid ${selected ? kid.color : "transparent"}`,
+                    backgroundColor: selected ? kid.color : "var(--bg)",
+                    color: selected ? "#ffffff" : "var(--text-muted)",
+                    borderColor: selected ? kid.color : "var(--border)",
                   }}
                 >
                   <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: kid.color }}
+                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    style={{
+                      backgroundColor: selected ? "#ffffff" : kid.color,
+                      opacity: selected ? 0.8 : 1,
+                    }}
                   />
                   {kid.name}
                 </button>
@@ -302,32 +296,30 @@ export default function EventModal({
               {/* Pickup */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0">
+                  <div className="w-7 h-7 rounded-sm bg-action-bg flex items-center justify-center text-action shrink-0">
                     <Clock size={14} />
                   </div>
-                  <span className="text-xs font-bold text-blue-500 uppercase tracking-wider">
-                    Pickup
-                  </span>
+                  <span className="t-label text-action">Pickup</span>
                 </div>
                 <div className="ml-10 grid grid-cols-2 gap-2">
                   <input
                     type="date"
                     value={custodyPickupDate}
                     onChange={(e) => setCustodyPickupDate(e.target.value)}
-                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                   <input
                     type="time"
                     value={custodyPickupTime}
                     onChange={(e) => setCustodyPickupTime(e.target.value)}
-                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                   <input
                     type="text"
                     value={custodyPickupLocation}
                     onChange={(e) => setCustodyPickupLocation(e.target.value)}
                     placeholder="Pickup location"
-                    className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="col-span-2 px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                 </div>
               </div>
@@ -335,39 +327,37 @@ export default function EventModal({
               {/* Drop-off */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/10 flex items-center justify-center text-orange-500 shrink-0">
+                  <div className="w-7 h-7 rounded-sm bg-[var(--accent-amber-tint)] flex items-center justify-center text-[var(--accent-amber)] shrink-0">
                     <Clock size={14} />
                   </div>
-                  <span className="text-xs font-bold text-orange-500 uppercase tracking-wider">
-                    Drop-off
-                  </span>
+                  <span className="t-label" style={{ color: "var(--accent-amber)" }}>Drop-off</span>
                 </div>
                 <div className="ml-10 grid grid-cols-2 gap-2">
                   <input
                     type="date"
                     value={custodyDropoffDate}
                     onChange={(e) => setCustodyDropoffDate(e.target.value)}
-                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                   <input
                     type="time"
                     value={custodyDropoffTime}
                     onChange={(e) => setCustodyDropoffTime(e.target.value)}
-                    className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                   <input
                     type="text"
                     value={custodyDropoffLocation}
                     onChange={(e) => setCustodyDropoffLocation(e.target.value)}
                     placeholder="Drop-off location"
-                    className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                    className="col-span-2 px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                   />
                 </div>
               </div>
 
               {/* Notes */}
               <div className="flex items-start gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                   <FileText size={14} />
                 </div>
                 <input
@@ -375,14 +365,14 @@ export default function EventModal({
                   value={custodyNotes}
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Reason or notes"
-                  className="flex-1 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm placeholder-[var(--color-text-faint)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  className="flex-1 px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                 />
               </div>
 
               {/* Compliance note */}
-              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg border border-amber-500/20 bg-amber-500/5">
-                <Plane size={13} className="text-amber-400 shrink-0 mt-0.5" />
-                <p className="text-[10px] text-amber-300 leading-relaxed">
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-sm border border-[var(--accent-amber)]/30 bg-[var(--accent-amber-tint)]">
+                <Plane size={13} className="shrink-0 mt-0.5" style={{ color: "var(--accent-amber)" }} />
+                <p className="text-[10.5px] leading-relaxed" style={{ color: "var(--accent-amber)" }}>
                   This creates a custody change request. The other parent will
                   be notified and must approve.
                 </p>
@@ -395,7 +385,7 @@ export default function EventModal({
             {/* All-day + Date/Time */}
             <div className="py-2">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                   <Clock size={14} />
                 </div>
                 <span className="text-sm text-[var(--color-text)] flex-1">
@@ -403,15 +393,17 @@ export default function EventModal({
                 </span>
                 <button
                   type="button"
+                  role="switch"
+                  aria-checked={form.all_day}
                   onClick={() => update("all_day", !form.all_day)}
                   className={`
-                    w-11 h-6 rounded-full relative transition-colors shrink-0
-                    ${form.all_day ? "bg-[var(--color-accent)]" : "bg-[var(--color-input)] border border-[var(--color-border)]"}
+                    w-11 h-6 rounded-sm relative transition-colors shrink-0 border
+                    ${form.all_day ? "bg-action border-action" : "bg-[var(--bg-sunken)] border-[var(--border)]"}
                   `}
                 >
                   <span
                     className={`
-                      absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform
+                      absolute top-0.5 w-5 h-5 rounded-sm bg-white shadow-[var(--shadow-sm)] transition-transform
                       ${form.all_day ? "left-[22px]" : "left-0.5"}
                     `}
                   />
@@ -433,7 +425,7 @@ export default function EventModal({
                       update("starts_at", e.target.value);
                     }
                   }}
-                  className="w-full px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  className="w-full px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                 />
                 <input
                   type={form.all_day ? "date" : "datetime-local"}
@@ -447,7 +439,7 @@ export default function EventModal({
                       update("ends_at", e.target.value);
                     }
                   }}
-                  className="w-full px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-sm focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                  className="w-full px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                 />
               </div>
             </div>
@@ -465,7 +457,7 @@ export default function EventModal({
 
             {/* Location */}
             <div className="flex items-center gap-2 py-2">
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+              <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                 <MapPin size={14} />
               </div>
               <input
@@ -481,7 +473,7 @@ export default function EventModal({
 
             {/* Notes */}
             <div className="flex items-start gap-2 py-2">
-              <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+              <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                 <FileText size={14} />
               </div>
               <textarea
@@ -501,12 +493,10 @@ export default function EventModal({
                 {/* Departure / Arrival */}
                 <div className="py-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center text-cyan-600 shrink-0">
+                    <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--ink)] shrink-0">
                       <Plane size={14} />
                     </div>
-                    <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-                      Flight Info
-                    </span>
+                    <span className="t-label">Flight Info</span>
                   </div>
                   <div className="ml-10 grid grid-cols-2 gap-2">
                     <input
@@ -516,7 +506,7 @@ export default function EventModal({
                         update("travel_departure_airport", e.target.value)
                       }
                       placeholder="From (e.g. DCA)"
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="text"
@@ -525,7 +515,7 @@ export default function EventModal({
                         update("travel_arrival_airport", e.target.value)
                       }
                       placeholder="To (e.g. MCI)"
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="datetime-local"
@@ -533,7 +523,7 @@ export default function EventModal({
                       onChange={(e) =>
                         update("travel_departure_time", e.target.value)
                       }
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="datetime-local"
@@ -541,7 +531,7 @@ export default function EventModal({
                       onChange={(e) =>
                         update("travel_arrival_time", e.target.value)
                       }
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                   </div>
                 </div>
@@ -549,12 +539,10 @@ export default function EventModal({
                 {/* Lodging */}
                 <div className="py-2">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-600 shrink-0">
+                    <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--ink)] shrink-0">
                       <Building2 size={14} />
                     </div>
-                    <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">
-                      Lodging
-                    </span>
+                    <span className="t-label">Lodging</span>
                   </div>
                   <div className="ml-10 grid grid-cols-2 gap-2">
                     <input
@@ -564,7 +552,7 @@ export default function EventModal({
                         update("travel_lodging_name", e.target.value)
                       }
                       placeholder="Hotel / Address name"
-                      className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="col-span-2 px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="text"
@@ -573,7 +561,7 @@ export default function EventModal({
                         update("travel_lodging_address", e.target.value)
                       }
                       placeholder="Address"
-                      className="col-span-2 px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="col-span-2 px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="text"
@@ -582,7 +570,7 @@ export default function EventModal({
                         update("travel_lodging_phone", e.target.value)
                       }
                       placeholder="Phone"
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                     <input
                       type="text"
@@ -591,7 +579,7 @@ export default function EventModal({
                         update("travel_lodging_confirmation", e.target.value)
                       }
                       placeholder="Confirmation #"
-                      className="px-3 py-2 bg-[var(--color-input)] border border-[var(--color-border)] rounded-lg text-[var(--color-text)] text-xs focus:outline-none focus:border-[var(--color-accent)] transition-all placeholder-[var(--color-text-faint)]"
+                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
                   </div>
                 </div>
@@ -601,7 +589,7 @@ export default function EventModal({
                   <button
                     type="button"
                     onClick={() => onOpenTravel(event!.id)}
-                    className="ml-10 text-xs text-cyan-600 font-medium hover:text-cyan-700 transition-colors py-1"
+                    className="ml-10 text-xs text-action font-medium hover:text-action-hover transition-colors py-1 underline-offset-4 hover:underline"
                   >
                     More travel details (packing, documents, emergency)...
                   </button>
@@ -618,7 +606,7 @@ export default function EventModal({
                 onClick={() => fileInputRef.current?.click()}
                 className="flex items-center gap-2 w-full text-left group"
               >
-                <div className="w-8 h-8 rounded-lg bg-[var(--color-input)] flex items-center justify-center text-[var(--color-text-muted)] shrink-0">
+                <div className="w-7 h-7 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
                   <Paperclip size={14} />
                 </div>
                 <span className="text-sm text-[var(--color-text-faint)] group-hover:text-[var(--color-text-muted)] transition-colors">
@@ -639,7 +627,7 @@ export default function EventModal({
                   {event.attachments.map((att, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2 text-xs text-[var(--color-text-muted)] bg-[var(--color-input)] rounded-lg px-2.5 py-1.5"
+                      className="flex items-center gap-2 text-xs text-[var(--text-muted)] bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm px-2.5 py-1.5"
                     >
                       <Paperclip size={10} />
                       <span className="flex-1 truncate">{att.name}</span>
@@ -657,7 +645,7 @@ export default function EventModal({
                   {pendingFiles.map((file, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2 text-xs text-[var(--color-accent)] bg-[var(--color-accent-soft)] rounded-lg px-2.5 py-1.5"
+                      className="flex items-center gap-2 text-xs text-action bg-action-bg border border-action/30 rounded-sm px-2.5 py-1.5"
                     >
                       <Paperclip size={10} />
                       <span className="flex-1 truncate">{file.name}</span>
@@ -683,7 +671,7 @@ export default function EventModal({
             <button
               type="button"
               onClick={() => onDelete(event!.id)}
-              className="p-2.5 rounded-xl text-[var(--color-tag-deleted-text)] hover:bg-red-500/10 transition-colors"
+              className="p-2 rounded-sm text-[var(--accent-red)] hover:bg-[var(--accent-red-tint)] transition-colors"
               title="Delete event"
             >
               <Trash2 size={16} />
@@ -693,7 +681,7 @@ export default function EventModal({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-[var(--color-text-muted)] text-xs font-semibold hover:bg-[var(--color-surface-alt)] transition-colors"
+            className="px-4 py-2 rounded-sm text-[var(--text-muted)] text-xs font-semibold hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
           >
             Cancel
           </button>
@@ -701,7 +689,7 @@ export default function EventModal({
             type="button"
             onClick={handleSubmit}
             disabled={isCustodyMode ? !custodyPickupDate || !custodyDropoffDate : !form.title.trim()}
-            className="px-6 py-2.5 bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
+            className="px-6 py-2 rounded-sm bg-action text-action-fg text-xs font-semibold hover:bg-action-hover active:bg-action-pressed transition-colors disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:shadow-[0_0_0_3px_var(--action-ring)]"
           >
             {isCustodyMode ? "Submit Request" : isNew ? "Save" : "Save Changes"}
           </button>
