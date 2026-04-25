@@ -337,18 +337,39 @@ export function useEvents(ready = true): EventsState {
     async (
       rows: EventFormData[]
     ): Promise<{ inserted: number; failed: number; error?: string }> => {
+      const t0 = performance.now();
+      console.log("[createEventsBatch] start, rows:", rows.length);
       if (!rows.length) return { inserted: 0, failed: 0 };
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        // Use getSession() instead of getUser() — getSession() is purely
+        // cache-local and never fires a network call, while getUser() can
+        // queue behind a stuck token refresh on the supabase-js client and
+        // hang silently without ever firing the actual INSERT request.
+        console.log("[createEventsBatch] calling getSession");
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log(
+          "[createEventsBatch] getSession returned at +" +
+            Math.round(performance.now() - t0) +
+            "ms, user:",
+          session?.user?.id ?? "(none)"
+        );
+        const user = session?.user;
         if (!user) throw new Error("Not authenticated");
 
-        const { data: profile } = await supabase
+        console.log("[createEventsBatch] fetching profiles row");
+        const { data: profile, error: profileErr } = await supabase
           .from("profiles")
           .select("family_id")
           .eq("id", user.id)
           .single();
+        console.log(
+          "[createEventsBatch] profiles returned at +" +
+            Math.round(performance.now() - t0) +
+            "ms, family_id:",
+          profile?.family_id ?? "(none)",
+          "err:",
+          profileErr ?? "(none)"
+        );
         if (!profile) throw new Error("Profile not found");
 
         const payload = rows.map((data) => ({
@@ -371,9 +392,16 @@ export function useEvents(ready = true): EventsState {
         // supabase-js to serialize them, which can deadlock through the
         // auth-refresh path. We don't need the returned rows; the subscription
         // will re-fetch and the UI will see them within a tick.
+        console.log("[createEventsBatch] firing insert with", payload.length, "rows");
         const { error: insertErr } = await supabase
           .from("calendar_events")
           .insert(payload);
+        console.log(
+          "[createEventsBatch] insert returned at +" +
+            Math.round(performance.now() - t0) +
+            "ms, err:",
+          insertErr ?? "(none)"
+        );
 
         if (insertErr) throw insertErr;
 
@@ -382,7 +410,12 @@ export function useEvents(ready = true): EventsState {
           failed: 0,
         };
       } catch (err) {
-        console.error("Error batch-creating events:", err);
+        console.error(
+          "[createEventsBatch] caught error at +" +
+            Math.round(performance.now() - t0) +
+            "ms:",
+          err
+        );
         return {
           inserted: 0,
           failed: rows.length,
@@ -414,11 +447,20 @@ export function useEvents(ready = true): EventsState {
     async (
       updates: Array<{ id: string; patch: Partial<EventFormData> }>
     ): Promise<{ updated: number; failed: number; error?: string }> => {
+      const t0 = performance.now();
+      console.log("[updateEventsBatch] start, updates:", updates.length);
       if (!updates.length) return { updated: 0, failed: 0 };
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        // Cache-local session lookup; never makes a network call. See
+        // createEventsBatch comment about why getSession > getUser here.
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log(
+          "[updateEventsBatch] getSession at +" +
+            Math.round(performance.now() - t0) +
+            "ms, user:",
+          session?.user?.id ?? "(none)"
+        );
+        const user = session?.user;
         if (!user) throw new Error("Not authenticated");
 
         const buildPayload = (patch: Partial<EventFormData>) => {
