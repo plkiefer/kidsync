@@ -336,6 +336,30 @@ const ALLOWED_IMAGE_MEDIA_TYPES = new Set([
   "image/webp",
 ]);
 
+/**
+ * Pull the JSON object out of a Claude response, tolerating various
+ * non-compliance modes:
+ *  - ```json ... ``` markdown fences (the original cleanup)
+ *  - Preamble text ("Here's the parsed schedule:") before `{`
+ *  - Trailing prose after the closing `}`
+ *
+ * Returns the substring from the first `{` to the matching last `}`.
+ * If the string doesn't contain a brace at all, returns the trimmed
+ * input so the caller's JSON.parse() still surfaces a useful error.
+ */
+function extractJsonObject(text: string): string {
+  const stripped = text
+    .replace(/^```json?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
+  const firstBrace = stripped.indexOf("{");
+  const lastBrace = stripped.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+    return stripped;
+  }
+  return stripped.slice(firstBrace, lastBrace + 1);
+}
+
 type ImagePayload = { mediaType: string; data: string };
 type KidPayload = {
   id: string;
@@ -500,7 +524,12 @@ ${text!.slice(0, MAX_INPUT_CHARS)}`;
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      // Bumped from 8192 → 16384. A typical school-calendar import emits
+      // 25–30 events, each ~400 chars of JSON (title, dates, notes,
+      // suggested_kid_ids, …). 8K was getting close to the ceiling and
+      // truncated responses → unparseable JSON. 16K gives plenty of head-
+      // room without bloating typical sports-schedule responses.
+      max_tokens: 16384,
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: contentBlocks }],
     });
@@ -510,14 +539,28 @@ ${text!.slice(0, MAX_INPUT_CHARS)}`;
 
     let parsed;
     try {
-      const jsonStr = responseText
-        .replace(/^```json?\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-      parsed = JSON.parse(jsonStr);
-    } catch {
+      parsed = JSON.parse(extractJsonObject(responseText));
+    } catch (parseErr) {
+      // Surface enough info in server logs (Vercel) to diagnose without
+      // shipping the raw response to the client. stop_reason === "max_tokens"
+      // is the smoking gun for truncation.
+      console.error("[schedules/parse] JSON.parse failed:", {
+        stop_reason: message.stop_reason,
+        usage: message.usage,
+        response_length: responseText.length,
+        first_200: responseText.slice(0, 200),
+        last_200: responseText.slice(-200),
+        error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
+      const truncated = message.stop_reason === "max_tokens";
       return NextResponse.json(
-        { error: "Failed to parse AI response", raw: responseText },
+        {
+          error: truncated
+            ? "The AI response was truncated mid-output. The schedule may have too many events for one pass — try splitting it (e.g. import months separately)."
+            : "Couldn't parse the AI response. Server logs have the raw output for debugging.",
+          stop_reason: message.stop_reason,
+          raw: responseText,
+        },
         { status: 500 }
       );
     }
