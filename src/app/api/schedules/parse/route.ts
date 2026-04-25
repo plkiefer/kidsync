@@ -111,37 +111,40 @@ emitting any break with end_date - start_date ≥ 2 days, do this self-check:
      Common mistake: dropping the last day of the source range, or
      stopping at Saturday instead of Sunday on a Friday-end source.
 
+CARDINAL RULE — never drop the last listed day. When the source spells
+out a date range ("November 23-27", "March 22-29", "December 21-31"),
+EVERY date from start through end inclusive is a closure day. The
+source's last listed date is the LAST DAY OFF, not "the day school
+resumes." School resumes the day AFTER the source's last listed date.
+Output end_date = source end. Then apply extension rules 1–4 to add
+adjacent weekend days. If you find yourself emitting end_date that's
+EARLIER than the source's last listed date, you're wrong — recount.
+
 Worked example, Thanksgiving "Nov 23–27 2026":
-  Source start Nov 23 = Monday. Source end Nov 27 = Friday.
-  Rule 1: extend back to Sat Nov 21. Rule 2: extend forward to Sun Nov 29.
+  Source = Nov 23 (Mon) through Nov 27 (Fri), inclusive.
+  Rule 1: extend back to Sat Nov 21.
+  Rule 2: extend forward to Sun Nov 29 (Friday end).
   Output: start_date 2026-11-21, end_date 2026-11-29 (9 calendar days).
   Notes: "District lists: Nov 23–27".
 
-Worked example, Spring Break "March 22–29 2027" (5-day break notation):
-  This range is Monday-to-Monday (Jan 1 2027 = Fri → Mar 22 = Mon, Mar 29
-  = Mon). Most districts mean the WEEK off Mar 22–26 and the kid can
-  return on Mon Mar 29 — i.e., "22–29" is the school's framing of
-  "out from 22, return on 29". Treat the LAST listed date as the FIRST
-  day BACK only when the source is Mon-to-Mon AND the gap is exactly
-  one workweek. Output then:
-    Rule 1: Mon Mar 22 → extend back to Sat Mar 20.
-    Treat Mar 29 as return-to-school day. The break itself ends Fri Mar 26.
-    Rule 2: Fri Mar 26 → extend forward to Sun Mar 28.
-    Final: start_date 2027-03-20, end_date 2027-03-28 (9 calendar days).
-    Notes: "District lists: Mar 22–29 (Mar 29 = return to school)".
+Worked example, Spring Break "March 22–29 2027":
+  Source = Mar 22 (Mon) through Mar 29 (Mon), inclusive. Mar 29 is a
+  closure day, school resumes Tue Mar 30.
+  Verify day-of-week: Jan 1 2027 = Fri → day 81 (Mar 22) = Mon,
+  day 88 (Mar 29) = Mon. ✓
+  Rule 1: extend back to Sat Mar 20 (Mon start).
+  Rule 4: Mon end (mid-week) → don't extend forward, end stays Mar 29.
+  Output: start_date 2027-03-20, end_date 2027-03-29 (10 calendar days).
+  Notes: "District lists: Mar 22–29".
 
-  HOWEVER, if the source explicitly states Mar 29 is itself a non-school
-  day (e.g. listed under the holidays block, not under "school resumes"),
-  treat the source range as inclusive Mon-to-Mon:
-    Rule 1: extend back to Sat Mar 20.
-    Rule 4: Mon end → don't extend forward, end stays Mar 29.
-    Final: start_date 2027-03-20, end_date 2027-03-29 (10 calendar days).
-    Notes: "District lists: Mar 22–29 (inclusive)".
-
-  When in doubt about Mon-to-Mon ranges, prefer the inclusive interpretation
-  and emit end_date = source end, never end_date = source end - 1. NEVER
-  silently drop the last day; if you can't decide, emit the inclusive form
-  and add a warning.
+Worked example, Winter Break "December 21-31 + January 1":
+  Two source ranges separated only by no gap (Dec 31 → Jan 1
+  consecutive). Rule 5: merge into one extended range.
+  Source merged = Dec 21 (Mon) through Jan 1 (Fri) inclusive.
+  Rule 1: extend back to Sat Dec 19. Rule 2: Fri end → extend forward
+  to Sun Jan 3.
+  Output: start_date 2026-12-19, end_date 2027-01-03 (16 calendar days).
+  Notes: "District lists: Dec 21–31 + Jan 1".
 
 DAY-OF-WEEK ANCHOR (for 2026–27 school years):
   - 2026: Jan 1 = Thursday. Verify any 2026 date by counting from there.
@@ -299,7 +302,12 @@ GENERAL RULES
 
 - Every event MUST have start_date. Skip events that only give day-of-week without a concrete date; note in warnings.
 - If a date lacks a year, use year_context or infer from surrounding dates. If ambiguous, skip and warn.
-- PDF text comes in with columns/grids scrambled into one stream. Trust the "Month Day-Day Description" pattern ("November 23-27 Holiday: Thanksgiving Break") even when surrounded by grid-cell numbers. The summary "Holidays for 12 Month Employees" section is usually the cleanest machine-readable block in a US school calendar — prefer it over the monthly grids when both appear.
+- PDF text comes in with columns/grids scrambled into one stream. Trust the "Month Day-Day Description" pattern ("November 23-27 Holiday: Thanksgiving Break", "March 22-29 Holiday: Spring Break") even when surrounded by grid-cell numbers. SOURCE PRIORITY for school calendars (use the FIRST clean block you can find, fall back to later ones only if needed):
+   1. "STUDENT calendar" sidebar / right-column listings — the per-month bullet list students follow. Most reliable for student-facing dates.
+   2. "Holidays for 12 Month Employees" / "Staff Holidays" block — usually clean text. Note: 12-month employees may get a SUBSET of student holidays (per common disclaimer "School Board may elect to approve all of Thanksgiving/Winter Break for 12 month employees"); cross-check against block 1 for student-actual dates.
+   3. "Staff Workdays and Professional Learning Days" block — for the staff-workday closures.
+   4. "Inclement Weather Make Up Days" block — short list of conditional dates.
+   5. The visual monthly grid — LAST resort. OCR usually scrambles this into noise; ignore individual day numbers unless they confirm a date already named in blocks 1–4.
 - Recurring items ("every Tuesday 4pm") → skip and mention in warnings. Out of scope for this route.
 - Be generous with inclusion. Parents want to see everything. Lower confidence (0.3–0.6) rather than dropping shaky rows.
 - Keep titles under 60 characters. Strip district-name boilerplate.`;
