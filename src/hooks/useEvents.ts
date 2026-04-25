@@ -106,12 +106,37 @@ function fireCalendarNotification(
     });
 }
 
-export function useEvents(ready = true): EventsState {
+export function useEvents(
+  ready = true,
+  /**
+   * Optional pre-resolved auth context from the parent page. When provided,
+   * batch write operations skip `supabase.auth.getSession()` and use these
+   * values directly. This is critical: in supabase-js v2 the auth client
+   * holds an internal lock around session reads, and if the realtime
+   * websocket has the lock acquired (e.g., during a Cloudflare-bot-mitigation
+   * cookie negotiation we observed in console — '__cf_bm rejected for
+   * invalid domain'), getSession() hangs FOREVER without a network call,
+   * blocking the entire write path. Threading auth from the page bypasses
+   * the lock entirely.
+   */
+  authUserId?: string,
+  authFamilyId?: string
+): EventsState {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const supabase = getSupabase();
+
+  // Keep auth context in a ref so the batch ops always read the latest
+  // value without re-creating their useCallback closures on every render.
+  const authCtxRef = useRef<{ userId?: string; familyId?: string }>({
+    userId: authUserId,
+    familyId: authFamilyId,
+  });
+  useEffect(() => {
+    authCtxRef.current = { userId: authUserId, familyId: authFamilyId };
+  }, [authUserId, authFamilyId]);
 
   // Fetch all events with kid data
   const fetchEvents = useCallback(async () => {
@@ -341,39 +366,45 @@ export function useEvents(ready = true): EventsState {
       console.log("[createEventsBatch] start, rows:", rows.length);
       if (!rows.length) return { inserted: 0, failed: 0 };
       try {
-        // Use getSession() instead of getUser() — getSession() is purely
-        // cache-local and never fires a network call, while getUser() can
-        // queue behind a stuck token refresh on the supabase-js client and
-        // hang silently without ever firing the actual INSERT request.
-        console.log("[createEventsBatch] calling getSession");
-        const { data: { session } } = await supabase.auth.getSession();
+        // Prefer the page-provided auth context (set via useEvents'
+        // authUserId/authFamilyId params). Bypasses supabase.auth's
+        // internal lock entirely — see the hook signature comment.
+        let userId = authCtxRef.current.userId;
+        let familyId = authCtxRef.current.familyId;
+
+        if (!userId || !familyId) {
+          // Fallback path for callers that didn't thread auth in.
+          // This CAN hang if the auth lock is held — see the diagnosis
+          // in commit history. Logged loudly so we notice.
+          console.warn(
+            "[createEventsBatch] no cached auth context — falling back to getSession (may hang)"
+          );
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!session?.user) throw new Error("Not authenticated");
+          userId = session.user.id;
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("family_id")
+            .eq("id", session.user.id)
+            .single();
+          if (!profile) throw new Error("Profile not found");
+          familyId = profile.family_id;
+        }
+
         console.log(
-          "[createEventsBatch] getSession returned at +" +
+          "[createEventsBatch] auth context at +" +
             Math.round(performance.now() - t0) +
             "ms, user:",
-          session?.user?.id ?? "(none)"
+          userId,
+          "family:",
+          familyId
         );
-        const user = session?.user;
-        if (!user) throw new Error("Not authenticated");
-
-        console.log("[createEventsBatch] fetching profiles row");
-        const { data: profile, error: profileErr } = await supabase
-          .from("profiles")
-          .select("family_id")
-          .eq("id", user.id)
-          .single();
-        console.log(
-          "[createEventsBatch] profiles returned at +" +
-            Math.round(performance.now() - t0) +
-            "ms, family_id:",
-          profile?.family_id ?? "(none)",
-          "err:",
-          profileErr ?? "(none)"
-        );
-        if (!profile) throw new Error("Profile not found");
 
         const payload = rows.map((data) => ({
-          family_id: profile.family_id,
+          family_id: familyId,
           kid_id: data.kid_ids[0],
           kid_ids: data.kid_ids,
           title: data.title,
@@ -384,7 +415,7 @@ export function useEvents(ready = true): EventsState {
           location: data.location || null,
           notes: data.notes || null,
           recurring_rule: data.recurring_rule || null,
-          created_by: user.id,
+          created_by: userId,
         }));
 
         // No .select() — reading the inserted rows back while the realtime
@@ -451,17 +482,26 @@ export function useEvents(ready = true): EventsState {
       console.log("[updateEventsBatch] start, updates:", updates.length);
       if (!updates.length) return { updated: 0, failed: 0 };
       try {
-        // Cache-local session lookup; never makes a network call. See
-        // createEventsBatch comment about why getSession > getUser here.
-        const { data: { session } } = await supabase.auth.getSession();
+        // Same bypass as createEventsBatch — read auth from the ref the
+        // page wired in. getSession is only the fallback for callers that
+        // didn't thread auth through.
+        let userId = authCtxRef.current.userId;
+        if (!userId) {
+          console.warn(
+            "[updateEventsBatch] no cached auth context — falling back to getSession (may hang)"
+          );
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!session?.user) throw new Error("Not authenticated");
+          userId = session.user.id;
+        }
         console.log(
-          "[updateEventsBatch] getSession at +" +
+          "[updateEventsBatch] auth at +" +
             Math.round(performance.now() - t0) +
             "ms, user:",
-          session?.user?.id ?? "(none)"
+          userId
         );
-        const user = session?.user;
-        if (!user) throw new Error("Not authenticated");
 
         const buildPayload = (patch: Partial<EventFormData>) => {
           // Strip travel-only fields (the importer doesn't emit them, but the
@@ -480,7 +520,7 @@ export function useEvents(ready = true): EventsState {
             kid_ids,
             ...rest
           } = patch as any;
-          const payload: any = { ...rest, updated_by: user.id };
+          const payload: any = { ...rest, updated_by: userId };
           if (kid_ids) {
             payload.kid_id = kid_ids[0];
             payload.kid_ids = kid_ids;

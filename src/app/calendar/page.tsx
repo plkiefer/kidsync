@@ -73,7 +73,7 @@ export default function CalendarPage() {
     removeAttachment,
     getAttachmentUrl,
     refetch,
-  } = useEvents(dataReady);
+  } = useEvents(dataReady, user?.id, profile?.family_id);
   const { logs, loading: logsLoading } = useActivityLog(20, dataReady);
   const {
     schedules,
