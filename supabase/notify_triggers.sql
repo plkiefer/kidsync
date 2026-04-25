@@ -1,18 +1,27 @@
 -- ============================================================
--- Email notification trigger for calendar events
--- Fires the notify-parent Edge Function via pg_net whenever
--- a calendar event is created, updated, or deleted.
+-- Change-log trigger for calendar events
 -- ============================================================
 --
--- Custody override notifications are sent from the frontend
--- (via supabase.functions.invoke) to avoid duplicate emails
--- when creating overrides for multiple kids.
+-- ARCHITECTURE NOTE: this trigger is ONLY responsible for writing
+-- to event_change_log (fast, pure SQL). Email notifications are
+-- fired CLIENT-SIDE via supabase.functions.invoke("notify-parent")
+-- after a successful write (see useEvents.ts createEvent /
+-- updateEvent / deleteEvent and useCustody.ts notifyCustodyChange).
 --
--- SETUP: Run this first if pg_net is not yet enabled:
---   CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+-- WHY: an earlier version of this trigger called net.http_post()
+-- per row inside an AFTER INSERT FOR EACH ROW trigger. For a 20-
+-- row batch import that meant 20 synchronous HTTP enqueues inside
+-- the transaction, with the supabase-js INSERT call blocked until
+-- every trigger invocation returned. The wall-clock to commit a
+-- 20-row insert was 30-45+ seconds, breaking the schedule importer.
+-- The notification is fundamentally a side effect, not part of the
+-- write — keeping it out of the trigger keeps writes fast and lets
+-- the client decide what to batch (e.g. one summary email for an
+-- import, instead of 20 individual emails).
 --
--- IMPORTANT: Before running, replace YOUR_SERVICE_ROLE_KEY_HERE
--- with your actual Supabase service role key (Settings → API).
+-- Bulk imports (createEventsBatch / updateEventsBatch) intentionally
+-- DO NOT call notify-parent — the other parent will see the events
+-- on the calendar; we don't email them 30 times for one import.
 -- ============================================================
 
 -- ── Calendar event trigger ────────────────────────────────────
@@ -45,26 +54,14 @@ BEGIN
 
   v_snapshot := to_jsonb(v_event);
 
-  -- Insert change log
+  -- Insert change log (fast, no network)
   INSERT INTO public.event_change_log
     (event_id, family_id, action, changed_by, event_snapshot)
   VALUES
     (v_event.id, v_family_id, v_action, v_changed_by, v_snapshot);
 
-  -- Fire Edge Function for email notification
-  PERFORM net.http_post(
-    url := 'https://logxqzyxeuggdcypwqks.supabase.co/functions/v1/notify-parent'::text,
-    headers := jsonb_build_object(
-      'Content-Type', 'application/json',
-      'Authorization', 'Bearer YOUR_SERVICE_ROLE_KEY_HERE'
-    ),
-    body := jsonb_build_object(
-      'action', v_action,
-      'event', v_snapshot,
-      'family_id', v_family_id::text,
-      'changed_by', v_changed_by::text
-    )
-  );
+  -- NOTE: no net.http_post here. See architecture note at the top.
+  -- Email notifications happen client-side after a successful write.
 
   IF TG_OP = 'DELETE' THEN
     RETURN OLD;

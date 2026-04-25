@@ -77,6 +77,35 @@ function hasTravelData(fields: Record<string, string | undefined>): boolean {
   return Object.values(fields).some((v) => v && v.trim());
 }
 
+/**
+ * Fire-and-forget email notification to the other parent. Used by single-
+ * event create/update/delete paths (NOT by bulk createEventsBatch /
+ * updateEventsBatch — bulk imports intentionally stay silent so we don't
+ * email someone 30 times for one school-calendar import).
+ *
+ * Mirrors the pattern in useCustody.notifyCustodyChange — the calendar
+ * event trigger USED to fire this server-side via pg_net.http_post, but
+ * that blocked the INSERT response per row and made bulk imports time
+ * out. The notification is a side effect, not part of the write, so it
+ * belongs out here on the client.
+ */
+type CalendarNotifyAction = "created" | "updated" | "deleted";
+function fireCalendarNotification(
+  supabase: ReturnType<typeof getSupabase>,
+  action: CalendarNotifyAction,
+  event: Record<string, unknown>,
+  family_id: string,
+  changed_by: string
+): void {
+  supabase.functions
+    .invoke("notify-parent", {
+      body: { action, event, family_id, changed_by },
+    })
+    .catch((err) => {
+      console.warn("[events] notification failed:", err);
+    });
+}
+
 export function useEvents(ready = true): EventsState {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -261,6 +290,17 @@ export function useEvents(ready = true): EventsState {
                 : [],
             },
             { onConflict: "event_id" }
+          );
+        }
+
+        // Notify the other parent (fire-and-forget; does not block return).
+        if (newEvent) {
+          fireCalendarNotification(
+            supabase,
+            "created",
+            newEvent as unknown as Record<string, unknown>,
+            profile.family_id,
+            user.id
           );
         }
 
@@ -542,6 +582,17 @@ export function useEvents(ready = true): EventsState {
           );
         }
 
+        // Notify the other parent (fire-and-forget; does not block return).
+        if (updated && (updated as any).family_id) {
+          fireCalendarNotification(
+            supabase,
+            "updated",
+            updated as unknown as Record<string, unknown>,
+            (updated as any).family_id,
+            user.id
+          );
+        }
+
         return updated as CalendarEvent;
       } catch (err) {
         console.error("Error updating event:", err);
@@ -564,11 +615,16 @@ export function useEvents(ready = true): EventsState {
         if (!user) throw new Error("Not authenticated");
 
         // The DB trigger (handle_event_change) reads updated_by as changed_by
-        // for DELETE actions, so we must set it before deleting.
-        await supabase
+        // for DELETE actions, so we must set it before deleting. We also
+        // grab a snapshot of the row here so we can fire the email
+        // notification client-side after the delete (the trigger no longer
+        // does that — see notify_triggers.sql).
+        const { data: snapshot } = await supabase
           .from("calendar_events")
           .update({ updated_by: user.id })
-          .eq("id", id);
+          .eq("id", id)
+          .select("*")
+          .single();
 
         const { error: deleteErr, status, statusText } = await supabase
           .from("calendar_events")
@@ -581,6 +637,18 @@ export function useEvents(ready = true): EventsState {
         }
 
         setEvents((prev) => prev.filter((e) => e.id !== id));
+
+        // Notify the other parent (fire-and-forget; does not block return).
+        if (snapshot && (snapshot as any).family_id) {
+          fireCalendarNotification(
+            supabase,
+            "deleted",
+            snapshot as unknown as Record<string, unknown>,
+            (snapshot as any).family_id,
+            user.id
+          );
+        }
+
         return true;
       } catch (err) {
         console.error("Error deleting event:", err);
