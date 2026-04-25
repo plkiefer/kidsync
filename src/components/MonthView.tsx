@@ -404,7 +404,9 @@ export default function MonthView({
                         a per-kid time-based gradient. Tiny kid-letter at
                         the top-right of each lane disambiguates which lane
                         belongs to which kid (rare event, so the letter
-                        stays subdued). */}
+                        stays subdued). Hairline divider at the 50% mark
+                        makes the lane structure pop visually even when
+                        both lanes share similar colors. */}
                     {view.mode === "split" && (
                       <div className="absolute inset-0 pointer-events-none">
                         {view.lanes.map((lane, laneIdx) => (
@@ -426,6 +428,20 @@ export default function MonthView({
                             </div>
                           </div>
                         ))}
+                        {/* Hairline divider on the lane boundary — subtle,
+                            thin, but enough to make the split read as
+                            "two distinct lanes" instead of one ambiguous
+                            color blend. */}
+                        <div
+                          className="absolute left-0 right-0"
+                          style={{
+                            top: "50%",
+                            height: 1,
+                            background: "var(--border-strong)",
+                            opacity: 0.55,
+                            transform: "translateY(-0.5px)",
+                          }}
+                        />
                       </div>
                     )}
                     {/* Day number */}
