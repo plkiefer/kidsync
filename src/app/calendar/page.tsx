@@ -885,6 +885,12 @@ export default function CalendarPage() {
               compliance_issues: null,
               status: "pending" as OverrideStatus,
               created_by: user.id,
+              // Carry the form's pickup time into override_time so the
+              // turnover-event generator places the pill at the chosen
+              // hour. Schema is a single column, so we use the pickup time;
+              // the dropoff time is implicit (falls to the schedule's
+              // default dropoff, which is 17:00 in our agreement).
+              override_time: data.pickupTime || null,
             })));
             notifyCustodyChange({
               action: "requested",

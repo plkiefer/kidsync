@@ -99,7 +99,13 @@ export default function QuickCustodyChange({
         isPickup,
         currentDate,
         newDate,
-        newTime: newTime !== currentTime ? newTime : undefined,
+        // Always pass newTime, even if it matches currentTime. Earlier
+        // version only forwarded it when changed, which silently dropped
+        // the time to null when the user re-edited an already-moved
+        // turnover (currentTime was the previous override time, not the
+        // schedule default). The downstream override_time column then
+        // came back null, and the pill rendered at the schedule default.
+        newTime,
         kidIds: selectedKids,
         familyId,
         userId: currentUserId,

@@ -199,52 +199,83 @@ export default function MonthView({
   }
 
   /**
-   * Compute the custody background for a day cell plus — when there's a
-   * time-based split — the split offset so the caller can position the
-   * TransitionPill exactly on that line.
+   * Compute the custody view for a day cell — discriminated union over two
+   * modes:
+   *   - "whole":  one cell-wide background. Solid color on no-transition
+   *               days; vertical gradient at handoff-time on transition
+   *               days (top = pre-handoff parent, bottom = post). One
+   *               TransitionPill, optional, sitting on the split line.
+   *   - "split":  kids are with different parents today. Two horizontal
+   *               lanes stacked vertically — one per kid — each with its
+   *               OWN solid color or time-based gradient based on that
+   *               kid's transitions. Pills are per-lane: a kid that
+   *               transitions gets a pill at its transition time within
+   *               its own lane; the other kid's lane stays solid.
    *
-   *  - Whole household, no transition on this day → solid parent color.
-   *  - Turnover event on this day → vertical gradient that splits at
-   *    (handoff-hour / 24) of the cell. Top = pre-handoff parent,
-   *    bottom = post-handoff parent. Matches the Week view's time-
-   *    based split exactly, just scaled to the compact cell.
-   *  - Kids diverge between parents (rare, no turnover) → horizontal
-   *    50/50 for the two kids.
+   * When all kids end up at the same parent today (allSame), use whole
+   * mode. The transition gradient is computed from the TRANSITIONING
+   * kid's adjacent-day parent (not the first kid in custody), so days
+   * where only one of two kids transitions still render the right
+   * pre/post colors regardless of Object.keys ordering.
    */
-  function custodyInfoFor(
-    day: Date,
-    dayEvents: CalendarEvent[]
-  ): { background: string | undefined; splitPct: number | null } {
+  type WholeCustodyView = {
+    mode: "whole";
+    background: string | undefined;
+    splitPct: number | null;
+  };
+  type KidLane = {
+    kid: Kid;
+    kidLetter: string;
+    kidColor: string;
+    background: string;
+    splitPct: number | null;
+    turnoverEvt: CalendarEvent | null;
+  };
+  type SplitCustodyView = { mode: "split"; lanes: KidLane[] };
+  type CustodyView = WholeCustodyView | SplitCustodyView;
+
+  function custodyView(day: Date, dayEvents: CalendarEvent[]): CustodyView {
     if (!getCustodyForDate || !currentUserId) {
-      return { background: undefined, splitPct: null };
+      return { mode: "whole", background: undefined, splitPct: null };
     }
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
-    if (kidIds.length === 0) return { background: undefined, splitPct: null };
+    if (kidIds.length === 0) {
+      return { mode: "whole", background: undefined, splitPct: null };
+    }
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
     const colorFor = (parentId: string | undefined) =>
       parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
 
-    // Time-based split at the handoff
-    const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
-    if (turnoverEvt && allSame) {
+    // Build a per-kid time-based background + pill position. Used by both
+    // whole-mode (when all kids transition together — feed the transitioning
+    // kid in) and split-mode (per kid).
+    function kidGradient(
+      kidId: string,
+      turnoverEvt: CalendarEvent | null
+    ): { background: string; splitPct: number | null } {
+      if (!turnoverEvt) {
+        return {
+          background: colorFor(custody[kidId]?.parentId),
+          splitPct: null,
+        };
+      }
       const isPickup = turnoverEvt.id.endsWith("-pickup");
       const turnoverDate = parseTimestamp(turnoverEvt.starts_at);
-      const hourFrac = turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
+      const hourFrac =
+        turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
       const splitPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
 
       const adjacent = new Date(day);
       adjacent.setDate(adjacent.getDate() + (isPickup ? -1 : 1));
-      const adjacentCustody = getCustodyForDate(adjacent);
-      const adjacentParentId = adjacentCustody[kidIds[0]]?.parentId;
-
-      const todayColor = colorFor(firstParentId);
+      const adjacentParentId = getCustodyForDate!(adjacent)[kidId]?.parentId;
+      const todayParentId = custody[kidId]?.parentId;
+      const todayColor = colorFor(todayParentId);
       const adjacentColor = colorFor(adjacentParentId);
-
-      // Pickup: adjacent (yesterday) owns top, today owns bottom.
-      // Dropoff: today owns top, adjacent (tomorrow) owns bottom.
+      // Pickup: adjacent (yesterday) on top, today on bottom.
+      // Dropoff: today on top, adjacent (tomorrow) on bottom.
       const preBg = isPickup ? adjacentColor : todayColor;
       const postBg = isPickup ? todayColor : adjacentColor;
       return {
@@ -254,17 +285,52 @@ export default function MonthView({
     }
 
     if (allSame) {
-      return { background: colorFor(firstParentId), splitPct: null };
+      // Whole mode. Anchor the gradient on the actual transitioning kid
+      // (turnoverEvt.kid_ids[0]) rather than the arbitrary first key —
+      // matters when only one of two kids transitioned but both are now
+      // with the same parent.
+      const turnoverEvt =
+        dayEvents.find((e) => e.id.startsWith("turnover-")) ?? null;
+      if (turnoverEvt) {
+        const transitioningKidId =
+          (turnoverEvt.kid_ids && turnoverEvt.kid_ids[0]) || kidIds[0];
+        const { background, splitPct } = kidGradient(
+          transitioningKidId,
+          turnoverEvt
+        );
+        return { mode: "whole", background, splitPct };
+      }
+      return {
+        mode: "whole",
+        background: colorFor(firstParentId),
+        splitPct: null,
+      };
     }
 
-    // Kid-split: horizontal 50/50 for the two kids' parents.
-    const orderedKidIds = kids.map((k) => k.id).filter((id) => custody[id]);
-    const topBg = colorFor(custody[orderedKidIds[0]]?.parentId);
-    const bottomBg = colorFor(custody[orderedKidIds[1]]?.parentId);
-    return {
-      background: `linear-gradient(to bottom, ${topBg} 50%, ${bottomBg} 50%)`,
-      splitPct: null,
-    };
+    // Split mode: per-kid lanes. Order by the family `kids` array so
+    // Ethan is consistently the top lane and Harrison the bottom.
+    const orderedKids = kids.filter((k) => custody[k.id]);
+    const lanes: KidLane[] = orderedKids.map((kid) => {
+      // A turnover event involves THIS kid if its kid_ids array includes
+      // them. Filter to the first match (typically there's only one
+      // turnover per kid per day).
+      const turnoverEvt =
+        dayEvents.find(
+          (e) =>
+            e.id.startsWith("turnover-") &&
+            (e.kid_ids ?? []).includes(kid.id)
+        ) ?? null;
+      const { background, splitPct } = kidGradient(kid.id, turnoverEvt);
+      return {
+        kid,
+        kidLetter: kid.name.charAt(0).toUpperCase(),
+        kidColor: kid.color,
+        background,
+        splitPct,
+        turnoverEvt,
+      };
+    });
+    return { mode: "split", lanes };
   }
 
   return (
@@ -309,13 +375,10 @@ export default function MonthView({
                 const today = isToday(day);
                 const inMonth = isSameMonth(day, currentDate);
                 const isLastCol = di === 6;
-                const { background: custodyBg, splitPct } = custodyInfoFor(day, dayEvents);
-                // Turnovers render as the pill on the split line (not in the
-                // chronological event stack) so the custody color transition
-                // and the handoff chip share one horizontal axis.
-                const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
+                const view = custodyView(day, dayEvents);
                 // Strip out turnovers AND multi-day events. Multi-day events
                 // render at the week level as ribbons overlaid below this map.
+                // Turnovers render as the pill(s) on the split line(s).
                 const nonTurnoverEvents = dayEvents.filter(
                   (e) =>
                     !e.id.startsWith("turnover-") && !isMultiDayEvent(e)
@@ -330,8 +393,41 @@ export default function MonthView({
                       ${isLastCol ? "" : "border-r border-[var(--border-strong)]"}
                       ${inMonth ? "" : "opacity-55"}
                     `}
-                    style={custodyBg ? { background: custodyBg } : undefined}
+                    style={
+                      view.mode === "whole" && view.background
+                        ? { background: view.background }
+                        : undefined
+                    }
                   >
+                    {/* Split-mode lane backdrops — paint two horizontal bands
+                        behind the cell content. Each lane's bg is solid OR
+                        a per-kid time-based gradient. Tiny kid-letter at
+                        the top-right of each lane disambiguates which lane
+                        belongs to which kid (rare event, so the letter
+                        stays subdued). */}
+                    {view.mode === "split" && (
+                      <div className="absolute inset-0 pointer-events-none">
+                        {view.lanes.map((lane, laneIdx) => (
+                          <div
+                            key={lane.kid.id}
+                            className="absolute left-0 right-0"
+                            style={{
+                              top: laneIdx === 0 ? "0%" : "50%",
+                              height: "50%",
+                              background: lane.background,
+                            }}
+                          >
+                            <div
+                              className="absolute top-0.5 right-1 text-[9px] font-bold leading-none uppercase tracking-wider"
+                              style={{ color: lane.kidColor, opacity: 0.7 }}
+                              title={lane.kid.name}
+                            >
+                              {lane.kidLetter}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {/* Day number */}
                     <div
                       className={`
@@ -414,39 +510,104 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Turnover pill — absolutely positioned on the custody
-                        split line so the color transition and the handoff
-                        event read as one continuous horizontal rule. Clamped
-                        away from cell edges so the pill never collides with
-                        the day number or cuts off. */}
-                    {turnoverEvt && splitPct !== null && (() => {
-                      const time = formatShortTime(parseTimestamp(turnoverEvt.starts_at));
-                      const direction = transitionDirectionFor(turnoverEvt, day);
-                      const kid = transitionKidFor(turnoverEvt);
-                      const clampedTop = Math.max(18, Math.min(92, splitPct));
-                      return (
-                        <div
-                          className="absolute left-1.5 right-1.5 pointer-events-none"
-                          style={{
-                            top: `${clampedTop}%`,
-                            transform: "translateY(-50%)",
-                            zIndex: 5,
-                          }}
-                        >
-                          <div className="pointer-events-auto">
-                            <TransitionPill
-                              time={time}
-                              direction={direction}
-                              kid={kid}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                onEventClick(turnoverEvt);
-                              }}
-                            />
+                    {/* Whole-mode turnover pill — absolutely positioned on
+                        the custody split line so the color transition and
+                        the handoff event read as one continuous horizontal
+                        rule. */}
+                    {view.mode === "whole" &&
+                      view.splitPct !== null &&
+                      (() => {
+                        const turnoverEvt = dayEvents.find((e) =>
+                          e.id.startsWith("turnover-")
+                        );
+                        if (!turnoverEvt) return null;
+                        const time = formatShortTime(
+                          parseTimestamp(turnoverEvt.starts_at)
+                        );
+                        const direction = transitionDirectionFor(
+                          turnoverEvt,
+                          day
+                        );
+                        const kid = transitionKidFor(turnoverEvt);
+                        const clampedTop = Math.max(
+                          18,
+                          Math.min(92, view.splitPct)
+                        );
+                        return (
+                          <div
+                            className="absolute left-1.5 right-1.5 pointer-events-none"
+                            style={{
+                              top: `${clampedTop}%`,
+                              transform: "translateY(-50%)",
+                              zIndex: 5,
+                            }}
+                          >
+                            <div className="pointer-events-auto">
+                              <TransitionPill
+                                time={time}
+                                direction={direction}
+                                kid={kid}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  onEventClick(turnoverEvt);
+                                }}
+                              />
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        );
+                      })()}
+
+                    {/* Split-mode pills — one per kid that transitions today.
+                        Each pill rides on its own lane's split line. The
+                        lane is 50% of cell height, so we clamp the in-lane
+                        splitPct tighter (22%–78%) and convert to cell-
+                        relative percent: laneIdx*50 + (splitPct/2). Pill
+                        height (~26px) fits inside a typical 70px lane. */}
+                    {view.mode === "split" &&
+                      view.lanes.map((lane, laneIdx) => {
+                        if (!lane.turnoverEvt || lane.splitPct === null)
+                          return null;
+                        const turnoverEvt = lane.turnoverEvt;
+                        const time = formatShortTime(
+                          parseTimestamp(turnoverEvt.starts_at)
+                        );
+                        const direction = transitionDirectionFor(
+                          turnoverEvt,
+                          day
+                        );
+                        // Always pill-tag with the lane's kid, since the
+                        // lane IS the per-kid context.
+                        const kid = kidSlot(lane.kid, kids);
+                        const clampedInLane = Math.max(
+                          22,
+                          Math.min(78, lane.splitPct)
+                        );
+                        const cellTopPct =
+                          laneIdx * 50 + clampedInLane / 2;
+                        return (
+                          <div
+                            key={`pill-${lane.kid.id}`}
+                            className="absolute left-1.5 right-1.5 pointer-events-none"
+                            style={{
+                              top: `${cellTopPct}%`,
+                              transform: "translateY(-50%)",
+                              zIndex: 5,
+                            }}
+                          >
+                            <div className="pointer-events-auto">
+                              <TransitionPill
+                                time={time}
+                                direction={direction}
+                                kid={kid}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  onEventClick(turnoverEvt);
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 );
               })}
