@@ -594,8 +594,8 @@ export default function ScheduleImportModal({
 
     // Split by action. Inserts go through createEventsBatch (one call, one
     // realtime event, no token-refresh cascade — see useEvents docs). Merges
-    // are a per-row updateEvent sequence wrapped into one batch via the
-    // caller-provided onUpdateEvents callback.
+    // go through updateEventsBatch (one auth call, parallel updates without
+    // read-back). Both run concurrently against the timeout below.
     const inserts = active.filter((r) => r.action === "insert");
     const merges = active.filter(
       (r) => r.action === "merge" && r.match && onUpdateEvents
@@ -625,15 +625,21 @@ export default function ScheduleImportModal({
         ? onUpdateEvents(mergePayloads)
         : Promise.resolve({ updated: 0, failed: 0 });
 
+    // 90s ceiling. With createEventsBatch + updateEventsBatch in place there
+    // is no per-row deadlock vector; this just protects against pathological
+    // network stalls. Importantly, hitting this timeout does NOT mean the
+    // operation failed — Supabase may have committed the rows server-side
+    // and the client just lost the response. The done-screen message
+    // reflects that (suggests refreshing to verify).
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(
         () =>
           reject(
             new Error(
-              "Import took longer than 30 seconds — likely a Supabase deadlock or network stall. Check DevTools → Network for the calendar_events POST/PATCH."
+              "Import took longer than 90 seconds. The events may have still been added — close this dialog and refresh to confirm. If they're missing, check your network connection (VPN can slow Supabase round-trips significantly) and try again."
             )
           ),
-        30000
+        90000
       )
     );
 

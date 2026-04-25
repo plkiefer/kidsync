@@ -80,8 +80,48 @@ Rules for extending:
 3. If the source range starts on a TUESDAY–FRIDAY (mid-week), do NOT extend backward (school was in session the preceding Monday).
 4. If the source range ends on a MONDAY–THURSDAY (mid-week), do NOT extend forward (school resumes next day).
 5. If two source ranges are separated only by a weekend or a single workday gap, MERGE them into one extended range.
-6. Single-day closures (Veterans Day, MLK Day, Labor Day) → only extend if the closure is adjacent to a weekend (Friday or Monday) — e.g. "Labor Day Monday Sep 7" becomes start: 2026-09-05 (Sat), end: 2026-09-07 (Mon).
+6. SINGLE-DAY federal holidays (MLK Day, Presidents' Day, Labor Day,
+   Veterans Day, Memorial Day, Columbus Day, Independence Day) → emit
+   ONLY the holiday day itself, NEVER extend to the surrounding weekend.
+   Parents already know about Saturday/Sunday; bracketing a Monday
+   holiday as Sat–Mon makes the calendar look like a 3-day break that
+   it isn't actionably. The weekend is implicit, not a feature of the
+   closure. Single-day closures get start_date = end_date = the
+   holiday's actual date, with end_date EITHER null OR equal to
+   start_date.
 7. ALWAYS put the district's literal date range in notes ("District lists: X–Y") so the parent can see both framings.
+
+═══════════════════════════════════════════════════════════════════════════
+HOLIDAY DATE-RANGE REVIEW — extra-careful pass on multi-day breaks.
+═══════════════════════════════════════════════════════════════════════════
+
+Multi-day breaks (Thanksgiving, Winter, Spring) are the highest-stakes
+items in a school import — a parent budgets childcare around them. Before
+emitting any break with end_date - start_date ≥ 2 days, do this self-check:
+
+  a. State the source range (literal start–end dates) in your head.
+  b. Identify the day-of-week for source start AND source end.
+  c. Apply rules 1–4 above. Compute the extended start and extended end.
+  d. Verify: extended start is a SATURDAY (or stays on source start if not
+     adjacent), and extended end is a SUNDAY (or stays on source end if
+     not adjacent).
+  e. Re-count the calendar days. A 5-school-day break → 9 calendar days
+     after extension. A 7-school-day break (rare) → 11 calendar days.
+  f. If your computed end_date doesn't match this self-check, recompute.
+     Common mistake: dropping the last day of the source range, or
+     stopping at Saturday instead of Sunday on a Friday-end source.
+
+Worked example, Spring Break "March 22–29 2027":
+  Source start Mar 22 = Sunday. Source end Mar 29 = Sunday.
+  Source already brackets both weekends — no extension needed.
+  Output: start_date 2027-03-22, end_date 2027-03-29 (8 calendar days).
+  Notes: "District lists: Mar 22–29".
+
+Worked example, Thanksgiving "Nov 23–27 2026":
+  Source start Nov 23 = Monday. Source end Nov 27 = Friday.
+  Rule 1: extend back to Sat Nov 21. Rule 2: extend forward to Sun Nov 29.
+  Output: start_date 2026-11-21, end_date 2026-11-29 (9 calendar days).
+  Notes: "District lists: Nov 23–27".
 
 ═══════════════════════════════════════════════════════════════════════════
 TITLE GENERATION — critical. Titles describe WHAT the event IS, not the
