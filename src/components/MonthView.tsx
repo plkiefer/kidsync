@@ -53,6 +53,89 @@ function formatShortTime(date: Date): string {
   return `${h12}:${mm}${meridian}`;
 }
 
+/** Strip a date down to its calendar day (Y/M/D), no time component. */
+function dayOnly(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** True when an event spans 2+ calendar days (Outlook-style ribbon target). */
+function isMultiDayEvent(evt: CalendarEvent): boolean {
+  if (!evt.all_day) return false;
+  const start = dayOnly(parseTimestamp(evt.starts_at));
+  const end = dayOnly(parseTimestamp(evt.ends_at));
+  return end.getTime() > start.getTime();
+}
+
+/**
+ * For one week (7 Date[] starting Sunday), compute the multi-day ribbon
+ * spans plus their vertical slot assignments. A "span" is one event
+ * appearing on this week, clipped to the week's columns.
+ *
+ * Slot allocation is greedy by start column: each event takes the lowest
+ * slot that doesn't conflict with previously-placed events. That keeps
+ * stacking compact and predictable.
+ */
+interface RibbonSpan {
+  event: CalendarEvent;
+  startCol: number;        // 0-6, day of week start within this week
+  endCol: number;          // 0-6, inclusive
+  continuesLeft: boolean;  // event began before this week
+  continuesRight: boolean; // event ends after this week
+  slot: number;            // vertical row within the ribbon area
+}
+function computeRibbonSpans(week: Date[], events: CalendarEvent[]): RibbonSpan[] {
+  const weekStart = dayOnly(week[0]);
+  const weekEnd = dayOnly(week[6]);
+  const candidates: Omit<RibbonSpan, "slot">[] = [];
+  for (const evt of events) {
+    if (!isMultiDayEvent(evt)) continue;
+    const evStart = dayOnly(parseTimestamp(evt.starts_at));
+    const evEnd = dayOnly(parseTimestamp(evt.ends_at));
+    // Clip event range to week range
+    const visibleStart = evStart > weekStart ? evStart : weekStart;
+    const visibleEnd = evEnd < weekEnd ? evEnd : weekEnd;
+    if (visibleStart > visibleEnd) continue;
+    // Convert to column index (0-6)
+    const startCol = Math.round(
+      (visibleStart.getTime() - weekStart.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    const endCol = Math.round(
+      (visibleEnd.getTime() - weekStart.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    candidates.push({
+      event: evt,
+      startCol,
+      endCol,
+      continuesLeft: evStart < weekStart,
+      continuesRight: evEnd > weekEnd,
+    });
+  }
+
+  // Sort by start column then by length descending — longer events get
+  // lower slots so shorter events tuck in beneath them visually.
+  candidates.sort((a, b) => {
+    if (a.startCol !== b.startCol) return a.startCol - b.startCol;
+    return (b.endCol - b.startCol) - (a.endCol - a.startCol);
+  });
+
+  // Greedy slot allocation: per slot, track the rightmost endCol used.
+  const slotEnds: number[] = [];
+  const result: RibbonSpan[] = [];
+  for (const c of candidates) {
+    let slot = 0;
+    while (slot < slotEnds.length && slotEnds[slot] >= c.startCol) slot++;
+    slotEnds[slot] = c.endCol;
+    result.push({ ...c, slot });
+  }
+  return result;
+}
+
+// Layout constants for the ribbon row inside each week cell. The day cell
+// reserves space at top for: day-number area (28px) + (numSlots × 18px).
+const RIBBON_HEIGHT = 18;
+const RIBBON_GAP = 2;
+const DAY_NUMBER_BLOCK = 28; // h-[22px] + mb-1 + p-1.5 contribution
+
 export default function MonthView({
   currentDate,
   events,
@@ -202,10 +285,24 @@ export default function MonthView({
       <div className="flex-1 flex flex-col">
         {weeks.map((week, wi) => {
           const isLast = wi === weeks.length - 1;
+          // Multi-day events render once per week as a ribbon spanning
+          // multiple columns, instead of repeating per-cell. Compute spans
+          // + slot assignments here so each cell can reserve the correct
+          // amount of vertical space for the ribbon area above its single-
+          // day events.
+          const ribbonSpans = computeRibbonSpans(week, events);
+          const ribbonSlots = ribbonSpans.reduce(
+            (max, s) => Math.max(max, s.slot + 1),
+            0
+          );
+          const ribbonAreaHeight =
+            ribbonSlots > 0
+              ? ribbonSlots * (RIBBON_HEIGHT + RIBBON_GAP)
+              : 0;
           return (
             <div
               key={wi}
-              className={`grid grid-cols-7 flex-1 ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
+              className={`relative grid grid-cols-7 flex-1 ${isLast ? "" : "border-b-[3px] border-[var(--border-heavy)]"}`}
             >
               {week.map((day, di) => {
                 const dayEvents = getEventsForDay(day);
@@ -217,9 +314,12 @@ export default function MonthView({
                 // chronological event stack) so the custody color transition
                 // and the handoff chip share one horizontal axis.
                 const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
-                const nonTurnoverEvents = turnoverEvt
-                  ? dayEvents.filter((e) => !e.id.startsWith("turnover-"))
-                  : dayEvents;
+                // Strip out turnovers AND multi-day events. Multi-day events
+                // render at the week level as ribbons overlaid below this map.
+                const nonTurnoverEvents = dayEvents.filter(
+                  (e) =>
+                    !e.id.startsWith("turnover-") && !isMultiDayEvent(e)
+                );
 
                 return (
                   <div
@@ -243,6 +343,14 @@ export default function MonthView({
                     >
                       {day.getDate()}
                     </div>
+
+                    {/* Ribbon-area spacer — reserved height equal to the
+                        week's multi-day ribbon stack so the ribbons (rendered
+                        at the week-row level below) don't sit on top of
+                        single-day chips. */}
+                    {ribbonAreaHeight > 0 && (
+                      <div style={{ height: ribbonAreaHeight }} />
+                    )}
 
                     {/* Chronological event stack (max 3). Turnovers are
                         excluded from this list — they ride on the pill layer
@@ -342,6 +450,104 @@ export default function MonthView({
                   </div>
                 );
               })}
+
+              {/* Multi-day ribbon overlay — absolute-positioned chips that
+                  span N columns at the week-row level. Pointer events scoped
+                  to the chip itself so dead zones still pass clicks down to
+                  the day cells. */}
+              {ribbonSpans.length > 0 && (
+                <div className="absolute inset-0 pointer-events-none">
+                  {ribbonSpans.map((span) => {
+                    const evt = span.event;
+                    const typeColor = getEventTypeColor(evt);
+                    const kidBadge = singleKidIndicator(evt);
+                    const dashed = evt._tentative;
+                    const isHoliday = evt.id.startsWith("holiday-");
+                    const widthCols = span.endCol - span.startCol + 1;
+                    const top =
+                      DAY_NUMBER_BLOCK +
+                      span.slot * (RIBBON_HEIGHT + RIBBON_GAP);
+                    return (
+                      <div
+                        key={`${evt.id}-w${wi}`}
+                        className="absolute pointer-events-auto"
+                        style={{
+                          top,
+                          height: RIBBON_HEIGHT,
+                          left: `calc(${(span.startCol / 7) * 100}% + 6px)`,
+                          width: `calc(${(widthCols / 7) * 100}% - 12px)`,
+                        }}
+                      >
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEventClick(evt);
+                          }}
+                          className={`
+                            flex items-center gap-1 h-full overflow-hidden
+                            text-[11px] font-medium leading-tight
+                            ${isHoliday ? "" : "bg-white"} text-[var(--ink)]
+                            px-1.5
+                            ${span.continuesLeft ? "" : "border-l-[3px]"}
+                            ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                            shadow-[0_0_0_1px_var(--border)]
+                            cursor-pointer hover:translate-x-[1px] transition-transform
+                          `}
+                          style={{
+                            borderLeftColor: span.continuesLeft
+                              ? undefined
+                              : typeColor,
+                            // Holiday events get the type-color as a soft
+                            // fill (not the white paper bg) so the ribbon
+                            // visually matches the in-cell holiday chip.
+                            background: isHoliday
+                              ? `${typeColor}1f`
+                              : undefined,
+                          }}
+                          title={evt.title}
+                        >
+                          {/* Continuation arrow on the left when this
+                              ribbon picks up from a previous week. */}
+                          {span.continuesLeft && (
+                            <span
+                              className="shrink-0 text-[10px]"
+                              style={{ color: typeColor }}
+                              aria-hidden
+                            >
+                              ‹
+                            </span>
+                          )}
+                          {kidBadge && (
+                            <span
+                              className={`
+                                inline-flex items-center justify-center shrink-0
+                                w-[14px] h-[14px] rounded-sm
+                                text-[8px] font-bold text-white
+                                ${kidIndicatorClass[kidBadge]}
+                              `}
+                              title={kidBadge === "ethan" ? "Ethan" : "Harrison"}
+                            >
+                              {kidBadge === "ethan" ? "E" : "H"}
+                            </span>
+                          )}
+                          <span className="truncate flex-1">{evt.title}</span>
+                          {/* Continuation arrow on the right when the event
+                              extends into next week. */}
+                          {span.continuesRight && (
+                            <span
+                              className="shrink-0 text-[10px]"
+                              style={{ color: typeColor }}
+                              aria-hidden
+                            >
+                              ›
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })}

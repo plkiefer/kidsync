@@ -362,8 +362,6 @@ export function useEvents(
     async (
       rows: EventFormData[]
     ): Promise<{ inserted: number; failed: number; error?: string }> => {
-      const t0 = performance.now();
-      console.log("[createEventsBatch] start, rows:", rows.length);
       if (!rows.length) return { inserted: 0, failed: 0 };
       try {
         // Prefer the page-provided auth context (set via useEvents'
@@ -394,15 +392,6 @@ export function useEvents(
           familyId = profile.family_id;
         }
 
-        console.log(
-          "[createEventsBatch] auth context at +" +
-            Math.round(performance.now() - t0) +
-            "ms, user:",
-          userId,
-          "family:",
-          familyId
-        );
-
         const payload = rows.map((data) => ({
           family_id: familyId,
           kid_id: data.kid_ids[0],
@@ -423,16 +412,9 @@ export function useEvents(
         // supabase-js to serialize them, which can deadlock through the
         // auth-refresh path. We don't need the returned rows; the subscription
         // will re-fetch and the UI will see them within a tick.
-        console.log("[createEventsBatch] firing insert with", payload.length, "rows");
         const { error: insertErr } = await supabase
           .from("calendar_events")
           .insert(payload);
-        console.log(
-          "[createEventsBatch] insert returned at +" +
-            Math.round(performance.now() - t0) +
-            "ms, err:",
-          insertErr ?? "(none)"
-        );
 
         if (insertErr) throw insertErr;
 
@@ -441,12 +423,7 @@ export function useEvents(
           failed: 0,
         };
       } catch (err) {
-        console.error(
-          "[createEventsBatch] caught error at +" +
-            Math.round(performance.now() - t0) +
-            "ms:",
-          err
-        );
+        console.error("[createEventsBatch] caught error:", err);
         return {
           inserted: 0,
           failed: rows.length,
@@ -478,8 +455,6 @@ export function useEvents(
     async (
       updates: Array<{ id: string; patch: Partial<EventFormData> }>
     ): Promise<{ updated: number; failed: number; error?: string }> => {
-      const t0 = performance.now();
-      console.log("[updateEventsBatch] start, updates:", updates.length);
       if (!updates.length) return { updated: 0, failed: 0 };
       try {
         // Same bypass as createEventsBatch — read auth from the ref the
@@ -496,12 +471,6 @@ export function useEvents(
           if (!session?.user) throw new Error("Not authenticated");
           userId = session.user.id;
         }
-        console.log(
-          "[updateEventsBatch] auth at +" +
-            Math.round(performance.now() - t0) +
-            "ms, user:",
-          userId
-        );
 
         const buildPayload = (patch: Partial<EventFormData>) => {
           // Strip travel-only fields (the importer doesn't emit them, but the

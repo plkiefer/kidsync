@@ -584,10 +584,6 @@ export default function ScheduleImportModal({
   // ── Step 2 → Step 3: insert / merge ──
   const handleInsert = async () => {
     const active = rows.filter((r) => r.selected && r.action !== "skip");
-    console.log(
-      "[ScheduleImport] handleInsert fired, active rows:",
-      active.length
-    );
     if (active.length === 0) return;
 
     setStep("inserting");
