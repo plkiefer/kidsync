@@ -111,17 +111,43 @@ emitting any break with end_date - start_date ≥ 2 days, do this self-check:
      Common mistake: dropping the last day of the source range, or
      stopping at Saturday instead of Sunday on a Friday-end source.
 
-Worked example, Spring Break "March 22–29 2027":
-  Source start Mar 22 = Sunday. Source end Mar 29 = Sunday.
-  Source already brackets both weekends — no extension needed.
-  Output: start_date 2027-03-22, end_date 2027-03-29 (8 calendar days).
-  Notes: "District lists: Mar 22–29".
-
 Worked example, Thanksgiving "Nov 23–27 2026":
   Source start Nov 23 = Monday. Source end Nov 27 = Friday.
   Rule 1: extend back to Sat Nov 21. Rule 2: extend forward to Sun Nov 29.
   Output: start_date 2026-11-21, end_date 2026-11-29 (9 calendar days).
   Notes: "District lists: Nov 23–27".
+
+Worked example, Spring Break "March 22–29 2027" (5-day break notation):
+  This range is Monday-to-Monday (Jan 1 2027 = Fri → Mar 22 = Mon, Mar 29
+  = Mon). Most districts mean the WEEK off Mar 22–26 and the kid can
+  return on Mon Mar 29 — i.e., "22–29" is the school's framing of
+  "out from 22, return on 29". Treat the LAST listed date as the FIRST
+  day BACK only when the source is Mon-to-Mon AND the gap is exactly
+  one workweek. Output then:
+    Rule 1: Mon Mar 22 → extend back to Sat Mar 20.
+    Treat Mar 29 as return-to-school day. The break itself ends Fri Mar 26.
+    Rule 2: Fri Mar 26 → extend forward to Sun Mar 28.
+    Final: start_date 2027-03-20, end_date 2027-03-28 (9 calendar days).
+    Notes: "District lists: Mar 22–29 (Mar 29 = return to school)".
+
+  HOWEVER, if the source explicitly states Mar 29 is itself a non-school
+  day (e.g. listed under the holidays block, not under "school resumes"),
+  treat the source range as inclusive Mon-to-Mon:
+    Rule 1: extend back to Sat Mar 20.
+    Rule 4: Mon end → don't extend forward, end stays Mar 29.
+    Final: start_date 2027-03-20, end_date 2027-03-29 (10 calendar days).
+    Notes: "District lists: Mar 22–29 (inclusive)".
+
+  When in doubt about Mon-to-Mon ranges, prefer the inclusive interpretation
+  and emit end_date = source end, never end_date = source end - 1. NEVER
+  silently drop the last day; if you can't decide, emit the inclusive form
+  and add a warning.
+
+DAY-OF-WEEK ANCHOR (for 2026–27 school years):
+  - 2026: Jan 1 = Thursday. Verify any 2026 date by counting from there.
+  - 2027: Jan 1 = Friday. Verify any 2027 date by counting from there.
+  - Memorize: Thanksgiving 2026 = Nov 26 (Thu). Spring Break 2027 starts
+    on a Monday (Mar 22 = Mon). Don't guess — count.
 
 ═══════════════════════════════════════════════════════════════════════════
 TITLE GENERATION — critical. Titles describe WHAT the event IS, not the

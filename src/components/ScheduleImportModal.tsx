@@ -625,21 +625,21 @@ export default function ScheduleImportModal({
         ? onUpdateEvents(mergePayloads)
         : Promise.resolve({ updated: 0, failed: 0 });
 
-    // 90s ceiling. With createEventsBatch + updateEventsBatch in place there
-    // is no per-row deadlock vector; this just protects against pathological
-    // network stalls. Importantly, hitting this timeout does NOT mean the
-    // operation failed — Supabase may have committed the rows server-side
-    // and the client just lost the response. The done-screen message
-    // reflects that (suggests refreshing to verify).
+    // 45s ceiling. With createEventsBatch + updateEventsBatch + the realtime
+    // debounce in useEvents, a 20-row import should land in 2–4 seconds even
+    // on a slow VPN. This timeout is now just a backstop against true
+    // network pathology. Hitting it doesn't mean the operation failed —
+    // Supabase may have committed the rows server-side and the client just
+    // lost the response. The done-screen message reflects that.
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(
         () =>
           reject(
             new Error(
-              "Import took longer than 90 seconds. The events may have still been added — close this dialog and refresh to confirm. If they're missing, check your network connection (VPN can slow Supabase round-trips significantly) and try again."
+              "Import took longer than 45 seconds. The events may have still been added — close this dialog and refresh to confirm. If they're missing, check your network connection (VPN can slow Supabase round-trips significantly) and try again."
             )
           ),
-        90000
+        45000
       )
     );
 

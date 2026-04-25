@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getSupabase } from "@/lib/supabase";
 import {
   CalendarEvent,
@@ -130,7 +130,24 @@ export function useEvents(ready = true): EventsState {
     }
   }, [fetchEvents, ready]);
 
-  // Realtime subscription — only after auth is ready
+  /**
+   * Realtime subscription — only after auth is ready.
+   *
+   * IMPORTANT: every postgres_changes event triggers a FULL table refetch
+   * (select * with joins). When createEventsBatch inserts N rows, Supabase
+   * fires N separate change events. Without debouncing, that cascades into
+   * N parallel fetchEvents() calls, all going through supabase-js's auth-
+   * token serialization layer. For N=18 that meant the import sat for 90+
+   * seconds even though the rows had landed in the DB on the first round-
+   * trip — exactly the read-back deadlock the createEventsBatch insert
+   * sidesteps with `no .select()`.
+   *
+   * The debounce collapses any burst of changes that arrive within 400ms
+   * of quiescence into ONE fetch. Single edits feel instantaneous (one
+   * change → 400ms wait → one fetch), bulk imports finish in seconds
+   * instead of timing out.
+   */
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!ready) return;
 
@@ -144,13 +161,21 @@ export function useEvents(ready = true): EventsState {
           table: "calendar_events",
         },
         () => {
-          fetchEvents();
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => {
+            fetchEvents();
+            debounceRef.current = null;
+          }, 400);
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
     };
   }, [supabase, fetchEvents, ready]);
 

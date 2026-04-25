@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { EventChangeLog } from "@/lib/types";
 
@@ -34,6 +34,12 @@ export function useActivityLog(limit = 20, ready = true): ActivityState {
     }
   }, [supabase, limit]);
 
+  // Debounce burst inserts (e.g. a bulk import that triggers N change-log
+  // rows via DB trigger) into one fetch. Without this, an 18-row import
+  // fanned out into 18 sequential fetchLogs() calls, compounding the same
+  // realtime cascade that hangs useEvents.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!ready) {
       setLoading(false);
@@ -53,13 +59,21 @@ export function useActivityLog(limit = 20, ready = true): ActivityState {
           table: "event_change_log",
         },
         () => {
-          fetchLogs();
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => {
+            fetchLogs();
+            debounceRef.current = null;
+          }, 400);
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
     };
   }, [supabase, fetchLogs, ready]);
 
