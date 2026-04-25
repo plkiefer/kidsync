@@ -788,6 +788,7 @@ export default function CalendarPage() {
                   onEventClick={handleEventClick}
                   getCustodyForDate={getCustodyForDate}
                   currentUserId={user?.id}
+                  parentAId={schedules[0]?.parent_a_id}
                 />
               )}
               {view === "week" && (
@@ -799,6 +800,7 @@ export default function CalendarPage() {
                   onEventClick={handleEventClick}
                   getCustodyForDate={getCustodyForDate}
                   currentUserId={user?.id}
+                  parentAId={schedules[0]?.parent_a_id}
                 />
               )}
               {view === "list" && (

@@ -19,6 +19,8 @@ interface WeekViewProps {
   onEventClick: (event: CalendarEvent) => void;
   getCustodyForDate?: (date: Date) => Record<string, { parentId: string; isParentA: boolean }>;
   currentUserId?: string;
+  /** parent_a (alt-weekend parent) UUID. See MonthView for color rationale. */
+  parentAId?: string;
 }
 
 const HOUR_HEIGHT = 56;
@@ -56,6 +58,7 @@ export default function WeekView({
   onEventClick,
   getCustodyForDate,
   currentUserId,
+  parentAId,
 }: WeekViewProps) {
   const days = getWeekDays(currentDate);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -137,8 +140,18 @@ export default function WeekView({
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    const colorFor = (parentId: string | undefined) =>
-      parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    // Parent-role-based color identity (see MonthView). parent_a → cool,
+    // parent_b → cream, regardless of which user is signed in.
+    const colorFor = (parentId: string | undefined): string => {
+      if (parentAId) {
+        return parentId === parentAId
+          ? "var(--them-bg)"
+          : "var(--you-bg)";
+      }
+      return parentId === currentUserId
+        ? "var(--you-bg)"
+        : "var(--them-bg)";
+    };
 
     // If there's a turnover (custody transition) on this day, split the
     // column vertically at the handoff time so each parent owns their

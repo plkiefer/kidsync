@@ -24,6 +24,15 @@ interface MonthViewProps {
   onEventClick: (event: CalendarEvent) => void;
   getCustodyForDate?: (date: Date) => Record<string, { parentId: string; isParentA: boolean }>;
   currentUserId?: string;
+  /**
+   * UUID of parent_a in this family (the alternating-weekend / "visiting"
+   * parent — typically the one who picks up on weekends). Color identity
+   * is keyed off this rather than the logged-in user, so each parent is
+   * a fixed color regardless of which account is signed in: parent_a →
+   * cool, parent_b → cream. When undefined we fall back to the legacy
+   * you/them mapping based on currentUserId.
+   */
+  parentAId?: string;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -144,6 +153,7 @@ export default function MonthView({
   onEventClick,
   getCustodyForDate,
   currentUserId,
+  parentAId,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
   const weeks: Date[][] = [];
@@ -246,8 +256,22 @@ export default function MonthView({
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    const colorFor = (parentId: string | undefined) =>
-      parentId === currentUserId ? "var(--you-bg)" : "var(--them-bg)";
+    // Color identity is parent-role-based, not relative to the logged-in
+    // user. parent_a (alternating-weekend parent) → cool (--them-bg);
+    // parent_b (primary custodian) → cream (--you-bg). This keeps the
+    // visual identity stable regardless of which family member is
+    // currently signed in. Falls back to currentUserId-relative when
+    // parentAId isn't supplied (legacy callers).
+    const colorFor = (parentId: string | undefined): string => {
+      if (parentAId) {
+        return parentId === parentAId
+          ? "var(--them-bg)"
+          : "var(--you-bg)";
+      }
+      return parentId === currentUserId
+        ? "var(--you-bg)"
+        : "var(--them-bg)";
+    };
 
     // Build a per-kid time-based background + pill position. Used by both
     // whole-mode (when all kids transition together — feed the transitioning

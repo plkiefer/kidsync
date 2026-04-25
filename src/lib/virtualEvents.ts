@@ -76,13 +76,28 @@ export function generateTurnoverEvents(
             const dateStr = format(eventDate, "yyyy-MM-dd");
             const key = `${dateStr}|${curr.parentId}|${isPickup}`;
 
-            // Check if any override on the event date carries a time override
+            // Check if any override on the event date carries a time
+            // override. We match ONLY when the event date equals the
+            // override's start_date — that's the "boundary day" where the
+            // user-set time applies. The schema has a single override_time
+            // column that can't carry both a pickup and a dropoff time, so
+            // only the start-of-block transition gets the custom time. The
+            // matching end-of-block transition (e.g., the Apr 26 dropoff at
+            // the end of a [Apr 23, Apr 26] custom-custody block) falls
+            // through to the schedule's default time.
+            //
+            // For "Move pickup": override range begins at the new pickup
+            // date, so start_date matches → override_time applies. Correct.
+            // For "Custom custody": override starts on the pickup day, so
+            // override_time applies on that day → correct pickup time;
+            // the dropoff at end_date uses the default → correct as long
+            // as the user wanted the default dropoff time (which is the
+            // common case).
             const matchingOverride = approvedOverrides.find(
               (o) =>
                 o.kid_id === kidId &&
                 o.override_time &&
-                o.start_date <= dateStr &&
-                o.end_date >= dateStr
+                o.start_date === dateStr
             );
             const overrideTime = matchingOverride?.override_time || null;
 
