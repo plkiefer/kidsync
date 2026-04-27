@@ -18,6 +18,7 @@ import { formatShortDate } from "@/lib/dates";
 import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
+import TransportForm, { TransportKind } from "@/components/TransportForm";
 
 type FilterTab = "all" | "upcoming" | "past" | "draft";
 
@@ -49,6 +50,16 @@ export default function TripsPage() {
   const [lodgingForm, setLodgingForm] = useState<{
     tripId: string;
     editing: import("@/lib/types").CalendarEvent | null;
+  } | null>(null);
+  const [transportForm, setTransportForm] = useState<{
+    tripId: string;
+    type: TransportKind;
+    editing: import("@/lib/types").CalendarEvent | null;
+    prefill?: {
+      from_location?: string;
+      from_timezone?: string;
+      starts_at?: string;
+    };
   } | null>(null);
 
   // Auth guard
@@ -252,12 +263,33 @@ export default function TripsPage() {
               onAddLodging={() =>
                 setLodgingForm({ tripId: trip.id, editing: null })
               }
-              onAddTransport={() => {
-                alert("Transport forms ship in Phase 2.");
+              onAddTransport={(kind) => {
+                if (kind === "cruise") {
+                  alert("Cruise segment ships in Phase 3.");
+                  return;
+                }
+                setTransportForm({
+                  tripId: trip.id,
+                  type: kind as TransportKind,
+                  editing: null,
+                });
               }}
               onEditSegment={(seg) => {
                 if (seg.segment_type === "lodging") {
                   setLodgingForm({ tripId: trip.id, editing: seg });
+                  return;
+                }
+                if (
+                  seg.segment_type === "flight" ||
+                  seg.segment_type === "drive" ||
+                  seg.segment_type === "train" ||
+                  seg.segment_type === "ferry"
+                ) {
+                  setTransportForm({
+                    tripId: trip.id,
+                    type: seg.segment_type,
+                    editing: seg,
+                  });
                 }
               }}
               onDeleteSegment={async (segId) => {
@@ -312,6 +344,68 @@ export default function TripsPage() {
                 if (trip.status === "draft") {
                   await updateTrip(trip.id, { status: "planned" });
                 }
+              }}
+            />
+          );
+        })()}
+
+      {transportForm &&
+        (() => {
+          const trip = trips.find((t) => t.id === transportForm.tripId);
+          if (!trip) return null;
+          const formKey = `${transportForm.tripId}-${transportForm.editing?.id ?? "new"}-${transportForm.prefill?.from_location ?? ""}-${transportForm.prefill?.starts_at ?? ""}`;
+          return (
+            <TransportForm
+              key={formKey}
+              trip={trip}
+              type={transportForm.type}
+              segment={transportForm.editing}
+              kids={kids}
+              members={members}
+              prefill={transportForm.prefill}
+              onClose={() => setTransportForm(null)}
+              onSave={async (input) => {
+                if (transportForm.editing) {
+                  await updateSegment(transportForm.editing.id, input);
+                } else {
+                  await createSegment(input);
+                }
+                await recomputeTripDates(trip.id);
+                setTransportForm(null);
+                await refetch();
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
+              }}
+              onSaveAndChainDrive={async (input) => {
+                await createSegment(input);
+                await recomputeTripDates(trip.id);
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
+                await refetch();
+                const drive = input.segment_data as {
+                  to_location?: string;
+                  to_timezone?: string;
+                };
+                const nextDay = new Date(input.ends_at);
+                nextDay.setDate(nextDay.getDate() + 1);
+                nextDay.setHours(9, 0, 0, 0);
+                const tz = drive.to_timezone || input.time_zone || "UTC";
+                const { utcToLocalTimeString } = await import(
+                  "@/lib/timezones"
+                );
+                const startsAtLocal = utcToLocalTimeString(nextDay, tz);
+                setTransportForm({
+                  tripId: trip.id,
+                  type: "drive",
+                  editing: null,
+                  prefill: {
+                    from_location: drive.to_location,
+                    from_timezone: drive.to_timezone,
+                    starts_at: startsAtLocal,
+                  },
+                });
               }}
             />
           );

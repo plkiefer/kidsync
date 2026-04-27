@@ -43,6 +43,7 @@ import TravelModal from "@/components/TravelModal";
 import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
+import TransportForm, { TransportKind } from "@/components/TransportForm";
 import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -138,6 +139,16 @@ export default function CalendarPage() {
     tripId: string;
     editing: CalendarEvent | null;
     prefillCity?: { city: string; state: string; country: string };
+  } | null>(null);
+  const [transportForm, setTransportForm] = useState<{
+    tripId: string;
+    type: TransportKind;
+    editing: CalendarEvent | null;
+    prefill?: {
+      from_location?: string;
+      from_timezone?: string;
+      starts_at?: string;
+    };
   } | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
@@ -1067,13 +1078,33 @@ export default function CalendarPage() {
               onAddLodging={() =>
                 setLodgingForm({ tripId: trip.id, editing: null })
               }
-              onAddTransport={() => {
-                // TODO Phase 2
-                alert("Transport forms ship in Phase 2.");
+              onAddTransport={(kind) => {
+                if (kind === "cruise") {
+                  alert("Cruise segment ships in Phase 3.");
+                  return;
+                }
+                setTransportForm({
+                  tripId: trip.id,
+                  type: kind as TransportKind,
+                  editing: null,
+                });
               }}
               onEditSegment={(seg) => {
                 if (seg.segment_type === "lodging") {
                   setLodgingForm({ tripId: trip.id, editing: seg });
+                  return;
+                }
+                if (
+                  seg.segment_type === "flight" ||
+                  seg.segment_type === "drive" ||
+                  seg.segment_type === "train" ||
+                  seg.segment_type === "ferry"
+                ) {
+                  setTransportForm({
+                    tripId: trip.id,
+                    type: seg.segment_type,
+                    editing: seg,
+                  });
                 }
               }}
               onDeleteSegment={async (segId) => {
@@ -1133,6 +1164,81 @@ export default function CalendarPage() {
                 if (trip.status === "draft") {
                   await updateTrip(trip.id, { status: "planned" });
                 }
+              }}
+            />
+          );
+        })()}
+
+      {/* Transport form — opens from TripView's "+ Add" menu under
+          Transportation, or by clicking an existing transport row.
+          Drive type can chain "Save & next leg" to immediately
+          re-open with the previous arrival pre-filled. */}
+      {transportForm &&
+        (() => {
+          const trip = trips.find((t) => t.id === transportForm.tripId);
+          if (!trip) return null;
+          // Stable key per (trip, editing-id, prefill-from) so the
+          // form remounts (and re-initializes form state) when we
+          // chain into the next leg with a fresh prefill.
+          const formKey = `${transportForm.tripId}-${transportForm.editing?.id ?? "new"}-${transportForm.prefill?.from_location ?? ""}-${transportForm.prefill?.starts_at ?? ""}`;
+          return (
+            <TransportForm
+              key={formKey}
+              trip={trip}
+              type={transportForm.type}
+              segment={transportForm.editing}
+              kids={kids}
+              members={members}
+              prefill={transportForm.prefill}
+              onClose={() => setTransportForm(null)}
+              onSave={async (input) => {
+                if (transportForm.editing) {
+                  await updateSegment(transportForm.editing.id, input);
+                } else {
+                  await createSegment(input);
+                }
+                await recomputeTripDates(trip.id);
+                setTransportForm(null);
+                await refetch();
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
+              }}
+              onSaveAndChainDrive={async (input) => {
+                await createSegment(input);
+                await recomputeTripDates(trip.id);
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
+                await refetch();
+                // Re-open the form pre-filled from this drive's
+                // arrival. The arrival becomes the next leg's
+                // departure; the next day at 9am is a sensible
+                // default starting time.
+                const drive = input.segment_data as {
+                  to_location?: string;
+                  to_timezone?: string;
+                };
+                const nextDay = new Date(input.ends_at);
+                nextDay.setDate(nextDay.getDate() + 1);
+                nextDay.setHours(9, 0, 0, 0);
+                const tz = drive.to_timezone || input.time_zone || "UTC";
+                // Format as datetime-local in the destination tz so
+                // the next form's input shows "9:00 AM Tue" in that zone.
+                const { utcToLocalTimeString } = await import(
+                  "@/lib/timezones"
+                );
+                const startsAtLocal = utcToLocalTimeString(nextDay, tz);
+                setTransportForm({
+                  tripId: trip.id,
+                  type: "drive",
+                  editing: null,
+                  prefill: {
+                    from_location: drive.to_location,
+                    from_timezone: drive.to_timezone,
+                    starts_at: startsAtLocal,
+                  },
+                });
               }}
             />
           );
