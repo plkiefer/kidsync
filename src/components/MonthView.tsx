@@ -94,6 +94,129 @@ function isMultiDayEvent(evt: CalendarEvent): boolean {
 }
 
 /**
+ * Derive synthetic "stay ribbon" events from lodging segments.
+ * One ribbon per (trip, city, contiguous-date-range). Multiple
+ * lodgings in the same city collapse into one ribbon (e.g.
+ * Hilton + Marriott in Honolulu = one "Honolulu, HI" ribbon).
+ *
+ * The synthetic events look like all-day multi-day events to the
+ * existing ribbon engine, so they slot in alongside other ribbons
+ * (multi-day all-day events like school break) without changes
+ * to computeRibbonSpans.
+ *
+ * Click handling routes to the trip via the trip_id + segment_type,
+ * same path as direct lodging clicks (TripView opens).
+ */
+interface SyntheticStayEvent extends CalendarEvent {
+  /** Source lodgings collapsed into this ribbon — useful for click
+   *  handlers that want to open one specific lodging. */
+  _stay_lodgings: CalendarEvent[];
+}
+function deriveStayRibbonEvents(
+  events: CalendarEvent[]
+): SyntheticStayEvent[] {
+  const lodgings = events.filter(
+    (e) => e.segment_type === "lodging" && e.trip_id
+  );
+  if (lodgings.length === 0) return [];
+
+  // Group by (trip_id, city, state, country); within a group, sort
+  // by starts_at and merge contiguous (or overlapping) ranges.
+  type Group = {
+    trip_id: string;
+    city: string;
+    state: string;
+    country: string;
+    family_id: string;
+    runs: { startMs: number; endMs: number; lodgings: CalendarEvent[] }[];
+  };
+  const groups = new Map<string, Group>();
+  for (const l of lodgings) {
+    if (!l.segment_data || typeof l.segment_data !== "object") continue;
+    const data = l.segment_data as { city?: string; state?: string; country?: string };
+    const city = data.city || "";
+    const state = data.state || "";
+    const country = data.country || "";
+    const key = `${l.trip_id}|${city}|${state}|${country}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = {
+        trip_id: l.trip_id!,
+        city,
+        state,
+        country,
+        family_id: l.family_id,
+        runs: [],
+      };
+      groups.set(key, g);
+    }
+    const startMs = dayOnly(parseTimestamp(l.starts_at)).getTime();
+    // For ribbons, treat ends_at as inclusive of the last day the
+    // user is sleeping there. A check-out on Dec 28 11am means the
+    // user slept Dec 27 → ribbon should include Dec 27 but not 28.
+    // Subtract 1 day so a Dec 20→Dec 28 range renders as Dec 20–27.
+    const endMs =
+      dayOnly(parseTimestamp(l.ends_at)).getTime() - 24 * 60 * 60 * 1000;
+    g.runs.push({ startMs, endMs, lodgings: [l] });
+  }
+
+  const synthetic: SyntheticStayEvent[] = [];
+  for (const g of groups.values()) {
+    // Merge contiguous runs within a group
+    g.runs.sort((a, b) => a.startMs - b.startMs);
+    const merged: typeof g.runs = [];
+    for (const r of g.runs) {
+      const last = merged[merged.length - 1];
+      // Touching = next run starts within 1 day of previous end
+      if (last && r.startMs <= last.endMs + 24 * 60 * 60 * 1000) {
+        last.endMs = Math.max(last.endMs, r.endMs);
+        last.lodgings.push(...r.lodgings);
+      } else {
+        merged.push({ ...r });
+      }
+    }
+    for (const run of merged) {
+      const startISO = new Date(run.startMs).toISOString();
+      // ribbon engine uses `dayOnly(parseTimestamp(ends_at))` so ensure
+      // it lands on the inclusive last day.
+      const endISO = new Date(run.endMs).toISOString();
+      synthetic.push({
+        id: `stay-${g.trip_id}-${g.city}-${run.startMs}`,
+        family_id: g.family_id,
+        kid_id: run.lodgings[0].kid_id,
+        kid_ids: run.lodgings[0].kid_ids,
+        title: formatStayLabel(g.city, g.state, g.country),
+        event_type: "travel",
+        starts_at: startISO,
+        ends_at: endISO,
+        all_day: true,
+        location: null,
+        notes: null,
+        recurring_rule: null,
+        created_by: run.lodgings[0].created_by,
+        updated_by: null,
+        created_at: run.lodgings[0].created_at,
+        updated_at: run.lodgings[0].updated_at,
+        trip_id: g.trip_id,
+        segment_type: "lodging",
+        _virtual: true,
+        _stay_lodgings: run.lodgings,
+      });
+    }
+  }
+  return synthetic;
+}
+
+function formatStayLabel(city: string, state: string, country: string): string {
+  if (!city) return "Stay";
+  if (state) return `${city}, ${state}`;
+  if (country && country !== "USA" && country !== "United States") {
+    return `${city}, ${country}`;
+  }
+  return city;
+}
+
+/**
  * For one week (7 Date[] starting Sunday), compute the multi-day ribbon
  * spans plus their vertical slot assignments. A "span" is one event
  * appearing on this week, clipped to the week's columns.
@@ -182,12 +305,26 @@ export default function MonthView({
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
+  // Lodging segments are not all_day events but should render as
+  // multi-day "stay" ribbons grouped by city. Replace them in the
+  // event stream with synthetic stay-ribbon events that the ribbon
+  // engine can consume directly. Original lodging segments are
+  // hidden from per-cell rendering — the ribbon represents them.
+  const stayRibbons = deriveStayRibbonEvents(events);
+  const eventsWithoutLodgings = events.filter(
+    (e) => e.segment_type !== "lodging"
+  );
+  const eventsForRendering: CalendarEvent[] = [
+    ...eventsWithoutLodgings,
+    ...stayRibbons,
+  ];
+
   /** All-day events first (holidays, birthdays), then timed events in
    *  chronological order. Keeps turnover events + regular events in a
    *  single unified list so a 3 PM handoff naturally sits between a
    *  10 AM dentist and a 5 PM soccer practice. */
   const getEventsForDay = (date: Date) =>
-    events
+    eventsForRendering
       .filter((e) => eventCoversDay(e.starts_at, e.ends_at, e.all_day, date))
       .sort((a, b) => {
         if (a.all_day && !b.all_day) return -1;
@@ -474,7 +611,7 @@ export default function MonthView({
           // + slot assignments here so each cell can reserve the correct
           // amount of vertical space for the ribbon area above its single-
           // day events.
-          const ribbonSpans = computeRibbonSpans(week, events);
+          const ribbonSpans = computeRibbonSpans(week, eventsForRendering);
           const ribbonSlots = ribbonSpans.reduce(
             (max, s) => Math.max(max, s.slot + 1),
             0
