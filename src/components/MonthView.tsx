@@ -217,6 +217,74 @@ function formatStayLabel(city: string, state: string, country: string): string {
 }
 
 /**
+ * Derive cruise + port-stop ribbons.
+ *
+ * Plan §3.1 / §6g: cruises render as TWO stacked ribbons:
+ *   - Top: cruise body, label = ship name (or cruise line), spans
+ *     the entire cruise.
+ *   - Bottom: port-stop sub-ribbon, only on port-call days.
+ *
+ * The cruise body is a non-all-day multi-day event so the existing
+ * isMultiDayEvent gate misses it; we synthesize an all-day version
+ * here. Port stops are non-all-day single-day events; we synthesize
+ * one-day ribbons for them so they show up in the ribbon engine.
+ *
+ * Both keep the original event's id-prefix-replaced ("cruise-…",
+ * "portstop-…") so click routing can distinguish them. The
+ * `_source_segment_id` field points at the real underlying event,
+ * which click handlers can use to open the right thing.
+ */
+interface SyntheticCruiseEvent extends CalendarEvent {
+  _source_segment_id: string;
+}
+function deriveCruiseRibbonEvents(
+  events: CalendarEvent[]
+): SyntheticCruiseEvent[] {
+  const synthetic: SyntheticCruiseEvent[] = [];
+  for (const e of events) {
+    if (!e.trip_id) continue;
+    if (e.segment_type === "cruise") {
+      const data = (e.segment_data as { ship_name?: string; cruise_line?: string }) ?? {};
+      const label =
+        data.ship_name ||
+        data.cruise_line ||
+        e.title ||
+        "Cruise";
+      // Cruise body spans embark → disembark. Treat as all-day for
+      // ribbon purposes; the actual times stay accurate in the
+      // underlying segment for editing/display.
+      const startDay = dayOnly(parseTimestamp(e.starts_at));
+      const endDay = dayOnly(parseTimestamp(e.ends_at));
+      synthetic.push({
+        ...e,
+        id: `cruise-${e.id}`,
+        title: label,
+        all_day: true,
+        starts_at: startDay.toISOString(),
+        ends_at: endDay.toISOString(),
+        _virtual: true,
+        _source_segment_id: e.id,
+      });
+    } else if (e.segment_type === "cruise_port_stop") {
+      const data = (e.segment_data as { port?: string }) ?? {};
+      const startDay = dayOnly(parseTimestamp(e.starts_at));
+      const endDay = dayOnly(parseTimestamp(e.ends_at));
+      synthetic.push({
+        ...e,
+        id: `portstop-${e.id}`,
+        title: data.port || e.title || "Port",
+        all_day: true,
+        starts_at: startDay.toISOString(),
+        ends_at: endDay.toISOString(),
+        _virtual: true,
+        _source_segment_id: e.id,
+      });
+    }
+  }
+  return synthetic;
+}
+
+/**
  * For one week (7 Date[] starting Sunday), compute the multi-day ribbon
  * spans plus their vertical slot assignments. A "span" is one event
  * appearing on this week, clipped to the week's columns.
@@ -305,18 +373,24 @@ export default function MonthView({
   const weeks: Date[][] = [];
   for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
 
-  // Lodging segments are not all_day events but should render as
-  // multi-day "stay" ribbons grouped by city. Replace them in the
-  // event stream with synthetic stay-ribbon events that the ribbon
-  // engine can consume directly. Original lodging segments are
-  // hidden from per-cell rendering — the ribbon represents them.
+  // Lodging segments + cruise + cruise port stops are non-all-day
+  // events that should render as multi-day ribbons (or 1-day ribbons
+  // for port stops). Synthesize ribbon-friendly versions and hide
+  // the originals from per-cell rendering — the ribbons represent
+  // them. Synthetic events look like all-day multi-day events to
+  // the existing ribbon engine.
   const stayRibbons = deriveStayRibbonEvents(events);
-  const eventsWithoutLodgings = events.filter(
-    (e) => e.segment_type !== "lodging"
+  const cruiseRibbons = deriveCruiseRibbonEvents(events);
+  const eventsWithoutSegmentRibbons = events.filter(
+    (e) =>
+      e.segment_type !== "lodging" &&
+      e.segment_type !== "cruise" &&
+      e.segment_type !== "cruise_port_stop"
   );
   const eventsForRendering: CalendarEvent[] = [
-    ...eventsWithoutLodgings,
+    ...eventsWithoutSegmentRibbons,
     ...stayRibbons,
+    ...cruiseRibbons,
   ];
 
   /** All-day events first (holidays, birthdays), then timed events in

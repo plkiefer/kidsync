@@ -45,6 +45,7 @@ import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import TransportForm, { TransportKind } from "@/components/TransportForm";
 import CruiseForm, { CruiseSaveInput } from "@/components/CruiseForm";
+import PortStopPopover from "@/components/PortStopPopover";
 import TripOverrideProposalModal from "@/components/TripOverrideProposalModal";
 import {
   detectTripCustodyConflict,
@@ -163,6 +164,9 @@ export default function CalendarPage() {
   const [cruiseForm, setCruiseForm] = useState<{
     tripId: string;
     editing: CalendarEvent | null;
+  } | null>(null);
+  const [portStopPopover, setPortStopPopover] = useState<{
+    portStopId: string;
   } | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
@@ -284,6 +288,22 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (event: CalendarEvent) => {
+    // Port-stop synthetic ribbons get a lightweight popover (plan
+    // §10c). The MonthView prefixes synthetic event ids with
+    // "portstop-<real-id>" so we can distinguish them from real
+    // port stops without changing the click signature.
+    if (event.id.startsWith("portstop-")) {
+      const realId = event.id.slice("portstop-".length);
+      setPortStopPopover({ portStopId: realId });
+      return;
+    }
+    // Cruise body synthetic ribbons → strip the "cruise-" prefix
+    // before routing to TripView (the trip_id field is preserved
+    // on the synthetic event so the routing still works).
+    if (event.id.startsWith("cruise-") && event.trip_id) {
+      setOpenTripId(event.trip_id);
+      return;
+    }
     // Trip-linked segments open Trip View instead of the regular
     // event detail modal — the user wants to see all the trip's
     // segments together, not just this one chip.
@@ -1451,6 +1471,32 @@ export default function CalendarPage() {
                 if (trip.status === "draft") {
                   await updateTrip(trip.id, { status: "planned" });
                 }
+              }}
+            />
+          );
+        })()}
+
+      {/* Port-stop popover (plan §10c). Click a port-stop ribbon
+          → tiny modal with arrival/departure times and a "View
+          trip" link, instead of dragging the user into TripView. */}
+      {portStopPopover &&
+        (() => {
+          const portStop = events.find((e) => e.id === portStopPopover.portStopId);
+          if (!portStop) {
+            setPortStopPopover(null);
+            return null;
+          }
+          const cruise = portStop.parent_segment_id
+            ? events.find((e) => e.id === portStop.parent_segment_id)
+            : undefined;
+          return (
+            <PortStopPopover
+              portStop={portStop}
+              cruise={cruise ?? undefined}
+              onClose={() => setPortStopPopover(null)}
+              onViewTrip={() => {
+                if (portStop.trip_id) setOpenTripId(portStop.trip_id);
+                setPortStopPopover(null);
               }}
             />
           );
