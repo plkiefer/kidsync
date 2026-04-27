@@ -191,6 +191,10 @@ function toEventFormData(row: ReviewRow, kidIds: string[]): EventFormData {
     starts_at,
     ends_at,
     all_day: row.all_day,
+    // Imported events keep the family's calendar zone — Eastern as
+    // a default. Once schedules carry a tz field we'll thread that
+    // through; for now this matches the existing implicit behavior.
+    time_zone: "America/New_York",
     recurring_rule: "",
     location: row.location || "",
     notes: row.notes || "",

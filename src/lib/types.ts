@@ -78,6 +78,11 @@ export interface CalendarEvent {
   starts_at: string;
   ends_at: string;
   all_day: boolean;
+  /** IANA timezone the event was authored in (e.g. "America/New_York").
+   *  starts_at/ends_at remain UTC; this anchors the event to a wall-
+   *  clock zone so display + iCal can render it correctly. NULL on
+   *  legacy rows; app defaults to America/New_York. */
+  time_zone?: string | null;
   location: string | null;
   notes: string | null;
   recurring_rule: string | null;
@@ -301,6 +306,9 @@ export interface EventFormData {
   starts_at: string;
   ends_at: string;
   all_day: boolean;
+  /** IANA timezone the user is authoring this event in. Defaults
+   *  to the browser timezone; can be changed via the picker. */
+  time_zone: string;
   recurring_rule: string;
   location: string;
   notes: string;

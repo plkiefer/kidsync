@@ -10,7 +10,13 @@ import {
   getEventKidIds,
 } from "@/lib/types";
 import { toDateTimeLocal, parseTimestamp } from "@/lib/dates";
+import {
+  getBrowserTimezone,
+  localTimeToUtc,
+  utcToLocalTimeString,
+} from "@/lib/timezones";
 import RecurrencePicker from "@/components/RecurrencePicker";
+import TimezonePicker from "@/components/TimezonePicker";
 import {
   X,
   Clock,
@@ -72,17 +78,28 @@ export default function EventModal({
       ? existingTravel.flights[0]
       : null;
 
+  // Default timezone: existing event's saved zone, falling back to
+  // the browser's. Once set, all the form's local-time strings are
+  // interpreted in this zone for the local→UTC round-trip.
+  const initialTz = event?.time_zone || getBrowserTimezone();
+
   const [form, setForm] = useState<EventFormData>({
     title: event?.title || "",
     kid_ids: event ? getEventKidIds(event) : kids[0] ? [kids[0].id] : [],
     event_type: event?.event_type || "other",
+    // For new events, the default Date objects are already in
+    // browser time and toDateTimeLocal renders them as such — fine
+    // since the default tz is browserTimezone. For existing events,
+    // render the saved UTC instant in the saved tz so the inputs
+    // match what the user originally entered.
     starts_at: event?.starts_at
-      ? toDateTimeLocal(parseTimestamp(event.starts_at))
+      ? utcToLocalTimeString(parseTimestamp(event.starts_at), initialTz)
       : toDateTimeLocal(defaultStart),
     ends_at: event?.ends_at
-      ? toDateTimeLocal(parseTimestamp(event.ends_at))
+      ? utcToLocalTimeString(parseTimestamp(event.ends_at), initialTz)
       : toDateTimeLocal(defaultEnd),
     all_day: event?.all_day || false,
+    time_zone: initialTz,
     recurring_rule: event?.recurring_rule || "",
     location: event?.location || "",
     notes: event?.notes || "",
@@ -152,16 +169,27 @@ export default function EventModal({
       return;
     }
     if (!form.title.trim()) return;
+    // Anchor each local clock-time to form.time_zone before
+    // serialising. This is what makes the picker actually MEAN
+    // anything: 3pm in Asia/Tokyo is a different UTC instant than
+    // 3pm in America/New_York, and the new helper computes the
+    // right one regardless of where the browser is running.
     onSave(
       {
         ...form,
-        starts_at: new Date(form.starts_at).toISOString(),
-        ends_at: new Date(form.ends_at).toISOString(),
+        starts_at: localTimeToUtc(form.starts_at, form.time_zone).toISOString(),
+        ends_at: localTimeToUtc(form.ends_at, form.time_zone).toISOString(),
         travel_departure_time: form.travel_departure_time
-          ? new Date(form.travel_departure_time).toISOString()
+          ? localTimeToUtc(
+              form.travel_departure_time,
+              form.time_zone
+            ).toISOString()
           : "",
         travel_arrival_time: form.travel_arrival_time
-          ? new Date(form.travel_arrival_time).toISOString()
+          ? localTimeToUtc(
+              form.travel_arrival_time,
+              form.time_zone
+            ).toISOString()
           : "",
       },
       pendingFiles
@@ -441,6 +469,17 @@ export default function EventModal({
                   }}
                   className="w-full px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                 />
+                {/* Timezone picker — hidden for all-day events
+                    (those are zone-independent calendar dates). The
+                    saved zone applies to both starts_at and ends_at
+                    so a single event has one consistent anchor. */}
+                {!form.all_day && (
+                  <TimezonePicker
+                    value={form.time_zone}
+                    onChange={(tz) => update("time_zone", tz)}
+                    compact
+                  />
+                )}
               </div>
             </div>
 
