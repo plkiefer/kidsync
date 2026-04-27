@@ -28,6 +28,7 @@ import {
   TripCustodyConflict,
   tripExceedsOverrideWindow,
 } from "@/lib/tripCustody";
+import { validateTrip, TripWarning } from "@/lib/tripValidation";
 
 interface TripViewProps {
   trip: Trip;
@@ -136,6 +137,12 @@ export default function TripView({
     [lodgings]
   );
 
+  // Advisory warnings — non-blocking. Plan §5.3.
+  const warnings = useMemo(
+    () => validateTrip(trip, segments),
+    [trip, segments]
+  );
+
   const dateRange =
     trip.starts_at && trip.ends_at
       ? `${formatShortDate(trip.starts_at)} – ${formatShortDate(trip.ends_at)}`
@@ -201,6 +208,11 @@ export default function TripView({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto">
+          {/* Validation warnings (non-blocking, advisory). */}
+          {warnings.length > 0 && (
+            <WarningsBanner warnings={warnings} />
+          )}
+
           {/* ─── Stays ───────────────────────── */}
           <Section
             icon={<MapPin size={14} />}
@@ -813,6 +825,40 @@ function CustodySection({
       >
         Propose override
       </button>
+    </div>
+  );
+}
+
+// ─── WarningsBanner ──────────────────────────────────────────
+// Renders the validateTrip() output as a list of advisory banners
+// at the top of TripView. Never blocking — just nudges. Plan §5.3.
+
+function WarningsBanner({ warnings }: { warnings: TripWarning[] }) {
+  return (
+    <div className="px-6 py-3 border-b border-[var(--border)] space-y-1.5">
+      {warnings.map((w) => {
+        const isWarning = w.severity === "warning";
+        return (
+          <div
+            key={w.id}
+            className="text-[12px] rounded-sm px-2.5 py-1.5 border flex items-start gap-2"
+            style={{
+              color: isWarning ? "var(--accent-amber)" : "var(--text-muted)",
+              background: isWarning
+                ? "var(--accent-amber-tint)"
+                : "var(--bg-sunken)",
+              borderColor: isWarning
+                ? "color-mix(in srgb, var(--accent-amber) 30%, transparent)"
+                : "var(--border)",
+            }}
+          >
+            <span aria-hidden className="shrink-0 mt-px">
+              {isWarning ? "⚠" : "ℹ"}
+            </span>
+            <span className="leading-relaxed">{w.message}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
