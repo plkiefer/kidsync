@@ -12,13 +12,19 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useFamily } from "@/hooks/useFamily";
 import { useEvents } from "@/hooks/useEvents";
+import { useCustody } from "@/hooks/useCustody";
 import { useTrips, NewTripInput } from "@/hooks/useTrips";
-import { Trip, TripStatus } from "@/lib/types";
+import { Trip, TripStatus, OverrideStatus } from "@/lib/types";
 import { formatShortDate } from "@/lib/dates";
 import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import TransportForm, { TransportKind } from "@/components/TransportForm";
+import TripOverrideProposalModal from "@/components/TripOverrideProposalModal";
+import {
+  detectTripCustodyConflict,
+  getTripLinkedOverrides,
+} from "@/lib/tripCustody";
 
 type FilterTab = "all" | "upcoming" | "past" | "draft";
 
@@ -43,6 +49,14 @@ export default function TripsPage() {
     deleteTrip,
     recomputeTripDates,
   } = useTrips(dataReady, user?.id, profile?.family_id);
+  const {
+    getCustodyForDate,
+    overrides,
+    createOverrides,
+    respondToOverrides,
+    notifyCustodyChange,
+    refetchCustody,
+  } = useCustody(dataReady);
 
   const [filter, setFilter] = useState<FilterTab>("all");
   const [showCreate, setShowCreate] = useState(false);
@@ -61,6 +75,9 @@ export default function TripsPage() {
       starts_at?: string;
     };
   } | null>(null);
+  const [overrideProposalTripId, setOverrideProposalTripId] = useState<
+    string | null
+  >(null);
 
   // Auth guard
   useEffect(() => {
@@ -245,20 +262,50 @@ export default function TripsPage() {
           const trip = trips.find((t) => t.id === openTripId);
           if (!trip) return null;
           const segments = events.filter((e) => e.trip_id === trip.id);
+          const conflict = detectTripCustodyConflict(
+            trip,
+            getCustodyForDate,
+            overrides
+          );
+          const linked = getTripLinkedOverrides(trip.id, overrides);
           return (
             <TripView
               trip={trip}
               segments={segments}
               kids={kids}
               members={members}
+              custodyConflict={conflict}
+              linkedOverrides={linked}
               onClose={() => setOpenTripId(null)}
               onUpdateTrip={async (patch) => {
                 await updateTrip(trip.id, patch);
               }}
               onDeleteTrip={async () => {
+                const activeLinked = linked.filter(
+                  (o) => o.status !== "withdrawn"
+                );
+                if (activeLinked.length > 0 && profile?.family_id) {
+                  const withdraw = confirm(
+                    `Also withdraw the ${activeLinked.length} linked custody override${
+                      activeLinked.length === 1 ? "" : "s"
+                    }? Click OK to withdraw, Cancel to keep them in place.`
+                  );
+                  if (withdraw && user) {
+                    await respondToOverrides(
+                      activeLinked.map((o) => o.id),
+                      "withdrawn",
+                      `Withdrew with trip cancellation: ${trip.title}`,
+                      user.id
+                    );
+                  }
+                }
                 await deleteTrip(trip.id);
                 setOpenTripId(null);
                 await refetch();
+                await refetchCustody();
+              }}
+              onProposeOverride={() => {
+                setOverrideProposalTripId(trip.id);
               }}
               onAddLodging={() =>
                 setLodgingForm({ tripId: trip.id, editing: null })
@@ -406,6 +453,71 @@ export default function TripsPage() {
                     starts_at: startsAtLocal,
                   },
                 });
+              }}
+            />
+          );
+        })()}
+
+      {overrideProposalTripId &&
+        (() => {
+          const trip = trips.find((t) => t.id === overrideProposalTripId);
+          if (!trip || !profile?.family_id || !user) return null;
+          const conflict = detectTripCustodyConflict(
+            trip,
+            getCustodyForDate,
+            overrides
+          );
+          if (!conflict) {
+            setOverrideProposalTripId(null);
+            return null;
+          }
+          const proposingParent = members.find(
+            (m) => m.id === conflict.parentId
+          );
+          return (
+            <TripOverrideProposalModal
+              trip={trip}
+              conflictKidIds={conflict.kidIds}
+              proposingParentName={
+                proposingParent?.full_name?.split(" ")[0] ||
+                proposingParent?.email ||
+                "Parent"
+              }
+              kids={kids}
+              onClose={() => setOverrideProposalTripId(null)}
+              onSubmit={async ({ kidIds, startDate, endDate, note, reason }) => {
+                await createOverrides(
+                  kidIds.map((kidId) => ({
+                    family_id: profile.family_id,
+                    kid_id: kidId,
+                    start_date: startDate,
+                    end_date: endDate,
+                    parent_id: conflict.parentId,
+                    note,
+                    reason,
+                    compliance_status: "unchecked" as const,
+                    compliance_issues: null,
+                    status: "pending" as OverrideStatus,
+                    created_by: user.id,
+                    override_time: null,
+                    created_from_trip_id: trip.id,
+                  }))
+                );
+                notifyCustodyChange({
+                  action: "requested",
+                  override: {
+                    start_date: startDate,
+                    end_date: endDate,
+                    parent_id: conflict.parentId,
+                    note,
+                    reason,
+                  },
+                  kidIds,
+                  familyId: profile.family_id,
+                  changedBy: user.id,
+                });
+                setOverrideProposalTripId(null);
+                await refetchCustody();
               }}
             />
           );

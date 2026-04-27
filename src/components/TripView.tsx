@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   CalendarEvent,
+  CustodyOverride,
   Kid,
   Profile,
   Trip,
@@ -23,6 +24,10 @@ import {
   formatShortDate,
   parseTimestamp,
 } from "@/lib/dates";
+import {
+  TripCustodyConflict,
+  tripExceedsOverrideWindow,
+} from "@/lib/tripCustody";
 
 interface TripViewProps {
   trip: Trip;
@@ -30,6 +35,13 @@ interface TripViewProps {
   segments: CalendarEvent[];
   kids: Kid[];
   members: Profile[];
+  /** Custody-conflict detection result. null = no conflict (button
+   *  grayed). Computed upstream so TripView doesn't need useCustody. */
+  custodyConflict?: TripCustodyConflict | null;
+  /** Custody overrides created from this trip (linked via
+   *  created_from_trip_id). Used to render status + detect 15d
+   *  out-of-window conflicts. */
+  linkedOverrides?: CustodyOverride[];
   onClose: () => void;
   onUpdateTrip: (patch: Partial<Trip>) => Promise<void>;
   onDeleteTrip: () => Promise<void>;
@@ -41,6 +53,8 @@ interface TripViewProps {
   onEditSegment?: (segment: CalendarEvent) => void;
   /** Delete a segment from the trip. */
   onDeleteSegment?: (segmentId: string) => Promise<void>;
+  /** Open the override-proposal modal. Disabled when no conflict. */
+  onProposeOverride?: () => void;
 }
 
 const TRIP_TYPE_LABELS: Record<TripType, string> = {
@@ -69,6 +83,8 @@ export default function TripView({
   segments,
   kids,
   members,
+  custodyConflict,
+  linkedOverrides = [],
   onClose,
   onUpdateTrip,
   onDeleteTrip,
@@ -76,6 +92,7 @@ export default function TripView({
   onAddTransport,
   onEditSegment,
   onDeleteSegment,
+  onProposeOverride,
 }: TripViewProps) {
   // Editable header state — autosave on blur
   const [title, setTitle] = useState(trip.title);
@@ -241,9 +258,14 @@ export default function TripView({
 
           {/* ─── Custody implications ────────── */}
           <Section icon={<Scale size={14} />} title="Custody">
-            <p className="text-[12px] text-[var(--text-faint)] py-2">
-              Phase 2 — auto-detect when override is needed and propose dates.
-            </p>
+            <CustodySection
+              trip={trip}
+              kids={kids}
+              members={members}
+              custodyConflict={custodyConflict ?? null}
+              linkedOverrides={linkedOverrides}
+              onProposeOverride={onProposeOverride}
+            />
           </Section>
 
           {/* ─── Files ───────────────────────── */}
@@ -261,9 +283,29 @@ export default function TripView({
           <div className="px-6 py-4 border-t border-[var(--border)]">
             <button
               onClick={() => {
-                if (confirm("Delete this trip and all its segments?")) {
-                  onDeleteTrip();
+                // Plan §15e: prompt only when overrides are trip-linked
+                // (already covered by the linkedOverrides filter passed
+                // in by the parent). The page-level handler decides
+                // what to do with the linked overrides — this confirm
+                // surfaces the situation; the parent honors it.
+                const activeLinked = linkedOverrides.filter(
+                  (o) => o.status !== "withdrawn"
+                );
+                if (activeLinked.length > 0) {
+                  if (
+                    !confirm(
+                      `This trip has ${activeLinked.length} linked custody override${
+                        activeLinked.length === 1 ? "" : "s"
+                      }. The next prompt will ask whether to withdraw them too. Continue?`
+                    )
+                  )
+                    return;
+                } else if (
+                  !confirm("Delete this trip and all its segments?")
+                ) {
+                  return;
                 }
+                onDeleteTrip();
               }}
               className="text-[var(--accent-red)] hover:text-[var(--accent-red)] text-xs font-semibold inline-flex items-center gap-1.5"
             >
@@ -614,4 +656,190 @@ function formatCityLabel(city: string, state: string, country: string): string {
     return `${city}, ${country}`;
   }
   return city;
+}
+
+// ─── CustodySection ──────────────────────────────────────────
+// Renders the trip's custody state (plan §15c):
+//   - No conflict + no overrides → "No conflict — default custody
+//     applies." Propose button grayed.
+//   - Conflict detected, no override yet → enabled Propose button.
+//   - Linked overrides exist → list them with status, plus
+//     re-propose button if 15d window is exceeded.
+//   - Override denied → red warning + non-blocking "Default custody
+//     applies" notice.
+
+interface CustodySectionProps {
+  trip: Trip;
+  kids: Kid[];
+  members: Profile[];
+  custodyConflict: TripCustodyConflict | null;
+  linkedOverrides: CustodyOverride[];
+  onProposeOverride?: () => void;
+}
+
+function CustodySection({
+  trip,
+  kids,
+  members,
+  custodyConflict,
+  linkedOverrides,
+  onProposeOverride,
+}: CustodySectionProps) {
+  // Filter out withdrawn — those are gone.
+  const activeOverrides = linkedOverrides.filter(
+    (o) => o.status !== "withdrawn"
+  );
+
+  // 15d: check if trip dates extend past any approved override
+  const windowConflicts = activeOverrides.filter(
+    (o) => o.status === "approved" && tripExceedsOverrideWindow(trip, o)
+  );
+
+  const hasConflict = custodyConflict != null;
+  const hasActiveOverrides = activeOverrides.length > 0;
+  const canPropose = hasConflict && trip.starts_at && trip.ends_at;
+
+  const tripParentId = trip.member_ids[0];
+  const tripParent = members.find((m) => m.id === tripParentId);
+  const tripParentName =
+    tripParent?.full_name?.split(" ")[0] || tripParent?.email || "this parent";
+
+  return (
+    <div className="space-y-3">
+      {/* No conflict, no overrides — friendly default state */}
+      {!hasConflict && !hasActiveOverrides && (
+        <p className="text-[12px] text-[var(--text-muted)]">
+          No conflict — default custody schedule already covers this trip.
+        </p>
+      )}
+
+      {/* Conflict detected (and no covering override yet) */}
+      {hasConflict && !hasActiveOverrides && (
+        <div
+          className="text-[12px] rounded-sm p-2.5 border"
+          style={{
+            color: "var(--accent-amber)",
+            background: "var(--accent-amber-tint)",
+            borderColor:
+              "color-mix(in srgb, var(--accent-amber) 30%, transparent)",
+          }}
+        >
+          {custodyConflict!.kidIds
+            .map((id) => kids.find((k) => k.id === id)?.name)
+            .filter(Boolean)
+            .join(" & ")}{" "}
+          will need a custody override for {tripParentName} during this trip.
+        </div>
+      )}
+
+      {/* Linked overrides list */}
+      {activeOverrides.map((o) => {
+        const kid = kids.find((k) => k.id === o.kid_id);
+        const parentName =
+          members.find((m) => m.id === o.parent_id)?.full_name?.split(" ")[0] ||
+          "Parent";
+        const windowConflict = windowConflicts.includes(o);
+        const statusBadge = getOverrideStatusBadge(o.status);
+        return (
+          <div
+            key={o.id}
+            className="text-[12px] border border-[var(--border)] rounded-sm p-2.5 bg-[var(--bg-sunken)]"
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-[var(--ink)]">
+                {kid?.name || "Kid"}
+              </span>
+              <span className="text-[var(--text-muted)]">
+                {o.start_date} → {o.end_date}
+              </span>
+              <span className="text-[var(--text-muted)]">→</span>
+              <span className="font-medium text-[var(--ink)]">
+                {parentName}
+              </span>
+              <span
+                className="ml-auto text-[10px] font-bold uppercase tracking-[0.12em] px-1.5 py-0.5 rounded-sm"
+                style={{
+                  color: statusBadge.color,
+                  background: statusBadge.bg,
+                }}
+              >
+                {statusBadge.label}
+              </span>
+            </div>
+            {windowConflict && (
+              <div
+                className="mt-2 text-[11px] rounded-sm p-2 border"
+                style={{
+                  color: "var(--accent-red)",
+                  background: "var(--accent-red-tint)",
+                  borderColor:
+                    "color-mix(in srgb, var(--accent-red) 30%, transparent)",
+                }}
+              >
+                ⚠ Trip now extends past this approved window. Re-propose to
+                adjust.
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Propose button — gray when no conflict, active otherwise */}
+      <button
+        type="button"
+        onClick={onProposeOverride}
+        disabled={!canPropose}
+        className={`
+          inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-[11px] font-semibold transition-colors
+          ${
+            canPropose
+              ? "bg-[var(--ink)] text-[var(--accent-ink)] hover:bg-[var(--accent-hover)]"
+              : "bg-[var(--bg-sunken)] text-[var(--text-faint)] cursor-not-allowed"
+          }
+        `}
+        title={
+          canPropose
+            ? "Propose a custody override for the trip dates"
+            : !trip.starts_at
+            ? "Add segments to determine trip dates first"
+            : !hasConflict
+            ? "No conflict — default custody covers this trip"
+            : ""
+        }
+      >
+        Propose override
+      </button>
+    </div>
+  );
+}
+
+function getOverrideStatusBadge(
+  status: CustodyOverride["status"]
+): { label: string; color: string; bg: string } {
+  switch (status) {
+    case "pending":
+      return {
+        label: "pending",
+        color: "var(--accent-amber)",
+        bg: "var(--accent-amber-tint)",
+      };
+    case "approved":
+      return {
+        label: "approved",
+        color: "#3D7A4F",
+        bg: "rgba(142, 161, 138, 0.15)",
+      };
+    case "disputed":
+      return {
+        label: "disputed",
+        color: "var(--accent-red)",
+        bg: "var(--accent-red-tint)",
+      };
+    case "withdrawn":
+      return {
+        label: "withdrawn",
+        color: "var(--text-faint)",
+        bg: "var(--bg-sunken)",
+      };
+  }
 }
