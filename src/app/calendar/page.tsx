@@ -61,6 +61,7 @@ import {
   Check,
   Settings,
   Upload,
+  Plane as PlaneIcon,
 } from "lucide-react";
 
 type ViewMode = "month" | "week" | "list";
@@ -750,6 +751,13 @@ export default function CalendarPage() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => router.push("/trips")}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
+          >
+            <PlaneIcon size={13} />
+            Trips
+          </button>
           <button
             onClick={() => router.push("/settings")}
             className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--border-strong)] bg-[var(--bg)] text-[var(--text-muted)] text-xs font-medium hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
