@@ -29,6 +29,165 @@ export interface Family {
   created_at: string;
 }
 
+// ── Trips ───────────────────────────────────────────────────
+// First-class trip container. See docs/travel-trips-plan.md §2.1.
+// Segments (lodgings, flights, etc.) live in calendar_events with
+// a trip_id; this row holds trip-level metadata only.
+
+export type TripType =
+  | "vacation"
+  | "custody_time"
+  | "visit_family"
+  | "business"
+  | "other";
+
+export type TripStatus = "draft" | "planned" | "canceled";
+
+export interface TripGuest {
+  /** Client-generated stable id ("guest_xxxx") so segment guest_ids
+   *  can reference guests without duplicating contact data. */
+  id: string;
+  name: string;
+  relationship: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface Trip {
+  id: string;
+  family_id: string;
+  title: string;
+  trip_type: TripType;
+  /** Auto-derived from segments. Null while trip has no segments. */
+  starts_at: string | null;
+  ends_at: string | null;
+  kid_ids: string[];
+  member_ids: string[];
+  guests: TripGuest[];
+  status: TripStatus;
+  notes: string | null;
+  created_by: string;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Segments ────────────────────────────────────────────────
+// Segments are calendar_events with a discriminated segment_type.
+// segment_data carries type-specific fields. See plan §2.3.
+
+export type SegmentType =
+  | "lodging"
+  | "flight"
+  | "drive"
+  | "train"
+  | "ferry"
+  | "cruise"
+  | "cruise_port_stop"
+  | "other_transport";
+
+export interface LodgingSegmentData {
+  name: string;
+  address: string;
+  phone?: string;
+  confirmation?: string;
+  city: string;
+  state: string;
+  country: string;
+}
+
+export interface FlightSegmentData {
+  carrier: string;
+  flight_number: string;
+  departure_airport: string;
+  arrival_airport: string;
+  departure_timezone?: string | null;
+  arrival_timezone?: string | null;
+  confirmation?: string;
+  seats?: string[];
+  departure_terminal?: string;
+  arrival_terminal?: string;
+}
+
+export interface DriveSegmentData {
+  vehicle_type: "personal" | "rental_car" | "rideshare" | "other";
+  vehicle_details?: string;
+  rental_confirmation?: string;
+  from_location: string;
+  to_location: string;
+  from_timezone?: string | null;
+  to_timezone?: string | null;
+}
+
+export interface TrainSegmentData {
+  carrier: string;
+  train_number?: string;
+  origin_station: string;
+  destination_station: string;
+  origin_timezone?: string | null;
+  destination_timezone?: string | null;
+  confirmation?: string;
+  seats?: string[];
+}
+
+export interface FerrySegmentData {
+  carrier: string;
+  vessel_name?: string;
+  origin_terminal: string;
+  destination_terminal: string;
+  origin_timezone?: string | null;
+  destination_timezone?: string | null;
+  confirmation?: string;
+  vehicle_aboard?: boolean;
+}
+
+export interface CruiseCabin {
+  number: string;
+  occupants_kid_ids: string[];
+  occupants_member_ids: string[];
+  occupants_guest_ids: string[];
+}
+
+export interface CruiseSegmentData {
+  cruise_line: string;
+  ship_name: string;
+  confirmation?: string;
+  embark_port: string;
+  embark_timezone?: string | null;
+  disembark_port: string;
+  disembark_timezone?: string | null;
+  cabins: CruiseCabin[];
+}
+
+export interface CruisePortStopSegmentData {
+  port: string;
+  arrival_timezone?: string | null;
+  departure_timezone?: string | null;
+  /** Tender boat to shore (vs. docked at pier). */
+  tender?: boolean;
+  notes?: string;
+}
+
+export interface OtherTransportSegmentData {
+  label: string;
+  from_location?: string;
+  to_location?: string;
+  confirmation?: string;
+}
+
+/** Discriminated union over segment_type. Use a type guard
+ *  (isLodgingSegment etc.) to narrow before reading specific
+ *  fields off segment_data. */
+export type SegmentData =
+  | LodgingSegmentData
+  | FlightSegmentData
+  | DriveSegmentData
+  | TrainSegmentData
+  | FerrySegmentData
+  | CruiseSegmentData
+  | CruisePortStopSegmentData
+  | OtherTransportSegmentData;
+
 export interface Profile {
   id: string;
   family_id: string;
@@ -73,6 +232,26 @@ export interface CalendarEvent {
   family_id: string;
   kid_id: string;
   kid_ids?: string[];
+  /** Profiles on this event/segment (parents). Used by per-leg
+   *  roster on transport segments and per-lodging "who's staying
+   *  here" overrides. Empty array for non-trip events. */
+  member_ids?: string[];
+  /** Guest ids referencing trip.guests[i].id. Lets transport &
+   *  lodging segments include named non-family travelers without
+   *  duplicating their contact info. */
+  guest_ids?: string[];
+  /** Links the event to its parent Trip. Null for non-trip events. */
+  trip_id?: string | null;
+  /** Discriminator for segment_data interpretation. Null for
+   *  non-trip events. */
+  segment_type?: SegmentType | null;
+  /** Type-specific payload. Shape narrows by segment_type — see
+   *  the SegmentData union. */
+  segment_data?: SegmentData | null;
+  /** Used only by cruise_port_stop to point at its parent cruise
+   *  (so the port stop can inherit cabin info and render as the
+   *  cruise's bottom ribbon). */
+  parent_segment_id?: string | null;
   title: string;
   event_type: EventType;
   starts_at: string;
@@ -264,6 +443,12 @@ export interface CustodyOverride {
   created_at: string;
   // Optional time override for turnover events (e.g. "10:00" or "3:00 PM")
   override_time?: string | null;
+  /** When this override was auto-proposed by a Trip's "Propose
+   *  override" flow, points back at the trip. Null when the
+   *  override was created independently. Used by trip-cancel
+   *  prompt logic (plan §15e): only prompt for trip-linked
+   *  overrides on cancel. */
+  created_from_trip_id?: string | null;
 }
 
 export interface CustodyAgreement {
