@@ -1,9 +1,113 @@
 # Travel + Trips — Plan Document
 
-**Status:** approved 2026-04-27 after a relentless interview ([conversation
-transcript exists in session history]). Implementation hasn't started.
-This doc is the source of truth for what we're building. If you find
-yourself diverging from it during implementation, update the doc first.
+**Status:** all 6 phases shipped to `main` 2026-04-27. Tip is `f9844b9`.
+This doc remains the source of truth for *what* we built — if a future
+change diverges, update this doc first.
+
+See **§ 0a Session handoff** below for the recap a fresh session needs:
+exact commits per phase, the one DB migration that still needs to be
+run by the user, and what to test next.
+
+---
+
+## 0a. Session handoff (2026-04-27)
+
+The conversation that produced all this hit context limits and was
+compacted. This section is the breadcrumb trail so the next session
+can pick up cold.
+
+### What's done
+
+All six phases in § 12 are committed on `main`. Tip: `f9844b9`. Phase-by-phase commits:
+
+| Phase | Commit(s) | What landed |
+|---|---|---|
+| 0 — schema + types | `e478470` | trips table, segment columns on calendar_events, custody override link column, types.ts updates, hard-migration SQL |
+| 1 — trip lifecycle | `d59573c`, `06d1bf1`, `13c80ee`, `9cbfb66` | useTrips hook, TripCreationModal, TripView shell, Stays section + LodgingForm, city-grouped stay ribbons in MonthView, /trips list page |
+| 2 — transport + custody | `ca04977`, `1854f88` | TransportForm (flight/drive/train/ferry), drive chain shortcut, CustodySection, TripOverrideProposalModal with ±1-day stepper, override↔trip linkage |
+| 3 — cruise | `b607853`, `09aaee6` | CruiseForm with structured cabins + port stops, two-ribbon cruise rendering, PortStopPopover |
+| 4 — comms | `6f5ce53`, `82e6497` | tripValidation.ts advisory warnings, notification triggers on structural trip/segment changes |
+| 5 — iCal + files | `d201756`, `4c67b3e` | trip-level + per-segment file attachments, segment-aware iCal emission with VTIMEZONE, per-segment emoji |
+| 6 — polish | `f9844b9` | mobile bottom-sheet styling on all 7 trip modals, trip search on /trips, empty-state copy fixes |
+
+### One thing the user still needs to do
+
+Run this against the production Supabase project before testing
+trip-level file attachments — Phase 5 (chunk 1) added the column to
+`supabase/add_trip_attachments.sql` but the migration is not auto-applied:
+
+```sql
+ALTER TABLE trips
+  ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]';
+```
+
+(Per-segment attachments work without this — they piggyback on
+`calendar_events.attachments` which already exists. Only the trip-level
+"Files" tab in TripView needs this column.)
+
+The other Phase-0/1/2/3 SQL migrations (`add_trips_table.sql`,
+`add_segment_columns.sql`, `add_override_trip_link.sql`,
+`migrate_travel_events_to_trips.sql`) were run when those phases shipped.
+If you're picking this up against a fresh DB, run all five in order.
+
+### Where to start testing
+
+User has real travel coming up (the reason for the whole redesign).
+Concrete things to exercise end-to-end:
+
+1. **Create a trip** from "+ New event" → "Travel" pill → trip-creation modal.
+2. **Add a stay** with city + dates → confirm the city-grouped ribbon shows on month view.
+3. **Add a multi-leg flight** with different departure / arrival timezones → confirm pills render in correct local time.
+4. **Add a drive** then click "Save & next leg" → confirm the from-location prefills.
+5. **Trip with a custody conflict** → "Propose override" enables → ±1-day stepper works → override creates and links via `created_from_trip_id`.
+6. **Cruise** with port stops → two-ribbon rendering, port-stop ribbon click → popover.
+7. **Trip-level file attachment** (after running the migration above).
+8. **Subscribe to iCal feed** and confirm segments show up with correct timezones (lodging = all-day multi-day, flights/drives = timed UTC events).
+9. **Mobile** (≤ 640px): all seven modals should stick to the bottom edge of the viewport.
+10. **Edit then change trip dates after override approval** → conflict warning should surface.
+
+### Deviations from plan
+
+A handful of small things diverged during build; document them so we don't get confused later.
+
+- **Per-segment forms collapsed.** Plan § 14 listed `LodgingForm`, `FlightForm`, `DriveForm`, `TrainForm`, `FerryForm` as separate files. We shipped `LodgingForm.tsx` + a single shared `TransportForm.tsx` that branches on type internally. Less duplication, same UX.
+- **Smart batching deferred.** Plan § 8.2 calls for collapsing notifications within a 5-minute window into a single email. We wired the trigger calls but did not implement batching — every structural change still fires one email. Out of scope for v1; user can ask for batching as a follow-up.
+- **City picker is free-text.** Plan § 13 flagged this as a deferred decision; v1 stayed free-text (no geocoding).
+- **Activity log granularity:** one entry per change (not per "edit session"). This was the simpler path; revisit if it proves noisy.
+
+### What's explicitly out of v1 (do not start without confirmation)
+
+Per § 11 of this doc — listed here just so the next session doesn't
+accidentally sweep them in:
+
+- Activities, dining, packing lists
+- International-travel approval workflow
+- Recurring trips
+- External sharing (non-app guests)
+- Real-time travel tracking, push notifications
+- Smart notification batching (see deviation note above)
+
+If the user asks for any of these, do another short interview and add a
+new section to this doc — don't extend Phase 6 in place.
+
+### File index for fresh context
+
+The key files a new session will need to read to make changes:
+
+- `src/lib/types.ts` — Trip / segment discriminated union + type guards
+- `src/lib/tripCustody.ts` — conflict detection + 15-day-window check
+- `src/lib/tripValidation.ts` — advisory warnings
+- `src/hooks/useTrips.ts` — trip CRUD + attachment helpers
+- `src/hooks/useEvents.ts` — `createSegment` / `updateSegment` paths
+- `src/components/TripView.tsx` — main editing surface (large)
+- `src/components/TripCreationModal.tsx` — minimal create form
+- `src/components/LodgingForm.tsx`, `TransportForm.tsx`, `CruiseForm.tsx` — segment editors
+- `src/components/PortStopPopover.tsx`, `TripOverrideProposalModal.tsx`
+- `src/components/MonthView.tsx` — `deriveStayRibbonEvents` + `deriveCruiseRibbonEvents`
+- `src/app/trips/page.tsx` — list + search
+- `src/app/calendar/page.tsx` — modal wiring + click router
+- `src/app/api/ical/route.ts` — segment-aware emission
+- `supabase/*.sql` — five migrations listed above
 
 ---
 
@@ -569,7 +673,9 @@ Confirmed during interview:
 
 Each phase ships independently and adds visible value. Phase 0 is foundation; 1-3 are required for the user's upcoming travel test; 4-6 are polish.
 
-### Phase 0 — Foundation
+> **All six phases shipped 2026-04-27.** Commits per phase listed in § 0a. The bullets below are the original scope; some details diverged during build (see § 0a "Deviations from plan").
+
+### Phase 0 — Foundation ✅ `e478470`
 - `trips` table migration.
 - `calendar_events` new columns (trip_id, segment_type, segment_data, member_ids, guest_ids, parent_segment_id).
 - `custody_overrides.created_from_trip_id` column.
@@ -577,7 +683,7 @@ Each phase ships independently and adds visible value. Phase 0 is foundation; 1-
 - Hard migration script for existing travel events.
 - No UI changes yet — just data shape.
 
-### Phase 1 — Core trip lifecycle
+### Phase 1 — Core trip lifecycle ✅ `d59573c` · `06d1bf1` · `13c80ee` · `9cbfb66`
 - "Travel" event-type → trip-creation modal (§ 4.2).
 - Trip View modal shell (sections; empty states).
 - Stays section: city-first add flow, lodging editor, multi-lodging within stay, "who's staying here" override.
@@ -585,7 +691,7 @@ Each phase ships independently and adds visible value. Phase 0 is foundation; 1-
 - Trip ribbon click → Trip View modal.
 - Trips list page (§ 9).
 
-### Phase 2 — Transport + custody bridge
+### Phase 2 — Transport + custody bridge ✅ `ca04977` · `1854f88`
 - Flight, drive, train, ferry segment types with full forms (using existing per-leg TZ infrastructure).
 - Drive shortcut ("+ next day's drive").
 - "Who's on this leg" picker on every transport segment.
@@ -595,26 +701,26 @@ Each phase ships independently and adds visible value. Phase 0 is foundation; 1-
 - Trip dates ↔ override window conflict detection.
 - Trip cancel prompt for linked overrides.
 
-### Phase 3 — Cruise + multi-segment polish
+### Phase 3 — Cruise + multi-segment polish ✅ `b607853` · `09aaee6`
 - Cruise segment type with cabins (structured occupants).
 - Cruise port stop sub-segments with `parent_segment_id` linkage.
 - Two-ribbon cruise rendering on calendar.
 - Port-stop popover (lightweight click-target).
 - Drive duration-block rendering (β).
 
-### Phase 4 — Visibility + comms
+### Phase 4 — Visibility + comms ✅ `6f5ce53` · `82e6497` (smart batching deferred — see § 0a)
 - Notification triggers for trip changes (§ 8) with smart batching.
 - Activity log entries for trip-related actions.
 - Co-parent draft-badge visibility from trip creation.
 - Validation warnings in Trip View (§ 5.3).
 
-### Phase 5 — iCal + files
+### Phase 5 — iCal + files ✅ `d201756` · `4c67b3e` (requires `add_trip_attachments.sql` to be run — see § 0a)
 - Per-segment iCal export with VTIMEZONE for each TZ used.
 - Per-segment file attachments.
 - Trip-level file attachments.
 - Migration: existing travel-event attachments → segment-level on the migrated lodging/flight.
 
-### Phase 6 — Polish
+### Phase 6 — Polish ✅ `f9844b9`
 - Mobile bottom-sheet Trip View.
 - Empty-state CTAs throughout.
 - Trip search on Trips page.
