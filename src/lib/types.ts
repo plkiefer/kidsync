@@ -41,6 +41,11 @@ export interface Profile {
    *  at render time. Optional for back-compat with existing rows
    *  that haven't been backfilled yet. */
   color_preference: string | null;
+  /** Palette key for the co-parent's days, FROM THIS USER'S point
+   *  of view. Lets each parent customize both colors they see; the
+   *  two parents can disagree. NULL → fall back to the co-parent's
+   *  own color_preference. */
+  partner_color_preference: string | null;
   created_at: string;
   updated_at: string;
 }

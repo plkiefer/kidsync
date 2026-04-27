@@ -781,24 +781,39 @@ export default function CalendarPage() {
           ) : (
             <>
               {(() => {
-                // Resolve each parent's chosen palette key → bg tint.
-                // Pulled from `members` (profiles), keyed off the
-                // schedule's parent_a/parent_b ids. Falls back to the
-                // legacy mist/cream defaults when no preference is set.
-                const parentA = members.find(
-                  (m) => m.id === schedules[0]?.parent_a_id
+                // Per-viewer color resolution. Each parent picks colors
+                // for both themselves AND the co-parent (stored as
+                // profile.color_preference and profile.partner_color_preference
+                // respectively). The two parents can disagree — every
+                // user sees the calendar through their own choices.
+                //
+                // For the signed-in user `me`:
+                //   - own color  = me.color_preference
+                //   - their color = me.partner_color_preference
+                //                  ↳ falls back to the co-parent's own
+                //                    color_preference if the viewer
+                //                    hasn't customized yet.
+                // Then we map those onto parentA/parentB by checking
+                // which role the signed-in user holds.
+                const parentAId = schedules[0]?.parent_a_id;
+                const parentBId = schedules[0]?.parent_b_id;
+                const me = members.find((m) => m.id === user?.id);
+                const coParent = members.find(
+                  (m) => m.id === (me?.id === parentAId ? parentBId : parentAId)
                 );
-                const parentB = members.find(
-                  (m) => m.id === schedules[0]?.parent_b_id
+                const myBg = paletteBg(
+                  me?.color_preference,
+                  me?.id === parentBId ? DEFAULT_PARENT_B_COLOR : DEFAULT_PARENT_A_COLOR
                 );
-                const parentABg = paletteBg(
-                  parentA?.color_preference,
-                  DEFAULT_PARENT_A_COLOR
+                const theirBg = paletteBg(
+                  // First preference: how I want to see the co-parent.
+                  // Fallback: their own self-color. Final fallback:
+                  // the role default opposite to mine.
+                  me?.partner_color_preference ?? coParent?.color_preference,
+                  me?.id === parentAId ? DEFAULT_PARENT_B_COLOR : DEFAULT_PARENT_A_COLOR
                 );
-                const parentBBg = paletteBg(
-                  parentB?.color_preference,
-                  DEFAULT_PARENT_B_COLOR
-                );
+                const parentABg = me?.id === parentAId ? myBg : theirBg;
+                const parentBBg = me?.id === parentBId ? myBg : theirBg;
                 return (
                   <>
                     {view === "month" && (

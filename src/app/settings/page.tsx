@@ -6,8 +6,8 @@ import Link from "next/link";
 import { ArrowLeft, Mail, Lock, Check, Loader2, Palette } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getSupabase } from "@/lib/supabase";
-import { Kid } from "@/lib/types";
-import { DEFAULT_PARENT_A_COLOR, resolvePalette } from "@/lib/palette";
+import { Kid, Profile } from "@/lib/types";
+import { DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR, resolvePalette } from "@/lib/palette";
 import ColorPicker from "@/components/ColorPicker";
 
 export default function SettingsPage() {
@@ -28,9 +28,12 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  // Color preferences — own color + per-kid colors. Optimistic
-  // updates: write to DB on click, revert on error.
+  // Color preferences — own color, the co-parent's color (as
+  // YOU see it — partner_color_preference), and per-kid colors.
+  // Optimistic updates: write to DB on click, revert on error.
   const [myColor, setMyColor] = useState<string>(DEFAULT_PARENT_A_COLOR);
+  const [partnerColor, setPartnerColor] = useState<string>(DEFAULT_PARENT_B_COLOR);
+  const [coParent, setCoParent] = useState<Profile | null>(null);
   const [kids, setKids] = useState<Kid[]>([]);
   const [colorSavingKey, setColorSavingKey] = useState<string | null>(null);
   const [colorError, setColorError] = useState("");
@@ -46,18 +49,31 @@ export default function SettingsPage() {
     if (profile?.color_preference) {
       setMyColor(profile.color_preference);
     }
-  }, [profile?.color_preference]);
+    if (profile?.partner_color_preference) {
+      setPartnerColor(profile.partner_color_preference);
+    }
+  }, [profile?.color_preference, profile?.partner_color_preference]);
 
-  // Load kids for color editing
+  // Load kids + co-parent profile for color editing
   useEffect(() => {
     if (!user || !profile?.family_id) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
-        .from("kids")
-        .select("*")
-        .order("name");
-      if (!cancelled && !error && data) setKids(data as Kid[]);
+      const [{ data: kidsData }, { data: membersData }] = await Promise.all([
+        supabase.from("kids").select("*").order("name"),
+        supabase.from("profiles").select("*").eq("family_id", profile.family_id),
+      ]);
+      if (cancelled) return;
+      if (kidsData) setKids(kidsData as Kid[]);
+      if (membersData) {
+        // Co-parent = any other member with role 'parent'. If none
+        // (single-parent family or co-parent not yet onboarded), the
+        // partner-color row simply won't render.
+        const other = (membersData as Profile[]).find(
+          (m) => m.id !== user.id && m.role === "parent"
+        );
+        setCoParent(other ?? null);
+      }
     })();
     return () => {
       cancelled = true;
@@ -82,6 +98,26 @@ export default function SettingsPage() {
       }
     },
     [user, myColor, supabase]
+  );
+
+  const handleChangePartnerColor = useCallback(
+    async (key: string) => {
+      if (!user) return;
+      const previous = partnerColor;
+      setPartnerColor(key); // optimistic
+      setColorSavingKey("partner");
+      setColorError("");
+      const { error } = await supabase
+        .from("profiles")
+        .update({ partner_color_preference: key })
+        .eq("id", user.id);
+      setColorSavingKey(null);
+      if (error) {
+        setPartnerColor(previous);
+        setColorError(error.message);
+      }
+    },
+    [user, partnerColor, supabase]
   );
 
   const handleChangeKidColor = useCallback(
@@ -205,8 +241,9 @@ export default function SettingsPage() {
             </h2>
           </div>
           <p className="text-[11px] text-[var(--color-text-faint)] mb-5 ml-6">
-            Pick a color for yourself and each kid. Used to tint days on the calendar
-            and identify whose event is whose. Each parent can choose independently.
+            Pick the colors you want to see on your calendar — for yourself, your
+            co-parent, and each kid. Each parent has their own view, so your
+            choices only affect what <em>you</em> see. Kid colors are shared.
           </p>
 
           {colorError && (
@@ -237,6 +274,23 @@ export default function SettingsPage() {
                 label="Your color"
               />
             </ColorRow>
+
+            {/* Co-parent — only if there is one */}
+            {coParent && (
+              <ColorRow
+                label={coParent.full_name ?? "Co-parent"}
+                sublabel="Co-parent · how you see their days"
+                previewBg={resolvePalette(partnerColor).bg}
+                saving={colorSavingKey === "partner"}
+              >
+                <ColorPicker
+                  value={partnerColor}
+                  onChange={handleChangePartnerColor}
+                  disabled={colorSavingKey === "partner"}
+                  label={`Color for ${coParent.full_name ?? "co-parent"}`}
+                />
+              </ColorRow>
+            )}
 
             {/* Kids */}
             {kids.map((kid) => (
