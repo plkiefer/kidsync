@@ -8,7 +8,7 @@ import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { useCustody } from "@/hooks/useCustody";
 import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds, OverrideStatus } from "@/lib/types";
-import { paletteBg, DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR } from "@/lib/palette";
+import { resolvePalette, DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR } from "@/lib/palette";
 import {
   formatMonthYear,
   addMonths,
@@ -801,19 +801,25 @@ export default function CalendarPage() {
                 const coParent = members.find(
                   (m) => m.id === (me?.id === parentAId ? parentBId : parentAId)
                 );
-                const myBg = paletteBg(
+                const myEntry = resolvePalette(
                   me?.color_preference,
                   me?.id === parentBId ? DEFAULT_PARENT_B_COLOR : DEFAULT_PARENT_A_COLOR
                 );
-                const theirBg = paletteBg(
+                const theirEntry = resolvePalette(
                   // First preference: how I want to see the co-parent.
                   // Fallback: their own self-color. Final fallback:
                   // the role default opposite to mine.
                   me?.partner_color_preference ?? coParent?.color_preference,
                   me?.id === parentAId ? DEFAULT_PARENT_B_COLOR : DEFAULT_PARENT_A_COLOR
                 );
-                const parentABg = me?.id === parentAId ? myBg : theirBg;
-                const parentBBg = me?.id === parentBId ? myBg : theirBg;
+                const parentABg = me?.id === parentAId ? myEntry.bg : theirEntry.bg;
+                const parentBBg = me?.id === parentBId ? myEntry.bg : theirEntry.bg;
+                const parentASwatch = me?.id === parentAId ? myEntry.swatch : theirEntry.swatch;
+                const parentBSwatch = me?.id === parentBId ? myEntry.swatch : theirEntry.swatch;
+                // Map of profile id → display name, for split-day kid pills.
+                const memberNames = Object.fromEntries(
+                  members.map((m) => [m.id, m.full_name || "Co-parent"])
+                );
                 return (
                   <>
                     {view === "month" && (
@@ -828,6 +834,9 @@ export default function CalendarPage() {
                         parentAId={schedules[0]?.parent_a_id}
                         parentABg={parentABg}
                         parentBBg={parentBBg}
+                        parentASwatch={parentASwatch}
+                        parentBSwatch={parentBSwatch}
+                        memberNames={memberNames}
                       />
                     )}
                     {view === "week" && (

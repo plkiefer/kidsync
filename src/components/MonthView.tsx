@@ -36,6 +36,14 @@ interface MonthViewProps {
   parentABg?: string;
   /** Resolved bg tint (hex) for parent_b's day cells. Defaults to --you-bg. */
   parentBBg?: string;
+  /** Saturated swatch (hex) for parent_a — used for parent-name text in
+   *  split-day kid pills. */
+  parentASwatch?: string;
+  /** Saturated swatch (hex) for parent_b — same purpose. */
+  parentBSwatch?: string;
+  /** Map of profile id → display name. Powers the parent-name text in
+   *  split-day kid pills (e.g. "E → Patrick 7:00p"). */
+  memberNames?: Record<string, string>;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -159,6 +167,9 @@ export default function MonthView({
   parentAId,
   parentABg,
   parentBBg,
+  parentASwatch,
+  parentBSwatch,
+  memberNames,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
   const weeks: Date[][] = [];
@@ -238,15 +249,41 @@ export default function MonthView({
     background: string | undefined;
     splitPct: number | null;
   };
-  type KidLane = {
-    kid: Kid;
-    kidLetter: string;
-    kidColor: string;
-    background: string;
-    splitPct: number | null;
-    turnoverEvt: CalendarEvent | null;
+  /**
+   * A horizontal time-band within a split-mode day cell. The cell's
+   * vertical extent represents the 24-hour day; each band covers a
+   * sub-range and is filled either with a single parent's color (when
+   * both kids are with the same parent during that band) or with
+   * diagonal stripes (when kids are with different parents — i.e.
+   * actually split during that band).
+   */
+  type CustodyBand = {
+    startPct: number;
+    endPct: number;
+    fill:
+      | { type: "solid"; color: string }
+      | { type: "stripes" };
   };
-  type SplitCustodyView = { mode: "split"; lanes: KidLane[] };
+  /**
+   * A pill describing one kid's parent assignment + handoff time on a
+   * split-custody day. Rendered inline in the cell (not on the band
+   * boundary) so the cell stays readable even at small sizes.
+   */
+  type KidPill = {
+    kid: Kid;
+    letter: string;
+    kidColor: string;
+    parentId: string | undefined;
+    parentName: string;
+    parentSwatch: string;
+    handoffTime: string | null;
+    handoffEvt: CalendarEvent | null;
+  };
+  type SplitCustodyView = {
+    mode: "split";
+    bands: CustodyBand[];
+    kidPills: KidPill[];
+  };
   type CustodyView = WholeCustodyView | SplitCustodyView;
 
   function custodyView(day: Date, dayEvents: CalendarEvent[]): CustodyView {
@@ -337,30 +374,113 @@ export default function MonthView({
       };
     }
 
-    // Split mode: per-kid lanes. Order by the family `kids` array so
-    // Ethan is consistently the top lane and Harrison the bottom.
+    // ─── Split mode: bands by time ─────────────────────────────────
+    // The day timeline runs vertically 0%→100% (= midnight→midnight).
+    // Each kid contributes at most one boundary (their handoff %); the
+    // band geometry is the union of all boundaries. For each band we
+    // ask "are kids with the same parent here?" — if yes, the band is
+    // a solid color; if no, the band is stripes.
+    //
+    // Side benefit: solves the user's "stripes shouldn't fill the whole
+    // cell when kids only diverge after a handoff" requirement — the
+    // pre-handoff portion of the cell stays solid in the joint parent's
+    // color, and only the post-handoff portion gets stripes.
     const orderedKids = kids.filter((k) => custody[k.id]);
-    const lanes: KidLane[] = orderedKids.map((kid) => {
-      // A turnover event involves THIS kid if its kid_ids array includes
-      // them. Filter to the first match (typically there's only one
-      // turnover per kid per day).
+    const kidStates = orderedKids.map((kid) => {
       const turnoverEvt =
         dayEvents.find(
           (e) =>
             e.id.startsWith("turnover-") &&
             (e.kid_ids ?? []).includes(kid.id)
         ) ?? null;
-      const { background, splitPct } = kidGradient(kid.id, turnoverEvt);
+      const todayParent = custody[kid.id]?.parentId;
+      if (!turnoverEvt) {
+        return {
+          kid,
+          handoffPct: null as number | null,
+          preParent: todayParent,
+          postParent: todayParent,
+          handoffEvt: null as CalendarEvent | null,
+          handoffTime: null as string | null,
+        };
+      }
+      const isPickup = turnoverEvt.id.endsWith("-pickup");
+      const turnoverDate = parseTimestamp(turnoverEvt.starts_at);
+      const hourFrac =
+        turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
+      const handoffPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
+      const adjacent = new Date(day);
+      adjacent.setDate(adjacent.getDate() + (isPickup ? -1 : 1));
+      const adjacentParent = getCustodyForDate!(adjacent)[kid.id]?.parentId;
+      // Pickup: pre-handoff = yesterday (adjacent), post-handoff = today.
+      // Dropoff: pre-handoff = today, post-handoff = tomorrow (adjacent).
+      const preParent = isPickup ? adjacentParent : todayParent;
+      const postParent = isPickup ? todayParent : adjacentParent;
       return {
         kid,
-        kidLetter: kid.name.charAt(0).toUpperCase(),
-        kidColor: kid.color,
-        background,
-        splitPct,
-        turnoverEvt,
+        handoffPct,
+        preParent,
+        postParent,
+        handoffEvt: turnoverEvt,
+        handoffTime: formatShortTime(turnoverDate),
       };
     });
-    return { mode: "split", lanes };
+
+    // Collect band boundaries from all kid handoffs.
+    const boundarySet = new Set<number>([0, 100]);
+    kidStates.forEach((ks) => {
+      if (ks.handoffPct !== null) boundarySet.add(ks.handoffPct);
+    });
+    const boundaries = Array.from(boundarySet).sort((a, b) => a - b);
+
+    const bands: CustodyBand[] = [];
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      const startPct = boundaries[i];
+      const endPct = boundaries[i + 1];
+      const mid = (startPct + endPct) / 2;
+      // Each kid's parent at this band's midpoint
+      const parentsHere = kidStates.map((ks) => {
+        if (ks.handoffPct === null) return ks.postParent;
+        return mid < ks.handoffPct ? ks.preParent : ks.postParent;
+      });
+      const allSame = parentsHere.every((p) => p === parentsHere[0]);
+      bands.push({
+        startPct,
+        endPct,
+        fill: allSame
+          ? { type: "solid", color: colorFor(parentsHere[0]) }
+          : { type: "stripes" },
+      });
+    }
+
+    // Per-kid pills describing the END-of-day mapping. The handoff
+    // time tells you when this kid arrived at their current parent.
+    const kidPills: KidPill[] = kidStates.map((ks) => {
+      const finalParentId = ks.postParent;
+      const finalIsParentA = parentAId
+        ? finalParentId === parentAId
+        : false;
+      const parentSwatch = parentAId
+        ? finalIsParentA
+          ? parentASwatch ?? "var(--ink)"
+          : parentBSwatch ?? "var(--ink)"
+        : "var(--ink)";
+      const parentName =
+        (finalParentId && memberNames?.[finalParentId]) ||
+        (finalIsParentA ? "Parent A" : "Parent B");
+      return {
+        kid: ks.kid,
+        letter: ks.kid.name.charAt(0).toUpperCase(),
+        kidColor: ks.kid.color,
+        parentId: finalParentId,
+        parentName,
+        parentSwatch,
+        handoffTime: ks.handoffTime,
+        handoffEvt: ks.handoffEvt,
+      };
+    });
+
+    return { mode: "split", bands, kidPills };
   }
 
   return (
@@ -429,55 +549,46 @@ export default function MonthView({
                         : undefined
                     }
                   >
-                    {/* Split-mode lane backdrops — paint two horizontal bands
-                        behind the cell content. Each lane's bg is solid OR
-                        a per-kid time-based gradient. Tiny kid-letter at
-                        the top-right of each lane disambiguates which lane
-                        belongs to which kid (rare event, so the letter
-                        stays subdued). Hairline divider at the 50% mark
-                        makes the lane structure pop visually even when
-                        both lanes share similar colors. */}
+                    {/* Split-mode: bands-by-time backdrop. Each band is
+                        either solid (joint parent for that time-window)
+                        or diagonal stripes (kids actually divergent here).
+                        Stripes only appear in the post-handoff portion of
+                        the cell when the day starts whole and becomes
+                        split — so the cell still reads correctly as
+                        "morning was Mom, evening is split." */}
                     {view.mode === "split" && (
                       <div className="absolute inset-0 pointer-events-none">
-                        {view.lanes.map((lane, laneIdx) => (
-                          <div
-                            key={lane.kid.id}
-                            className="absolute left-0 right-0"
-                            style={{
-                              top: laneIdx === 0 ? "0%" : "50%",
-                              height: "50%",
-                              background: lane.background,
-                            }}
-                          >
+                        {view.bands.map((band, idx) => {
+                          const stripeBg = `repeating-linear-gradient(45deg, ${
+                            parentABg ?? "var(--them-bg)"
+                          } 0px, ${
+                            parentABg ?? "var(--them-bg)"
+                          } 14px, ${
+                            parentBBg ?? "var(--you-bg)"
+                          } 14px, ${
+                            parentBBg ?? "var(--you-bg)"
+                          } 28px)`;
+                          return (
                             <div
-                              className="absolute top-0.5 right-1 text-[9px] font-bold leading-none uppercase tracking-wider"
-                              style={{ color: lane.kidColor, opacity: 0.7 }}
-                              title={lane.kid.name}
-                            >
-                              {lane.kidLetter}
-                            </div>
-                          </div>
-                        ))}
-                        {/* Hairline divider on the lane boundary — subtle,
-                            thin, but enough to make the split read as
-                            "two distinct lanes" instead of one ambiguous
-                            color blend. */}
-                        <div
-                          className="absolute left-0 right-0"
-                          style={{
-                            top: "50%",
-                            height: 1,
-                            background: "var(--border-strong)",
-                            opacity: 0.55,
-                            transform: "translateY(-0.5px)",
-                          }}
-                        />
+                              key={idx}
+                              className="absolute left-0 right-0"
+                              style={{
+                                top: `${band.startPct}%`,
+                                height: `${band.endPct - band.startPct}%`,
+                                background:
+                                  band.fill.type === "solid"
+                                    ? band.fill.color
+                                    : stripeBg,
+                              }}
+                            />
+                          );
+                        })}
                       </div>
                     )}
                     {/* Day number */}
                     <div
                       className={`
-                        inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
+                        relative z-[2] inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
                         ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
                         ${!today && inMonth ? "text-[var(--ink)]" : ""}
                         ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
@@ -485,6 +596,75 @@ export default function MonthView({
                     >
                       {day.getDate()}
                     </div>
+
+                    {/* Split-day kid pills — render the kid → parent
+                        mapping inline so the divergence is unambiguous
+                        regardless of how subtle the band coloring is.
+                        Each pill: kid letter chip + arrow + parent name +
+                        optional handoff time (when this kid transitioned
+                        today). Click a pill to open its turnover event. */}
+                    {view.mode === "split" && (
+                      <div className="relative z-[2] mb-1 space-y-[2px]">
+                        {view.kidPills.map((pill) => {
+                          const slot = kidSlot(pill.kid, kids);
+                          const chipClass =
+                            slot === "ethan" || slot === "harrison"
+                              ? kidIndicatorClass[slot]
+                              : "";
+                          return (
+                            <div
+                              key={pill.kid.id}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (pill.handoffEvt) onEventClick(pill.handoffEvt);
+                              }}
+                              className={`
+                                flex items-center gap-1
+                                text-[10.5px] font-medium leading-tight
+                                bg-white/95 text-[var(--ink)]
+                                px-1.5 py-[2px]
+                                border-l-[3px]
+                                shadow-[0_0_0_1px_var(--border)]
+                                ${pill.handoffEvt ? "cursor-pointer hover:translate-x-[1px] transition-transform" : ""}
+                                overflow-hidden
+                              `}
+                              style={{ borderLeftColor: pill.kidColor }}
+                              title={`${pill.kid.name} with ${pill.parentName}${
+                                pill.handoffTime ? ` · handoff ${pill.handoffTime}` : ""
+                              }`}
+                            >
+                              <span
+                                className={`
+                                  inline-flex items-center justify-center shrink-0
+                                  w-[14px] h-[14px] rounded-sm
+                                  text-[8px] font-bold text-white
+                                  ${chipClass}
+                                `}
+                                style={
+                                  chipClass
+                                    ? undefined
+                                    : { background: pill.kidColor }
+                                }
+                              >
+                                {pill.letter}
+                              </span>
+                              <span className="text-[var(--text-muted)] shrink-0">→</span>
+                              <span
+                                className="truncate font-semibold"
+                                style={{ color: pill.parentSwatch }}
+                              >
+                                {pill.parentName}
+                              </span>
+                              {pill.handoffTime && (
+                                <span className="text-[9.5px] tabular-nums text-[var(--text-muted)] shrink-0 ml-auto">
+                                  {pill.handoffTime}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
 
                     {/* Ribbon-area spacer — reserved height equal to the
                         week's multi-day ribbon stack so the ribbons (rendered
@@ -515,6 +695,7 @@ export default function MonthView({
                             onEventClick(evt);
                           }}
                           className={`
+                            relative z-[2]
                             flex items-center gap-1
                             text-[11px] font-medium leading-tight
                             bg-white text-[var(--ink)]
@@ -551,7 +732,7 @@ export default function MonthView({
                     })}
 
                     {nonTurnoverEvents.length > 3 && (
-                      <div className="text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
+                      <div className="relative z-[2] text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
                         +{nonTurnoverEvents.length - 3} more
                       </div>
                     )}
@@ -603,57 +784,11 @@ export default function MonthView({
                         );
                       })()}
 
-                    {/* Split-mode pills — one per kid that transitions today.
-                        Each pill rides on its own lane's split line. The
-                        lane is 50% of cell height, so we clamp the in-lane
-                        splitPct tighter (22%–78%) and convert to cell-
-                        relative percent: laneIdx*50 + (splitPct/2). Pill
-                        height (~26px) fits inside a typical 70px lane. */}
-                    {view.mode === "split" &&
-                      view.lanes.map((lane, laneIdx) => {
-                        if (!lane.turnoverEvt || lane.splitPct === null)
-                          return null;
-                        const turnoverEvt = lane.turnoverEvt;
-                        const time = formatShortTime(
-                          parseTimestamp(turnoverEvt.starts_at)
-                        );
-                        const direction = transitionDirectionFor(
-                          turnoverEvt,
-                          day
-                        );
-                        // Always pill-tag with the lane's kid, since the
-                        // lane IS the per-kid context.
-                        const kid = kidSlot(lane.kid, kids);
-                        const clampedInLane = Math.max(
-                          22,
-                          Math.min(78, lane.splitPct)
-                        );
-                        const cellTopPct =
-                          laneIdx * 50 + clampedInLane / 2;
-                        return (
-                          <div
-                            key={`pill-${lane.kid.id}`}
-                            className="absolute left-1.5 right-1.5 pointer-events-none"
-                            style={{
-                              top: `${cellTopPct}%`,
-                              transform: "translateY(-50%)",
-                              zIndex: 5,
-                            }}
-                          >
-                            <div className="pointer-events-auto">
-                              <TransitionPill
-                                time={time}
-                                direction={direction}
-                                kid={kid}
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  onEventClick(turnoverEvt);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {/* Split-mode handoff time(s) are surfaced inline on
+                        the kid pills above (right-aligned). No separate
+                        floating transition pills here — the band stripes
+                        plus the explicit "E → Patrick 7:00p" pill convey
+                        when and how the divergence happened. */}
                   </div>
                 );
               })}
