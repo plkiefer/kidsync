@@ -13,7 +13,6 @@ import {
   parseTimestamp,
   eventCoversDay,
 } from "@/lib/dates";
-import { TransitionPill } from "./ui/TransitionPill";
 import type { KidId } from "./ui/KidChip";
 
 interface MonthViewProps {
@@ -68,6 +67,16 @@ function formatShortTime(date: Date): string {
   const h = date.getHours();
   const m = date.getMinutes();
   const meridian = h >= 12 ? "p" : "a";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  const mm = m.toString().padStart(2, "0");
+  return `${h12}:${mm}${meridian}`;
+}
+
+/** Format a Date to a transition-pill time like "6:00pm" / "5:00am". */
+function formatTransitionTime(date: Date): string {
+  const h = date.getHours();
+  const m = date.getMinutes();
+  const meridian = h >= 12 ? "pm" : "am";
   const h12 = h % 12 === 0 ? 12 : h % 12;
   const mm = m.toString().padStart(2, "0");
   return `${h12}:${mm}${meridian}`;
@@ -191,26 +200,6 @@ export default function MonthView({
   const getEventKids = (event: CalendarEvent) =>
     kids.filter((k) => getEventKidIds(event).includes(k.id));
 
-  /** For a turnover event on `eventDate`, figure out handoff vs drop-off. */
-  function transitionDirectionFor(e: CalendarEvent, eventDate: Date): "handoff" | "dropoff" {
-    if (!getCustodyForDate || !currentUserId) return "handoff";
-    const isPickup = e.id.endsWith("-pickup");
-    const checkDate = new Date(eventDate);
-    if (!isPickup) checkDate.setDate(checkDate.getDate() + 1);
-    const custody = getCustodyForDate(checkDate);
-    const kidIdInCustody = e.kid_id || Object.keys(custody)[0];
-    const newParentId = custody[kidIdInCustody]?.parentId;
-    return newParentId === currentUserId ? "handoff" : "dropoff";
-  }
-
-  /** Pick the kid slot for the transition pill (undefined = whole household). */
-  function transitionKidFor(e: CalendarEvent): KidId | undefined {
-    const kidIds = e.kid_ids && e.kid_ids.length > 0 ? e.kid_ids : (e.kid_id ? [e.kid_id] : []);
-    if (kidIds.length !== 1) return undefined; // multi-kid transition = whole household
-    const kid = kids.find((k) => k.id === kidIds[0]);
-    return kidSlot(kid, kids);
-  }
-
   /**
    * Pick the single-kid indicator slot for an event, or null if:
    *   - no kids on the event (holiday / unassigned)
@@ -244,18 +233,13 @@ export default function MonthView({
    * where only one of two kids transitions still render the right
    * pre/post colors regardless of Object.keys ordering.
    */
-  type WholeCustodyView = {
-    mode: "whole";
-    background: string | undefined;
-    splitPct: number | null;
-  };
   /**
-   * A horizontal time-band within a split-mode day cell. The cell's
-   * vertical extent represents the 24-hour day; each band covers a
-   * sub-range and is filled either with a single parent's color (when
-   * both kids are with the same parent during that band) or with
-   * diagonal stripes (when kids are with different parents — i.e.
-   * actually split during that band).
+   * A horizontal time-band within a day cell. The cell's vertical
+   * extent represents the 24-hour day; each band covers a sub-range
+   * and is filled either with a single parent's color (when both kids
+   * are with the same parent during that band) or with diagonal
+   * stripes (when kids are with different parents — i.e. actually
+   * split during that band).
    */
   type CustodyBand = {
     startPct: number;
@@ -265,39 +249,43 @@ export default function MonthView({
       | { type: "stripes" };
   };
   /**
-   * A pill describing one kid's parent assignment + handoff time on a
-   * split-custody day. Rendered inline in the cell (not on the band
-   * boundary) so the cell stays readable even at small sizes.
+   * A pill describing one handoff (turnover event group). Multiple
+   * kids being acted on together at the same time/parent collapse
+   * into one pill with multiple kid chips. Format:
+   *   [time] [parent] [Pick Up | Drop-off] [E][H]
    */
-  type KidPill = {
-    kid: Kid;
-    letter: string;
-    kidColor: string;
-    parentId: string | undefined;
+  type TurnoverPill = {
+    time: string;
+    timeIso: string;
+    isPickup: boolean;
+    parentId: string;
     parentName: string;
     parentSwatch: string;
-    handoffTime: string | null;
-    handoffEvt: CalendarEvent | null;
+    kidIds: string[];
+    events: CalendarEvent[];
+  };
+  type WholeCustodyView = {
+    mode: "whole";
+    background: string | undefined;
+    splitPct: number | null;
+    turnoverPills: TurnoverPill[];
   };
   type SplitCustodyView = {
     mode: "split";
     bands: CustodyBand[];
-    kidPills: KidPill[];
+    turnoverPills: TurnoverPill[];
   };
   type CustodyView = WholeCustodyView | SplitCustodyView;
 
   function custodyView(day: Date, dayEvents: CalendarEvent[]): CustodyView {
     if (!getCustodyForDate || !currentUserId) {
-      return { mode: "whole", background: undefined, splitPct: null };
+      return { mode: "whole", background: undefined, splitPct: null, turnoverPills: [] };
     }
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
     if (kidIds.length === 0) {
-      return { mode: "whole", background: undefined, splitPct: null };
+      return { mode: "whole", background: undefined, splitPct: null, turnoverPills: [] };
     }
-
-    const firstParentId = custody[kidIds[0]].parentId;
-    const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
     // Color identity is parent-role-based: parent_a → parentABg,
     // parent_b → parentBBg. Each parent picks their own color in
     // settings, so each side of the family sees their preferred
@@ -316,75 +304,13 @@ export default function MonthView({
         : "var(--them-bg)";
     };
 
-    // Build a per-kid time-based background + pill position. Used by both
-    // whole-mode (when all kids transition together — feed the transitioning
-    // kid in) and split-mode (per kid).
-    function kidGradient(
-      kidId: string,
-      turnoverEvt: CalendarEvent | null
-    ): { background: string; splitPct: number | null } {
-      if (!turnoverEvt) {
-        return {
-          background: colorFor(custody[kidId]?.parentId),
-          splitPct: null,
-        };
-      }
-      const isPickup = turnoverEvt.id.endsWith("-pickup");
-      const turnoverDate = parseTimestamp(turnoverEvt.starts_at);
-      const hourFrac =
-        turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
-      const splitPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
-
-      const adjacent = new Date(day);
-      adjacent.setDate(adjacent.getDate() + (isPickup ? -1 : 1));
-      const adjacentParentId = getCustodyForDate!(adjacent)[kidId]?.parentId;
-      const todayParentId = custody[kidId]?.parentId;
-      const todayColor = colorFor(todayParentId);
-      const adjacentColor = colorFor(adjacentParentId);
-      // Pickup: adjacent (yesterday) on top, today on bottom.
-      // Dropoff: today on top, adjacent (tomorrow) on bottom.
-      const preBg = isPickup ? adjacentColor : todayColor;
-      const postBg = isPickup ? todayColor : adjacentColor;
-      return {
-        background: `linear-gradient(to bottom, ${preBg} 0%, ${preBg} ${splitPct}%, ${postBg} ${splitPct}%, ${postBg} 100%)`,
-        splitPct,
-      };
-    }
-
-    if (allSame) {
-      // Whole mode. Anchor the gradient on the actual transitioning kid
-      // (turnoverEvt.kid_ids[0]) rather than the arbitrary first key —
-      // matters when only one of two kids transitioned but both are now
-      // with the same parent.
-      const turnoverEvt =
-        dayEvents.find((e) => e.id.startsWith("turnover-")) ?? null;
-      if (turnoverEvt) {
-        const transitioningKidId =
-          (turnoverEvt.kid_ids && turnoverEvt.kid_ids[0]) || kidIds[0];
-        const { background, splitPct } = kidGradient(
-          transitioningKidId,
-          turnoverEvt
-        );
-        return { mode: "whole", background, splitPct };
-      }
-      return {
-        mode: "whole",
-        background: colorFor(firstParentId),
-        splitPct: null,
-      };
-    }
-
-    // ─── Split mode: bands by time ─────────────────────────────────
-    // The day timeline runs vertically 0%→100% (= midnight→midnight).
-    // Each kid contributes at most one boundary (their handoff %); the
-    // band geometry is the union of all boundaries. For each band we
-    // ask "are kids with the same parent here?" — if yes, the band is
-    // a solid color; if no, the band is stripes.
-    //
-    // Side benefit: solves the user's "stripes shouldn't fill the whole
-    // cell when kids only diverge after a handoff" requirement — the
-    // pre-handoff portion of the cell stays solid in the joint parent's
-    // color, and only the post-handoff portion gets stripes.
+    // ─── Per-kid pre/post state ────────────────────────────────────
+    // Today's parent (from getCustodyForDate) is the END-OF-DAY state.
+    // If a kid transitioned today, their pre-handoff parent comes from
+    // the adjacent day. We need this for both band geometry AND mode
+    // selection — a day can be split during the morning even if it
+    // ends whole (e.g. one kid joins the other's parent at 3pm), and
+    // that case must surface stripes.
     const orderedKids = kids.filter((k) => custody[k.id]);
     const kidStates = orderedKids.map((kid) => {
       const turnoverEvt =
@@ -400,8 +326,6 @@ export default function MonthView({
           handoffPct: null as number | null,
           preParent: todayParent,
           postParent: todayParent,
-          handoffEvt: null as CalendarEvent | null,
-          handoffTime: null as string | null,
         };
       }
       const isPickup = turnoverEvt.id.endsWith("-pickup");
@@ -416,17 +340,14 @@ export default function MonthView({
       // Dropoff: pre-handoff = today, post-handoff = tomorrow (adjacent).
       const preParent = isPickup ? adjacentParent : todayParent;
       const postParent = isPickup ? todayParent : adjacentParent;
-      return {
-        kid,
-        handoffPct,
-        preParent,
-        postParent,
-        handoffEvt: turnoverEvt,
-        handoffTime: formatShortTime(turnoverDate),
-      };
+      return { kid, handoffPct, preParent, postParent };
     });
 
-    // Collect band boundaries from all kid handoffs.
+    // ─── Bands ─────────────────────────────────────────────────────
+    // Boundaries = union of all kid handoff %s plus 0 and 100. Within
+    // each band, every kid's parent is constant (they're either before
+    // or after their handoff, no ambiguity). Band fill is solid when
+    // all kids share a parent in that window; stripes otherwise.
     const boundarySet = new Set<number>([0, 100]);
     kidStates.forEach((ks) => {
       if (ks.handoffPct !== null) boundarySet.add(ks.handoffPct);
@@ -438,49 +359,108 @@ export default function MonthView({
       const startPct = boundaries[i];
       const endPct = boundaries[i + 1];
       const mid = (startPct + endPct) / 2;
-      // Each kid's parent at this band's midpoint
-      const parentsHere = kidStates.map((ks) => {
-        if (ks.handoffPct === null) return ks.postParent;
-        return mid < ks.handoffPct ? ks.preParent : ks.postParent;
-      });
-      const allSame = parentsHere.every((p) => p === parentsHere[0]);
+      const parentsHere = kidStates.map((ks) =>
+        ks.handoffPct === null
+          ? ks.postParent
+          : mid < ks.handoffPct
+            ? ks.preParent
+            : ks.postParent
+      );
+      const allSameInBand = parentsHere.every((p) => p === parentsHere[0]);
       bands.push({
         startPct,
         endPct,
-        fill: allSame
+        fill: allSameInBand
           ? { type: "solid", color: colorFor(parentsHere[0]) }
           : { type: "stripes" },
       });
     }
+    const hasStripes = bands.some((b) => b.fill.type === "stripes");
 
-    // Per-kid pills describing the END-of-day mapping. The handoff
-    // time tells you when this kid arrived at their current parent.
-    const kidPills: KidPill[] = kidStates.map((ks) => {
-      const finalParentId = ks.postParent;
-      const finalIsParentA = parentAId
-        ? finalParentId === parentAId
-        : false;
+    // ─── Turnover pills ────────────────────────────────────────────
+    // Group all turnover events by (time, action, today's-parent) so
+    // multi-kid joint handoffs collapse into one pill. Format target:
+    //   "7:00pm  Patrick  Pick Up  [E][H]"
+    const turnoverGroups = new Map<string, TurnoverPill>();
+    dayEvents.forEach((evt) => {
+      if (!evt.id.startsWith("turnover-")) return;
+      const evtKidIds =
+        evt.kid_ids && evt.kid_ids.length > 0 ? evt.kid_ids : [evt.kid_id];
+      if (evtKidIds.length === 0) return;
+      const todayParent = custody[evtKidIds[0]]?.parentId;
+      if (!todayParent) return;
+      const isPickup = evt.id.endsWith("-pickup");
+      const key = `${evt.starts_at}|${isPickup ? "pickup" : "dropoff"}|${todayParent}`;
+      if (turnoverGroups.has(key)) {
+        const g = turnoverGroups.get(key)!;
+        evtKidIds.forEach((kid) => {
+          if (!g.kidIds.includes(kid)) g.kidIds.push(kid);
+        });
+        g.events.push(evt);
+        return;
+      }
+      const parentName =
+        memberNames?.[todayParent] ||
+        (todayParent === parentAId ? "Parent A" : "Parent B");
       const parentSwatch = parentAId
-        ? finalIsParentA
+        ? todayParent === parentAId
           ? parentASwatch ?? "var(--ink)"
           : parentBSwatch ?? "var(--ink)"
         : "var(--ink)";
-      const parentName =
-        (finalParentId && memberNames?.[finalParentId]) ||
-        (finalIsParentA ? "Parent A" : "Parent B");
-      return {
-        kid: ks.kid,
-        letter: ks.kid.name.charAt(0).toUpperCase(),
-        kidColor: ks.kid.color,
-        parentId: finalParentId,
+      turnoverGroups.set(key, {
+        time: formatTransitionTime(parseTimestamp(evt.starts_at)),
+        timeIso: evt.starts_at,
+        isPickup,
+        parentId: todayParent,
         parentName,
         parentSwatch,
-        handoffTime: ks.handoffTime,
-        handoffEvt: ks.handoffEvt,
-      };
+        kidIds: [...evtKidIds],
+        events: [evt],
+      });
     });
+    const turnoverPills = Array.from(turnoverGroups.values()).sort((a, b) =>
+      a.timeIso.localeCompare(b.timeIso)
+    );
 
-    return { mode: "split", bands, kidPills };
+    // ─── Mode selection ────────────────────────────────────────────
+    // Whole mode whenever no band has stripes — including the joint-
+    // handoff case where both kids transition together (bands look
+    // like solidA → solidB; we synthesize a vertical gradient that
+    // matches the existing whole-mode visual). Bands mode otherwise.
+    if (!hasStripes) {
+      if (bands.length === 1) {
+        return {
+          mode: "whole",
+          background:
+            bands[0].fill.type === "solid" ? bands[0].fill.color : undefined,
+          splitPct: null,
+          turnoverPills,
+        };
+      }
+      const firstBand = bands[0];
+      const lastBand = bands[bands.length - 1];
+      const firstColor =
+        firstBand.fill.type === "solid" ? firstBand.fill.color : "";
+      const lastColor =
+        lastBand.fill.type === "solid" ? lastBand.fill.color : "";
+      if (firstColor === lastColor) {
+        return {
+          mode: "whole",
+          background: firstColor || undefined,
+          splitPct: null,
+          turnoverPills,
+        };
+      }
+      const splitPct = firstBand.endPct;
+      return {
+        mode: "whole",
+        background: `linear-gradient(to bottom, ${firstColor} 0%, ${firstColor} ${splitPct}%, ${lastColor} ${splitPct}%, ${lastColor} 100%)`,
+        splitPct,
+        turnoverPills,
+      };
+    }
+
+    return { mode: "split", bands, turnoverPills };
   }
 
   return (
@@ -597,69 +577,80 @@ export default function MonthView({
                       {day.getDate()}
                     </div>
 
-                    {/* Split-day kid pills — render the kid → parent
-                        mapping inline so the divergence is unambiguous
-                        regardless of how subtle the band coloring is.
-                        Each pill: kid letter chip + arrow + parent name +
-                        optional handoff time (when this kid transitioned
-                        today). Click a pill to open its turnover event. */}
-                    {view.mode === "split" && (
+                    {/* Turnover pills — one per handoff group, rendered
+                        inline below the day number. Format:
+                          [time]  [parent acting]  [Pick Up | Drop-off]  [E][H]
+                        Multi-kid handoffs (e.g. both kids picked up at
+                        the same time by the same parent) collapse into
+                        one pill with both kid chips. Click opens the
+                        underlying turnover event. */}
+                    {view.turnoverPills.length > 0 && (
                       <div className="relative z-[2] mb-1 space-y-[2px]">
-                        {view.kidPills.map((pill) => {
-                          const slot = kidSlot(pill.kid, kids);
-                          const chipClass =
-                            slot === "ethan" || slot === "harrison"
-                              ? kidIndicatorClass[slot]
-                              : "";
+                        {view.turnoverPills.map((pill) => {
+                          const matchingKids = kids.filter((k) =>
+                            pill.kidIds.includes(k.id)
+                          );
+                          const action = pill.isPickup ? "Pick Up" : "Drop-off";
                           return (
                             <div
-                              key={pill.kid.id}
+                              key={`${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
                               onClick={(ev) => {
                                 ev.stopPropagation();
-                                if (pill.handoffEvt) onEventClick(pill.handoffEvt);
+                                if (pill.events[0]) onEventClick(pill.events[0]);
                               }}
-                              className={`
-                                flex items-center gap-1
+                              className="
+                                flex items-center gap-1.5
                                 text-[10.5px] font-medium leading-tight
                                 bg-white/95 text-[var(--ink)]
                                 px-1.5 py-[2px]
                                 border-l-[3px]
                                 shadow-[0_0_0_1px_var(--border)]
-                                ${pill.handoffEvt ? "cursor-pointer hover:translate-x-[1px] transition-transform" : ""}
+                                cursor-pointer hover:translate-x-[1px] transition-transform
                                 overflow-hidden
-                              `}
-                              style={{ borderLeftColor: pill.kidColor }}
-                              title={`${pill.kid.name} with ${pill.parentName}${
-                                pill.handoffTime ? ` · handoff ${pill.handoffTime}` : ""
-                              }`}
+                              "
+                              style={{ borderLeftColor: pill.parentSwatch }}
+                              title={`${pill.time} ${pill.parentName} ${action}`}
                             >
-                              <span
-                                className={`
-                                  inline-flex items-center justify-center shrink-0
-                                  w-[14px] h-[14px] rounded-sm
-                                  text-[8px] font-bold text-white
-                                  ${chipClass}
-                                `}
-                                style={
-                                  chipClass
-                                    ? undefined
-                                    : { background: pill.kidColor }
-                                }
-                              >
-                                {pill.letter}
+                              <span className="tabular-nums text-[var(--text-muted)] shrink-0">
+                                {pill.time}
                               </span>
-                              <span className="text-[var(--text-muted)] shrink-0">→</span>
                               <span
-                                className="truncate font-semibold"
+                                className="font-semibold truncate"
                                 style={{ color: pill.parentSwatch }}
                               >
                                 {pill.parentName}
                               </span>
-                              {pill.handoffTime && (
-                                <span className="text-[9.5px] tabular-nums text-[var(--text-muted)] shrink-0 ml-auto">
-                                  {pill.handoffTime}
-                                </span>
-                              )}
+                              <span className="text-[var(--text-muted)] shrink-0">
+                                {action}
+                              </span>
+                              <span className="flex gap-[2px] shrink-0 ml-auto">
+                                {matchingKids.map((kid) => {
+                                  const slot = kidSlot(kid, kids);
+                                  const chipClass =
+                                    slot === "ethan" || slot === "harrison"
+                                      ? kidIndicatorClass[slot]
+                                      : "";
+                                  return (
+                                    <span
+                                      key={kid.id}
+                                      title={kid.name}
+                                      className={`
+                                        inline-flex items-center justify-center
+                                        w-[14px] h-[14px] rounded-sm
+                                        text-[8px] font-bold text-white
+                                        ${chipClass}
+                                      `}
+                                      style={
+                                        chipClass
+                                          ? undefined
+                                          : { background: kid.color }
+                                      }
+                                    >
+                                      {kid.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  );
+                                })}
+                              </span>
                             </div>
                           );
                         })}
@@ -737,58 +728,12 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Whole-mode turnover pill — absolutely positioned on
-                        the custody split line so the color transition and
-                        the handoff event read as one continuous horizontal
-                        rule. */}
-                    {view.mode === "whole" &&
-                      view.splitPct !== null &&
-                      (() => {
-                        const turnoverEvt = dayEvents.find((e) =>
-                          e.id.startsWith("turnover-")
-                        );
-                        if (!turnoverEvt) return null;
-                        const time = formatShortTime(
-                          parseTimestamp(turnoverEvt.starts_at)
-                        );
-                        const direction = transitionDirectionFor(
-                          turnoverEvt,
-                          day
-                        );
-                        const kid = transitionKidFor(turnoverEvt);
-                        const clampedTop = Math.max(
-                          18,
-                          Math.min(92, view.splitPct)
-                        );
-                        return (
-                          <div
-                            className="absolute left-1.5 right-1.5 pointer-events-none"
-                            style={{
-                              top: `${clampedTop}%`,
-                              transform: "translateY(-50%)",
-                              zIndex: 5,
-                            }}
-                          >
-                            <div className="pointer-events-auto">
-                              <TransitionPill
-                                time={time}
-                                direction={direction}
-                                kid={kid}
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  onEventClick(turnoverEvt);
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                    {/* Split-mode handoff time(s) are surfaced inline on
-                        the kid pills above (right-aligned). No separate
-                        floating transition pills here — the band stripes
-                        plus the explicit "E → Patrick 7:00p" pill convey
-                        when and how the divergence happened. */}
+                    {/* All handoff information is rendered inline above
+                        as turnoverPills. The whole-mode background
+                        gradient still shows the boundary visually; the
+                        floating pill on that boundary is gone in favor
+                        of the more explicit "[time] [parent] [action]
+                        [kids]" pill format. */}
                   </div>
                 );
               })}
