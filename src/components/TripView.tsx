@@ -31,6 +31,7 @@ import {
 } from "@/lib/tripCustody";
 import { validateTrip, TripWarning } from "@/lib/tripValidation";
 import { kidColorCss } from "@/lib/palette";
+import LodgingPopover from "@/components/LodgingPopover";
 
 interface TripViewProps {
   trip: Trip;
@@ -118,6 +119,15 @@ export default function TripView({
   // Editable header state — autosave on blur
   const [title, setTitle] = useState(trip.title);
   const [tripType, setTripType] = useState<TripType>(trip.trip_type);
+
+  // Read-only details popover for a single lodging. Plan §10c-style
+  // pattern: row click → view; pencil → edit. Keeps the row compact
+  // while giving a single tap to "show me everything you have."
+  const [viewingLodgingId, setViewingLodgingId] = useState<string | null>(null);
+  const viewingLodging =
+    viewingLodgingId
+      ? segments.find((s) => s.id === viewingLodgingId) ?? null
+      : null;
 
   // Group segments by type for section rendering
   const lodgings = useMemo(
@@ -255,6 +265,7 @@ export default function TripView({
                     group={group}
                     onEdit={onEditSegment}
                     onDelete={onDeleteSegment}
+                    onView={(seg) => setViewingLodgingId(seg.id)}
                   />
                 ))}
               </div>
@@ -353,6 +364,28 @@ export default function TripView({
           </div>
         </div>
       </div>
+
+      {/* Lodging details popover (read-only) — opens when user clicks
+          a lodging row body. Pencil icon still goes straight to edit. */}
+      {viewingLodging && (
+        <LodgingPopover
+          lodging={viewingLodging}
+          kids={kids}
+          members={members}
+          guests={trip.guests}
+          onClose={() => setViewingLodgingId(null)}
+          onEdit={() => {
+            const seg = viewingLodging;
+            setViewingLodgingId(null);
+            onEditSegment?.(seg);
+          }}
+          onDelete={async () => {
+            const seg = viewingLodging;
+            setViewingLodgingId(null);
+            await onDeleteSegment?.(seg.id);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -576,10 +609,14 @@ function StayGroupRow({
   group,
   onEdit,
   onDelete,
+  onView,
 }: {
   group: StayGroup;
   onEdit?: (s: CalendarEvent) => void;
   onDelete?: (id: string) => Promise<void>;
+  /** Open the read-only lodging details popover. Pencil icon still
+   *  opens the edit form directly — view is the row-body click. */
+  onView?: (s: CalendarEvent) => void;
 }) {
   const cityLabel = formatCityLabel(group.city, group.state, group.country);
   return (
@@ -596,24 +633,60 @@ function StayGroupRow({
         {group.lodgings.map((l) => {
           if (!isLodgingSegment(l)) return null;
           const d = l.segment_data;
+          // Compose a single mailing-style address line, omitting any
+          // empty pieces. Renders as e.g. "3249 31st Ave W, Seattle, WA 98199".
+          const cityState = [d.city, d.state].filter(Boolean).join(", ");
+          const cityStateZip = [cityState, d.postal_code]
+            .filter(Boolean)
+            .join(" ");
+          const addressLine = [d.address, cityStateZip]
+            .filter(Boolean)
+            .join(", ");
+          // Phone + confirmation share a meta line — keeps the row
+          // tight while still surfacing both pieces.
+          const metaPieces = [
+            d.phone,
+            d.confirmation && `# ${d.confirmation}`,
+          ].filter(Boolean);
           return (
             <div
               key={l.id}
-              className="px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-sunken)] transition-colors"
+              role={onView ? "button" : undefined}
+              tabIndex={onView ? 0 : undefined}
+              onClick={() => onView?.(l)}
+              onKeyDown={(e) => {
+                if (onView && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  onView(l);
+                }
+              }}
+              className={`px-3 py-2 flex items-center gap-2 transition-colors ${
+                onView
+                  ? "hover:bg-[var(--bg-sunken)] cursor-pointer"
+                  : ""
+              }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="text-[12px] font-medium text-[var(--ink)] truncate">
                   {d.name || "Untitled lodging"}
                 </div>
-                {d.address && (
+                {addressLine && (
                   <div className="text-[10.5px] text-[var(--text-muted)] truncate">
-                    {d.address}
+                    {addressLine}
+                  </div>
+                )}
+                {metaPieces.length > 0 && (
+                  <div className="text-[10.5px] text-[var(--text-faint)] truncate tabular-nums">
+                    {metaPieces.join(" · ")}
                   </div>
                 )}
               </div>
               {onEdit && (
                 <button
-                  onClick={() => onEdit(l)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEdit(l);
+                  }}
                   className="text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors p-1"
                   aria-label="Edit lodging"
                 >
@@ -622,7 +695,8 @@ function StayGroupRow({
               )}
               {onDelete && (
                 <button
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (confirm("Remove this lodging?")) onDelete(l.id);
                   }}
                   className="text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors p-1"

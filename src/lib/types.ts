@@ -96,6 +96,11 @@ export interface LodgingSegmentData {
   confirmation?: string;
   city: string;
   state: string;
+  /** Postal / ZIP code. Optional — added after v1; older rows
+   *  won't have it and that's fine. Lives alongside city/state
+   *  rather than being baked into `address` so we can render a
+   *  clean "address, city, state zip" line in the trip view. */
+  postal_code?: string;
   country: string;
 }
 

@@ -90,6 +90,7 @@ export default function LodgingForm({
   // Detail fields — all optional
   const [name, setName] = useState(existing?.name || "");
   const [address, setAddress] = useState(existing?.address || "");
+  const [postalCode, setPostalCode] = useState(existing?.postal_code || "");
   const [phone, setPhone] = useState(existing?.phone || "");
   const [confirmation, setConfirmation] = useState(existing?.confirmation || "");
 
@@ -179,6 +180,7 @@ export default function LodgingForm({
           confirmation: confirmation.trim(),
           city: city.trim(),
           state: state.trim(),
+          postal_code: postalCode.trim() || undefined,
           country: country.trim(),
         },
         member_ids: memberIds,
@@ -292,14 +294,25 @@ export default function LodgingForm({
                 className={inputCls}
               />
             </div>
-            <div>
-              <label className={labelCls}>Address</label>
-              <input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="2005 Kalia Rd"
-                className={inputCls}
-              />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label className={labelCls}>Address</label>
+                <input
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="2005 Kalia Rd"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>ZIP</label>
+                <input
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                  placeholder="96815"
+                  className={inputCls}
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
