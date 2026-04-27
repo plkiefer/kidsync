@@ -107,13 +107,17 @@ export default function TripView({
     () =>
       segments
         .filter((s) =>
+          // cruise_port_stop excluded — those are sub-items of the
+          // cruise body (linked via parent_segment_id) and surface
+          // via the cruise editor + on the calendar's bottom ribbon.
+          // Listing them in Transportation would double-count and
+          // clutter the row stack.
           [
             "flight",
             "drive",
             "train",
             "ferry",
             "cruise",
-            "cruise_port_stop",
             "other_transport",
           ].includes(s.segment_type ?? "")
         )

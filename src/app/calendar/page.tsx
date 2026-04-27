@@ -44,11 +44,13 @@ import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import TransportForm, { TransportKind } from "@/components/TransportForm";
+import CruiseForm, { CruiseSaveInput } from "@/components/CruiseForm";
 import TripOverrideProposalModal from "@/components/TripOverrideProposalModal";
 import {
   detectTripCustodyConflict,
   getTripLinkedOverrides,
 } from "@/lib/tripCustody";
+import { localTimeToUtc } from "@/lib/timezones";
 import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -158,6 +160,10 @@ export default function CalendarPage() {
   const [overrideProposalTripId, setOverrideProposalTripId] = useState<
     string | null
   >(null);
+  const [cruiseForm, setCruiseForm] = useState<{
+    tripId: string;
+    editing: CalendarEvent | null;
+  } | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
@@ -1122,7 +1128,7 @@ export default function CalendarPage() {
               }
               onAddTransport={(kind) => {
                 if (kind === "cruise") {
-                  alert("Cruise segment ships in Phase 3.");
+                  setCruiseForm({ tripId: trip.id, editing: null });
                   return;
                 }
                 setTransportForm({
@@ -1134,6 +1140,10 @@ export default function CalendarPage() {
               onEditSegment={(seg) => {
                 if (seg.segment_type === "lodging") {
                   setLodgingForm({ tripId: trip.id, editing: seg });
+                  return;
+                }
+                if (seg.segment_type === "cruise") {
+                  setCruiseForm({ tripId: trip.id, editing: seg });
                   return;
                 }
                 if (
@@ -1355,6 +1365,92 @@ export default function CalendarPage() {
                 });
                 setOverrideProposalTripId(null);
                 await refetchCustody();
+              }}
+            />
+          );
+        })()}
+
+      {/* Cruise form (Phase 3). The form returns a body + port-stops
+          diff; this handler creates/updates the body, then walks the
+          port-stops to create new + update existing + delete removed,
+          all linked via parent_segment_id. */}
+      {cruiseForm &&
+        (() => {
+          const trip = trips.find((t) => t.id === cruiseForm.tripId);
+          if (!trip) return null;
+          const allTripSegs = events.filter((e) => e.trip_id === trip.id);
+          return (
+            <CruiseForm
+              trip={trip}
+              cruise={cruiseForm.editing}
+              allSegments={allTripSegs}
+              kids={kids}
+              members={members}
+              onClose={() => setCruiseForm(null)}
+              onSave={async (input: CruiseSaveInput) => {
+                // 1. Create or update the cruise body
+                let cruiseId: string | null = cruiseForm.editing?.id ?? null;
+                if (cruiseForm.editing) {
+                  await updateSegment(cruiseForm.editing.id, input.body);
+                } else {
+                  const created = await createSegment(input.body);
+                  cruiseId = created?.id ?? null;
+                }
+                if (!cruiseId) {
+                  console.error("Cruise body save returned no id");
+                  return;
+                }
+
+                // 2. Delete removed port stops
+                for (const removedId of input.removedPortStopIds) {
+                  await deleteEvent(removedId);
+                }
+
+                // 3. Create / update each remaining port stop
+                for (const stop of input.portStops) {
+                  const startsAt = localTimeToUtc(
+                    stop.arrival_local,
+                    stop.arrival_timezone
+                  ).toISOString();
+                  const endsAt = localTimeToUtc(
+                    stop.departure_local,
+                    stop.departure_timezone
+                  ).toISOString();
+                  const segmentData = {
+                    port: stop.port,
+                    arrival_timezone: stop.arrival_timezone,
+                    departure_timezone: stop.departure_timezone,
+                    tender: stop.tender,
+                    notes: stop.notes,
+                  };
+                  const segInput = {
+                    trip_id: trip.id,
+                    segment_type: "cruise_port_stop" as const,
+                    segment_data: segmentData,
+                    title: stop.port,
+                    starts_at: startsAt,
+                    ends_at: endsAt,
+                    time_zone: stop.arrival_timezone,
+                    all_day: false,
+                    kid_ids: input.body.kid_ids,
+                    member_ids: input.body.member_ids,
+                    guest_ids: input.body.guest_ids,
+                    parent_segment_id: cruiseId,
+                    notes: stop.notes || null,
+                  };
+                  if (stop.id) {
+                    await updateSegment(stop.id, segInput);
+                  } else {
+                    await createSegment(segInput);
+                  }
+                }
+
+                await recomputeTripDates(trip.id);
+                setCruiseForm(null);
+                await refetch();
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
               }}
             />
           );

@@ -20,11 +20,13 @@ import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import TransportForm, { TransportKind } from "@/components/TransportForm";
+import CruiseForm, { CruiseSaveInput } from "@/components/CruiseForm";
 import TripOverrideProposalModal from "@/components/TripOverrideProposalModal";
 import {
   detectTripCustodyConflict,
   getTripLinkedOverrides,
 } from "@/lib/tripCustody";
+import { localTimeToUtc } from "@/lib/timezones";
 
 type FilterTab = "all" | "upcoming" | "past" | "draft";
 
@@ -78,6 +80,10 @@ export default function TripsPage() {
   const [overrideProposalTripId, setOverrideProposalTripId] = useState<
     string | null
   >(null);
+  const [cruiseForm, setCruiseForm] = useState<{
+    tripId: string;
+    editing: import("@/lib/types").CalendarEvent | null;
+  } | null>(null);
 
   // Auth guard
   useEffect(() => {
@@ -312,7 +318,7 @@ export default function TripsPage() {
               }
               onAddTransport={(kind) => {
                 if (kind === "cruise") {
-                  alert("Cruise segment ships in Phase 3.");
+                  setCruiseForm({ tripId: trip.id, editing: null });
                   return;
                 }
                 setTransportForm({
@@ -324,6 +330,10 @@ export default function TripsPage() {
               onEditSegment={(seg) => {
                 if (seg.segment_type === "lodging") {
                   setLodgingForm({ tripId: trip.id, editing: seg });
+                  return;
+                }
+                if (seg.segment_type === "cruise") {
+                  setCruiseForm({ tripId: trip.id, editing: seg });
                   return;
                 }
                 if (
@@ -453,6 +463,80 @@ export default function TripsPage() {
                     starts_at: startsAtLocal,
                   },
                 });
+              }}
+            />
+          );
+        })()}
+
+      {cruiseForm &&
+        (() => {
+          const trip = trips.find((t) => t.id === cruiseForm.tripId);
+          if (!trip) return null;
+          const allTripSegs = events.filter((e) => e.trip_id === trip.id);
+          return (
+            <CruiseForm
+              trip={trip}
+              cruise={cruiseForm.editing}
+              allSegments={allTripSegs}
+              kids={kids}
+              members={members}
+              onClose={() => setCruiseForm(null)}
+              onSave={async (input: CruiseSaveInput) => {
+                let cruiseId: string | null = cruiseForm.editing?.id ?? null;
+                if (cruiseForm.editing) {
+                  await updateSegment(cruiseForm.editing.id, input.body);
+                } else {
+                  const created = await createSegment(input.body);
+                  cruiseId = created?.id ?? null;
+                }
+                if (!cruiseId) return;
+
+                for (const removedId of input.removedPortStopIds) {
+                  await deleteEvent(removedId);
+                }
+                for (const stop of input.portStops) {
+                  const startsAt = localTimeToUtc(
+                    stop.arrival_local,
+                    stop.arrival_timezone
+                  ).toISOString();
+                  const endsAt = localTimeToUtc(
+                    stop.departure_local,
+                    stop.departure_timezone
+                  ).toISOString();
+                  const segmentData = {
+                    port: stop.port,
+                    arrival_timezone: stop.arrival_timezone,
+                    departure_timezone: stop.departure_timezone,
+                    tender: stop.tender,
+                    notes: stop.notes,
+                  };
+                  const segInput = {
+                    trip_id: trip.id,
+                    segment_type: "cruise_port_stop" as const,
+                    segment_data: segmentData,
+                    title: stop.port,
+                    starts_at: startsAt,
+                    ends_at: endsAt,
+                    time_zone: stop.arrival_timezone,
+                    all_day: false,
+                    kid_ids: input.body.kid_ids,
+                    member_ids: input.body.member_ids,
+                    guest_ids: input.body.guest_ids,
+                    parent_segment_id: cruiseId,
+                    notes: stop.notes || null,
+                  };
+                  if (stop.id) {
+                    await updateSegment(stop.id, segInput);
+                  } else {
+                    await createSegment(segInput);
+                  }
+                }
+                await recomputeTripDates(trip.id);
+                setCruiseForm(null);
+                await refetch();
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
               }}
             />
           );
