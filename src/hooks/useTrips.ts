@@ -4,6 +4,41 @@ import { useEffect, useState, useCallback } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { Trip, TripGuest, TripType, TripStatus, CalendarEvent } from "@/lib/types";
 
+/**
+ * Fire-and-forget notification to the existing notify-parent edge
+ * function for trip-level changes. Plan §13a: structural changes
+ * (create / status / dates / roster) notify; cosmetic changes
+ * (title-only) don't. This helper just fires; callers decide
+ * whether the change is structural enough to warrant a call.
+ *
+ * Mirrors fireCalendarNotification in useEvents — same edge fn
+ * shape so the email composer can detect "kind" and format
+ * appropriately. The action field is the same union; for trips we
+ * also pass an `entity_kind: "trip"` flag in the body so the
+ * function can branch.
+ */
+function fireTripNotification(
+  supabase: ReturnType<typeof getSupabase>,
+  action: "created" | "updated" | "deleted",
+  trip: Record<string, unknown>,
+  family_id: string,
+  changed_by: string
+): void {
+  supabase.functions
+    .invoke("notify-parent", {
+      body: {
+        action,
+        entity_kind: "trip",
+        event: trip,
+        family_id,
+        changed_by,
+      },
+    })
+    .catch((err) => {
+      console.warn("[trips] notification failed:", err);
+    });
+}
+
 interface UseTripsState {
   trips: Trip[];
   loading: boolean;
@@ -111,6 +146,12 @@ export function useTrips(
             familyId = profile.family_id;
           }
         }
+        // After the auth-resolution block both must be defined; the
+        // narrow assertion below makes TS see that for the rest of
+        // the function (for the notification call later).
+        if (!userId || !familyId) {
+          throw new Error("Auth context unresolved");
+        }
 
         const { data: newTrip, error: createErr } = await supabase
           .from("trips")
@@ -129,6 +170,15 @@ export function useTrips(
           .single();
 
         if (createErr) throw createErr;
+        if (newTrip && userId) {
+          fireTripNotification(
+            supabase,
+            "created",
+            newTrip as unknown as Record<string, unknown>,
+            familyId,
+            userId
+          );
+        }
         return newTrip as Trip;
       } catch (err) {
         console.error("Error creating trip:", err);
@@ -163,6 +213,28 @@ export function useTrips(
           .select("*")
           .single();
         if (updateErr) throw updateErr;
+
+        // Plan §13a: notify on structural changes only. Title +
+        // notes are cosmetic; status / dates / roster are
+        // structural and warrant a notification.
+        const structuralKeys: (keyof Trip)[] = [
+          "status",
+          "starts_at",
+          "ends_at",
+          "kid_ids",
+          "member_ids",
+          "trip_type",
+        ];
+        const isStructural = structuralKeys.some((k) => k in patch);
+        if (isStructural && updated) {
+          fireTripNotification(
+            supabase,
+            "updated",
+            updated as unknown as Record<string, unknown>,
+            (updated as Trip).family_id,
+            userId
+          );
+        }
         return updated as Trip;
       } catch (err) {
         console.error("Error updating trip:", err);
@@ -176,6 +248,15 @@ export function useTrips(
   const deleteTrip = useCallback(
     async (id: string): Promise<boolean> => {
       try {
+        // Snapshot the trip BEFORE deletion so we can include its
+        // title etc. in the notification email. After deletion the
+        // row is gone (CASCADE removes segments too).
+        const { data: snapshot } = await supabase
+          .from("trips")
+          .select("*")
+          .eq("id", id)
+          .single();
+
         // ON DELETE CASCADE on calendar_events.trip_id will remove
         // associated segments. Custody overrides drop their link
         // (ON DELETE SET NULL) but stay in place — the user might
@@ -185,6 +266,25 @@ export function useTrips(
           .delete()
           .eq("id", id);
         if (deleteErr) throw deleteErr;
+
+        if (snapshot) {
+          let userId = authUserId;
+          if (!userId) {
+            const {
+              data: { session },
+            } = await supabase.auth.getSession();
+            userId = session?.user?.id;
+          }
+          if (userId) {
+            fireTripNotification(
+              supabase,
+              "deleted",
+              snapshot as unknown as Record<string, unknown>,
+              (snapshot as Trip).family_id,
+              userId
+            );
+          }
+        }
         return true;
       } catch (err) {
         console.error("Error deleting trip:", err);
@@ -192,7 +292,7 @@ export function useTrips(
         return false;
       }
     },
-    [supabase]
+    [supabase, authUserId]
   );
 
   const recomputeTripDates = useCallback(

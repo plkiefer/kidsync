@@ -1047,6 +1047,18 @@ export function useEvents(
           .select("*")
           .single();
         if (createErr) throw createErr;
+        // Notify the co-parent (fire-and-forget; same pattern as
+        // createEvent above). Plan §13a: structural changes notify;
+        // segment add is structural.
+        if (newRow) {
+          fireCalendarNotification(
+            supabase,
+            "created",
+            newRow as unknown as Record<string, unknown>,
+            familyId,
+            userId
+          );
+        }
         return newRow as CalendarEvent;
       } catch (err) {
         console.error("Error creating segment:", err);
@@ -1092,6 +1104,31 @@ export function useEvents(
           .select("*")
           .single();
         if (updateErr) throw updateErr;
+        // Notify on structural changes only — plan §13a says detail
+        // polish (confirmation #, address tweaks) shouldn't notify,
+        // but date/time/roster shifts should. Heuristic: notify when
+        // any of starts_at/ends_at/kid_ids/member_ids/segment_type
+        // changed. Notes-only edits stay quiet.
+        const structuralKeys: (keyof typeof patch)[] = [
+          "starts_at",
+          "ends_at",
+          "kid_ids",
+          "member_ids",
+          "segment_type",
+        ];
+        const isStructural = structuralKeys.some(
+          (k) => patch[k] !== undefined
+        );
+        if (isStructural && updated) {
+          const { familyId } = await resolveAuthCtx();
+          fireCalendarNotification(
+            supabase,
+            "updated",
+            updated as unknown as Record<string, unknown>,
+            familyId,
+            userId
+          );
+        }
         return updated as CalendarEvent;
       } catch (err) {
         console.error("Error updating segment:", err);
