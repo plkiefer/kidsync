@@ -17,6 +17,52 @@ function toICalDate(date: Date): string {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`;
 }
 
+/**
+ * Format a calendar-day Date plus an HH:MM-of-day pair as an iCal
+ * "floating" datetime string ("YYYYMMDDTHHMMSS", no Z) suitable for
+ * pairing with a TZID parameter. Avoids Date.setHours() which would
+ * use the server's local timezone (Vercel = UTC) and produce the
+ * wrong instant for Eastern-time exchange events.
+ *
+ * Uses getUTC* on the day-Date because date-fns' eachDayOfInterval
+ * produces midnight-local Date objects; on a UTC server that's
+ * midnight UTC, and getUTC* extracts the calendar Y/M/D unambiguously.
+ */
+function toICalLocalDateTime(day: Date, hour: number, minute: number): string {
+  const yr = day.getUTCFullYear();
+  const mo = day.getUTCMonth() + 1;
+  const dy = day.getUTCDate();
+  return `${yr}${pad(mo)}${pad(dy)}T${pad(hour)}${pad(minute)}00`;
+}
+
+/**
+ * VTIMEZONE block for America/New_York. Without this, calendars
+ * receiving DTSTART;TZID=... can't resolve the offset and may
+ * fall back to UTC interpretation. Uses the post-2007 US DST rules
+ * (second Sunday in March → first Sunday in November). Hardcoded
+ * for now since the family is in Eastern time; if other timezones
+ * become a thing we can compute this from a profile setting.
+ */
+const VTIMEZONE_NY: string[] = [
+  "BEGIN:VTIMEZONE",
+  "TZID:America/New_York",
+  "BEGIN:DAYLIGHT",
+  "DTSTART:19700308T020000",
+  "RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU",
+  "TZNAME:EDT",
+  "TZOFFSETFROM:-0500",
+  "TZOFFSETTO:-0400",
+  "END:DAYLIGHT",
+  "BEGIN:STANDARD",
+  "DTSTART:19701101T020000",
+  "RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU",
+  "TZNAME:EST",
+  "TZOFFSETFROM:-0400",
+  "TZOFFSETTO:-0500",
+  "END:STANDARD",
+  "END:VTIMEZONE",
+];
+
 function escapeIcal(str: string): string {
   return str
     .replace(/\\/g, "\\\\")
@@ -78,6 +124,7 @@ export async function GET(request: NextRequest) {
     "METHOD:PUBLISH",
     "X-WR-CALNAME:KidSync Calendar",
     "X-WR-TIMEZONE:America/New_York",
+    ...VTIMEZONE_NY,
   ];
 
   // ── DB Events ──────────────────────────────────────────
@@ -216,13 +263,21 @@ export async function GET(request: NextRequest) {
             if (ampm[3].toUpperCase() === "AM" && hour === 12) hour = 0;
           }
 
-          const evtStart = new Date(eventDate);
-          evtStart.setHours(hour, min, 0, 0);
+          // Emit the local datetime + TZID rather than a UTC Z-stamp.
+          // Prevents Date.setHours() from baking the server's UTC
+          // local-time into the export (which used to ship 3pm-Eastern
+          // exchanges as 15:00Z = 11am-Eastern in subscribers' clients).
+          const dtLocal = toICalLocalDateTime(eventDate, hour, min);
+          // 30-minute window so calendars actually render the event
+          // as a block instead of a zero-length point.
+          const endHour = min >= 30 ? hour + 1 : hour;
+          const endMin = (min + 30) % 60;
+          const dtLocalEnd = toICalLocalDateTime(eventDate, endHour, endMin);
 
           lines.push("BEGIN:VEVENT");
           lines.push(`UID:turnover-${dateStr}-${isPickup ? "pickup" : "dropoff"}@kidsync`);
-          lines.push(`DTSTART:${toICalDateTime(evtStart)}`);
-          lines.push(`DTEND:${toICalDateTime(evtStart)}`);
+          lines.push(`DTSTART;TZID=America/New_York:${dtLocal}`);
+          lines.push(`DTEND;TZID=America/New_York:${dtLocalEnd}`);
           lines.push(`SUMMARY:🔄 ${escapeIcal(title)}`);
           lines.push("END:VEVENT");
         }
