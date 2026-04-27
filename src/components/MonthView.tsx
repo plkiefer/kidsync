@@ -62,18 +62,10 @@ const kidIndicatorClass: Record<"ethan" | "harrison", string> = {
   harrison: "bg-kid-harrison",
 };
 
-/** Format a Date to a compact calendar time like "3:00p" / "10:15a". */
+/** Format a Date to a compact calendar time like "3:00pm" / "10:15am".
+ *  Used for both regular event pills and turnover pills so the cell
+ *  reads with one consistent time format. */
 function formatShortTime(date: Date): string {
-  const h = date.getHours();
-  const m = date.getMinutes();
-  const meridian = h >= 12 ? "p" : "a";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  const mm = m.toString().padStart(2, "0");
-  return `${h12}:${mm}${meridian}`;
-}
-
-/** Format a Date to a transition-pill time like "6:00pm" / "5:00am". */
-function formatTransitionTime(date: Date): string {
   const h = date.getHours();
   const m = date.getMinutes();
   const meridian = h >= 12 ? "pm" : "am";
@@ -257,6 +249,9 @@ export default function MonthView({
   type TurnoverPill = {
     time: string;
     timeIso: string;
+    /** Vertical position (0-100) where this pill should float —
+     *  the same % as the band boundary it sits on. */
+    boundaryPct: number;
     isPickup: boolean;
     parentId: string;
     parentName: string;
@@ -407,9 +402,14 @@ export default function MonthView({
           ? parentASwatch ?? "var(--ink)"
           : parentBSwatch ?? "var(--ink)"
         : "var(--ink)";
+      const turnoverDate = parseTimestamp(evt.starts_at);
+      const hourFrac =
+        turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
+      const boundaryPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
       turnoverGroups.set(key, {
-        time: formatTransitionTime(parseTimestamp(evt.starts_at)),
+        time: formatShortTime(turnoverDate),
         timeIso: evt.starts_at,
+        boundaryPct,
         isPickup,
         parentId: todayParent,
         parentName,
@@ -601,115 +601,20 @@ export default function MonthView({
                       <div style={{ height: ribbonAreaHeight }} />
                     )}
 
-                    {/* Merged chronological item list. Turnover pills
-                        (handoffs — e.g. "7:00pm Patrick Pick Up [E]")
-                        and regular events (e.g. "5:30p Soccer") sort
-                        together by start time so the cell reads in
-                        chrono order top-to-bottom. Total cap of 3
-                        items; turnovers always shown, regular events
-                        get whatever slots remain. */}
+                    {/* Regular event stack — chronological top-to-bottom,
+                        cap 3, "+N more" for the rest. Turnover pills are
+                        rendered separately as floating elements on their
+                        band-boundary lines so the user can see exactly
+                        WHEN the handoff happens within the day. */}
                     {(() => {
-                      const TOTAL_SLOTS = 3;
-                      const turnoverItems = view.turnoverPills.map((p) => ({
-                        kind: "turnover" as const,
-                        sortKey: p.timeIso,
-                        pill: p,
-                      }));
-                      const remaining = Math.max(
-                        0,
-                        TOTAL_SLOTS - turnoverItems.length
+                      const sortedEvents = [...nonTurnoverEvents].sort((a, b) =>
+                        a.starts_at.localeCompare(b.starts_at)
                       );
-                      const visibleEvents = nonTurnoverEvents.slice(0, remaining);
-                      const eventItems = visibleEvents.map((e) => ({
-                        kind: "event" as const,
-                        sortKey: e.starts_at,
-                        evt: e,
-                      }));
-                      const items = [...turnoverItems, ...eventItems].sort(
-                        (a, b) => a.sortKey.localeCompare(b.sortKey)
-                      );
-                      const hiddenCount =
-                        nonTurnoverEvents.length - visibleEvents.length;
+                      const visibleEvents = sortedEvents.slice(0, 3);
+                      const hiddenCount = sortedEvents.length - visibleEvents.length;
                       return (
                         <>
-                          {items.map((item) => {
-                            if (item.kind === "turnover") {
-                              const pill = item.pill;
-                              const matchingKids = kids.filter((k) =>
-                                pill.kidIds.includes(k.id)
-                              );
-                              const action = pill.isPickup
-                                ? "Pick Up"
-                                : "Drop-off";
-                              return (
-                                <div
-                                  key={`t-${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
-                                  onClick={(ev) => {
-                                    ev.stopPropagation();
-                                    if (pill.events[0])
-                                      onEventClick(pill.events[0]);
-                                  }}
-                                  className="
-                                    relative z-[2]
-                                    flex items-center gap-1.5
-                                    text-[10.5px] font-medium leading-tight
-                                    bg-white/95 text-[var(--ink)]
-                                    px-1.5 py-[2px] mb-0.5
-                                    border-l-[3px]
-                                    shadow-[0_0_0_1px_var(--border)]
-                                    cursor-pointer hover:translate-x-[1px] transition-transform
-                                    overflow-hidden
-                                  "
-                                  style={{
-                                    borderLeftColor: pill.parentSwatch,
-                                  }}
-                                  title={`${pill.time} ${pill.parentName} ${action}`}
-                                >
-                                  <span className="tabular-nums text-[var(--text-muted)] shrink-0">
-                                    {pill.time}
-                                  </span>
-                                  <span
-                                    className="font-semibold truncate"
-                                    style={{ color: pill.parentSwatch }}
-                                  >
-                                    {pill.parentName}
-                                  </span>
-                                  <span className="text-[var(--text-muted)] shrink-0">
-                                    {action}
-                                  </span>
-                                  <span className="flex gap-[2px] shrink-0 ml-auto">
-                                    {matchingKids.map((kid) => {
-                                      const slot = kidSlot(kid, kids);
-                                      const chipClass =
-                                        slot === "ethan" || slot === "harrison"
-                                          ? kidIndicatorClass[slot]
-                                          : "";
-                                      return (
-                                        <span
-                                          key={kid.id}
-                                          title={kid.name}
-                                          className={`
-                                            inline-flex items-center justify-center
-                                            w-[14px] h-[14px] rounded-sm
-                                            text-[8px] font-bold text-white
-                                            ${chipClass}
-                                          `}
-                                          style={
-                                            chipClass
-                                              ? undefined
-                                              : { background: kid.color }
-                                          }
-                                        >
-                                          {kid.name.charAt(0).toUpperCase()}
-                                        </span>
-                                      );
-                                    })}
-                                  </span>
-                                </div>
-                              );
-                            }
-                            // event
-                            const evt = item.evt;
+                          {visibleEvents.map((evt) => {
                             const typeColor = getEventTypeColor(evt);
                             const kidBadge = singleKidIndicator(evt);
                             const dashed = evt._tentative;
@@ -772,12 +677,95 @@ export default function MonthView({
                       );
                     })()}
 
-                    {/* All handoff information is rendered inline above
-                        as turnoverPills. The whole-mode background
-                        gradient still shows the boundary visually; the
-                        floating pill on that boundary is gone in favor
-                        of the more explicit "[time] [parent] [action]
-                        [kids]" pill format. */}
+                    {/* Floating turnover pill(s) — absolutely positioned
+                        on the band boundary at the handoff time. Reads
+                        as one continuous horizontal rule with the band
+                        divider passing through the pill's middle.
+                        Format mirrors a regular event pill:
+                          [time]  [E][H]  Pick Up (Patrick) */}
+                    {view.turnoverPills.map((pill) => {
+                      const matchingKids = kids.filter((k) =>
+                        pill.kidIds.includes(k.id)
+                      );
+                      const action = pill.isPickup ? "Pick Up" : "Drop-off";
+                      // Clamp so the pill never overlaps the day-number
+                      // strip at the top or runs off the bottom edge.
+                      const clampedTop = Math.max(
+                        20,
+                        Math.min(92, pill.boundaryPct)
+                      );
+                      return (
+                        <div
+                          key={`t-${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
+                          className="absolute left-1.5 right-1.5 pointer-events-none"
+                          style={{
+                            top: `${clampedTop}%`,
+                            transform: "translateY(-50%)",
+                            zIndex: 5,
+                          }}
+                        >
+                          <div
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              if (pill.events[0]) onEventClick(pill.events[0]);
+                            }}
+                            className="
+                              pointer-events-auto
+                              flex items-center gap-1
+                              text-[11px] font-medium leading-tight
+                              bg-white text-[var(--ink)]
+                              px-1.5 py-[3px]
+                              border-l-[3px]
+                              shadow-[0_0_0_1px_var(--border)]
+                              cursor-pointer hover:translate-x-[1px] transition-transform
+                              overflow-hidden
+                            "
+                            style={{ borderLeftColor: pill.parentSwatch }}
+                            title={`${pill.time} ${action} (${pill.parentName})`}
+                          >
+                            <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
+                              {pill.time}
+                            </span>
+                            <span className="flex gap-[2px] shrink-0">
+                              {matchingKids.map((kid) => {
+                                const slot = kidSlot(kid, kids);
+                                const chipClass =
+                                  slot === "ethan" || slot === "harrison"
+                                    ? kidIndicatorClass[slot]
+                                    : "";
+                                return (
+                                  <span
+                                    key={kid.id}
+                                    title={kid.name}
+                                    className={`
+                                      inline-flex items-center justify-center
+                                      w-[14px] h-[14px] rounded-sm
+                                      text-[8px] font-bold text-white
+                                      ${chipClass}
+                                    `}
+                                    style={
+                                      chipClass
+                                        ? undefined
+                                        : { background: kid.color }
+                                    }
+                                  >
+                                    {kid.name.charAt(0).toUpperCase()}
+                                  </span>
+                                );
+                              })}
+                            </span>
+                            <span className="truncate">
+                              {action}{" "}
+                              <span
+                                className="text-[var(--text-muted)] font-medium"
+                              >
+                                ({pill.parentName})
+                              </span>
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
