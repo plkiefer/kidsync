@@ -42,6 +42,7 @@ import EventDetailModal from "@/components/EventDetailModal";
 import TravelModal from "@/components/TravelModal";
 import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
+import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -79,6 +80,8 @@ export default function CalendarPage() {
     createEventsBatch,
     updateEvent,
     updateEventsBatch,
+    createSegment,
+    updateSegment,
     deleteEvent,
     saveTravelDetails,
     getTravelDetails,
@@ -130,6 +133,11 @@ export default function CalendarPage() {
   const [showTripCreation, setShowTripCreation] = useState(false);
   const [tripCreationInitialTitle, setTripCreationInitialTitle] = useState("");
   const [openTripId, setOpenTripId] = useState<string | null>(null);
+  const [lodgingForm, setLodgingForm] = useState<{
+    tripId: string;
+    editing: CalendarEvent | null;
+    prefillCity?: { city: string; state: string; country: string };
+  } | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
@@ -1048,20 +1056,75 @@ export default function CalendarPage() {
                 setOpenTripId(null);
                 await refetch();
               }}
-              onAddLodging={() => {
-                // TODO chunk 2 — wire LodgingForm
-                alert("Lodging form ships in chunk 2.");
-              }}
+              onAddLodging={() =>
+                setLodgingForm({ tripId: trip.id, editing: null })
+              }
               onAddTransport={() => {
                 // TODO Phase 2
                 alert("Transport forms ship in Phase 2.");
               }}
-              onEditSegment={(_seg) => {
-                // TODO chunk 2 — wire segment edit
+              onEditSegment={(seg) => {
+                if (seg.segment_type === "lodging") {
+                  setLodgingForm({ tripId: trip.id, editing: seg });
+                }
               }}
               onDeleteSegment={async (segId) => {
                 await deleteEvent(segId);
                 await recomputeTripDates(trip.id);
+              }}
+            />
+          );
+        })()}
+
+      {/* Lodging form — opens from TripView's "+ Add stay" or by
+          clicking an existing lodging row to edit it. */}
+      {lodgingForm &&
+        (() => {
+          const trip = trips.find((t) => t.id === lodgingForm.tripId);
+          if (!trip) return null;
+          return (
+            <LodgingForm
+              trip={trip}
+              lodging={lodgingForm.editing}
+              kids={kids}
+              members={members}
+              prefillCity={lodgingForm.prefillCity}
+              onClose={() => setLodgingForm(null)}
+              onSave={async (input: NewLodgingInput) => {
+                if (lodgingForm.editing) {
+                  await updateSegment(lodgingForm.editing.id, {
+                    title: input.title,
+                    starts_at: input.starts_at,
+                    ends_at: input.ends_at,
+                    time_zone: input.time_zone,
+                    segment_data: input.segment_data,
+                    member_ids: input.member_ids,
+                    kid_ids: input.kid_ids,
+                    guest_ids: input.guest_ids,
+                  });
+                } else {
+                  await createSegment({
+                    trip_id: trip.id,
+                    segment_type: "lodging",
+                    segment_data: input.segment_data,
+                    title: input.title,
+                    starts_at: input.starts_at,
+                    ends_at: input.ends_at,
+                    time_zone: input.time_zone,
+                    all_day: false,
+                    kid_ids: input.kid_ids,
+                    member_ids: input.member_ids,
+                    guest_ids: input.guest_ids,
+                  });
+                }
+                await recomputeTripDates(trip.id);
+                setLodgingForm(null);
+                await refetch();
+                // Bump status from draft → planned once the user
+                // adds real content.
+                if (trip.status === "draft") {
+                  await updateTrip(trip.id, { status: "planned" });
+                }
               }}
             />
           );

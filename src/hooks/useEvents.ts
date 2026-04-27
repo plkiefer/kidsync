@@ -8,7 +8,29 @@ import {
   EventTravelDetails,
   TravelFormData,
   EventAttachment,
+  SegmentType,
+  SegmentData,
 } from "@/lib/types";
+
+/** Shape passed to createSegment/updateSegment. Mirrors the columns
+ *  added in supabase/add_segment_columns.sql plus the standard event
+ *  fields a segment needs. */
+export interface NewSegmentInput {
+  trip_id: string;
+  segment_type: SegmentType;
+  segment_data: SegmentData;
+  title: string;
+  starts_at: string;
+  ends_at: string;
+  time_zone?: string | null;
+  all_day?: boolean;
+  kid_ids: string[];
+  member_ids: string[];
+  guest_ids: string[];
+  parent_segment_id?: string | null;
+  notes?: string | null;
+  location?: string | null;
+}
 
 interface EventsState {
   events: CalendarEvent[];
@@ -24,6 +46,19 @@ interface EventsState {
   updateEvent: (
     id: string,
     data: Partial<EventFormData>
+  ) => Promise<CalendarEvent | null>;
+  /** Create a calendar_event row that's also a trip segment.
+   *  Bypasses the EventFormData shape (which can't carry segment-
+   *  specific columns) so we can write trip_id, segment_type,
+   *  segment_data, member_ids, guest_ids, parent_segment_id. */
+  createSegment: (
+    data: NewSegmentInput
+  ) => Promise<CalendarEvent | null>;
+  /** Update a segment in place — same fields as createSegment plus
+   *  the row id. */
+  updateSegment: (
+    id: string,
+    patch: Partial<NewSegmentInput>
   ) => Promise<CalendarEvent | null>;
   deleteEvent: (id: string) => Promise<boolean>;
   getEvent: (id: string) => Promise<CalendarEvent | null>;
@@ -955,6 +990,118 @@ export function useEvents(
     [supabase]
   );
 
+  // ─── Trip segments ──────────────────────────────────────
+  // Direct insert/update against calendar_events with segment-
+  // specific columns. Bypasses the EventFormData shape — segments
+  // carry trip_id, segment_type, segment_data, member_ids, guest_ids,
+  // parent_segment_id which aren't in EventFormData.
+
+  const resolveAuthCtx = useCallback(async (): Promise<{
+    userId: string;
+    familyId: string;
+  }> => {
+    if (authUserId && authFamilyId) {
+      return { userId: authUserId, familyId: authFamilyId };
+    }
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("family_id")
+      .eq("id", user.id)
+      .single();
+    if (!profile) throw new Error("Profile not found");
+    return { userId: user.id, familyId: profile.family_id };
+  }, [supabase, authUserId, authFamilyId]);
+
+  const createSegment = useCallback(
+    async (data: NewSegmentInput): Promise<CalendarEvent | null> => {
+      try {
+        const { userId, familyId } = await resolveAuthCtx();
+        const { data: newRow, error: createErr } = await supabase
+          .from("calendar_events")
+          .insert({
+            family_id: familyId,
+            kid_id: data.kid_ids[0] || null,
+            kid_ids: data.kid_ids,
+            member_ids: data.member_ids,
+            guest_ids: data.guest_ids,
+            title: data.title,
+            // All trip segments use event_type='travel' so existing
+            // type-aware logic (icons, default coloring) keeps working.
+            event_type: "travel",
+            starts_at: data.starts_at,
+            ends_at: data.ends_at,
+            all_day: data.all_day ?? false,
+            time_zone: data.time_zone ?? null,
+            location: data.location ?? null,
+            notes: data.notes ?? null,
+            trip_id: data.trip_id,
+            segment_type: data.segment_type,
+            segment_data: data.segment_data,
+            parent_segment_id: data.parent_segment_id ?? null,
+            created_by: userId,
+          })
+          .select("*")
+          .single();
+        if (createErr) throw createErr;
+        return newRow as CalendarEvent;
+      } catch (err) {
+        console.error("Error creating segment:", err);
+        setError(err instanceof Error ? err.message : "Failed to create segment");
+        return null;
+      }
+    },
+    [supabase, resolveAuthCtx]
+  );
+
+  const updateSegment = useCallback(
+    async (
+      id: string,
+      patch: Partial<NewSegmentInput>
+    ): Promise<CalendarEvent | null> => {
+      try {
+        const { userId } = await resolveAuthCtx();
+        const payload: Record<string, unknown> = { updated_by: userId };
+        if (patch.title !== undefined) payload.title = patch.title;
+        if (patch.starts_at !== undefined) payload.starts_at = patch.starts_at;
+        if (patch.ends_at !== undefined) payload.ends_at = patch.ends_at;
+        if (patch.time_zone !== undefined) payload.time_zone = patch.time_zone;
+        if (patch.all_day !== undefined) payload.all_day = patch.all_day;
+        if (patch.notes !== undefined) payload.notes = patch.notes;
+        if (patch.location !== undefined) payload.location = patch.location;
+        if (patch.kid_ids !== undefined) {
+          payload.kid_ids = patch.kid_ids;
+          payload.kid_id = patch.kid_ids[0] || null;
+        }
+        if (patch.member_ids !== undefined) payload.member_ids = patch.member_ids;
+        if (patch.guest_ids !== undefined) payload.guest_ids = patch.guest_ids;
+        if (patch.segment_data !== undefined)
+          payload.segment_data = patch.segment_data;
+        if (patch.segment_type !== undefined)
+          payload.segment_type = patch.segment_type;
+        if (patch.parent_segment_id !== undefined)
+          payload.parent_segment_id = patch.parent_segment_id;
+
+        const { data: updated, error: updateErr } = await supabase
+          .from("calendar_events")
+          .update(payload)
+          .eq("id", id)
+          .select("*")
+          .single();
+        if (updateErr) throw updateErr;
+        return updated as CalendarEvent;
+      } catch (err) {
+        console.error("Error updating segment:", err);
+        setError(err instanceof Error ? err.message : "Failed to update segment");
+        return null;
+      }
+    },
+    [supabase, resolveAuthCtx]
+  );
+
   return {
     events,
     loading,
@@ -963,6 +1110,8 @@ export function useEvents(
     createEventsBatch,
     updateEvent,
     updateEventsBatch,
+    createSegment,
+    updateSegment,
     deleteEvent,
     getEvent,
     saveTravelDetails,
