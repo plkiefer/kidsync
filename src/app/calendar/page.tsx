@@ -7,7 +7,17 @@ import { useFamily } from "@/hooks/useFamily";
 import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { useCustody } from "@/hooks/useCustody";
-import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds, OverrideStatus } from "@/lib/types";
+import { useTrips, NewTripInput } from "@/hooks/useTrips";
+import {
+  CalendarEvent,
+  EventFormData,
+  TravelFormData,
+  EventAttachment,
+  getEventKidIds,
+  OverrideStatus,
+  Trip,
+  isTripSegment,
+} from "@/lib/types";
 import { resolvePalette, DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR } from "@/lib/palette";
 import {
   formatMonthYear,
@@ -30,6 +40,8 @@ import ListView from "@/components/ListView";
 import EventModal from "@/components/EventModal";
 import EventDetailModal from "@/components/EventDetailModal";
 import TravelModal from "@/components/TravelModal";
+import TripCreationModal from "@/components/TripCreationModal";
+import TripView from "@/components/TripView";
 import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
@@ -88,6 +100,13 @@ export default function CalendarPage() {
     notifyCustodyChange,
     refetchCustody,
   } = useCustody(dataReady);
+  const {
+    trips,
+    createTrip,
+    updateTrip,
+    deleteTrip,
+    recomputeTripDates,
+  } = useTrips(dataReady, user?.id, profile?.family_id);
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewMode>("month");
@@ -107,6 +126,10 @@ export default function CalendarPage() {
   const [showCustodySettings, setShowCustodySettings] = useState(false);
   const [showCustodyOverrides, setShowCustodyOverrides] = useState(false);
   const [showScheduleImport, setShowScheduleImport] = useState(false);
+  // Trip flow state
+  const [showTripCreation, setShowTripCreation] = useState(false);
+  const [tripCreationInitialTitle, setTripCreationInitialTitle] = useState("");
+  const [openTripId, setOpenTripId] = useState<string | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
@@ -227,6 +250,13 @@ export default function CalendarPage() {
   };
 
   const handleEventClick = (event: CalendarEvent) => {
+    // Trip-linked segments open Trip View instead of the regular
+    // event detail modal — the user wants to see all the trip's
+    // segments together, not just this one chip.
+    if (isTripSegment(event) && event.trip_id) {
+      setOpenTripId(event.trip_id);
+      return;
+    }
     setEditingEvent(event);
     setInitialDate(undefined);
     setShowDetailModal(true);
@@ -964,8 +994,78 @@ export default function CalendarPage() {
             setEditingEvent(null);
           }}
           onOpenTravel={handleOpenTravel}
+          onCreateTripRequested={(initialTitle) => {
+            setShowEventModal(false);
+            setEditingEvent(null);
+            setTripCreationInitialTitle(initialTitle);
+            setShowTripCreation(true);
+          }}
         />
       )}
+
+      {/* Trip creation modal — opened from the EventModal's Travel
+          pill or the calendar's "+ Trip" button. Drops the user into
+          Trip View as soon as the trip is created. */}
+      {showTripCreation && (
+        <TripCreationModal
+          kids={kids}
+          members={members}
+          currentUserId={user?.id}
+          initialTitle={tripCreationInitialTitle}
+          onClose={() => {
+            setShowTripCreation(false);
+            setTripCreationInitialTitle("");
+          }}
+          onCreate={async (input: NewTripInput) => createTrip(input)}
+          onCreated={(trip: Trip) => {
+            setShowTripCreation(false);
+            setTripCreationInitialTitle("");
+            setOpenTripId(trip.id);
+          }}
+        />
+      )}
+
+      {/* Trip View modal — opened by clicking a trip ribbon, by
+          clicking a trip-linked segment, or right after a trip is
+          created. */}
+      {openTripId &&
+        (() => {
+          const trip = trips.find((t) => t.id === openTripId);
+          if (!trip) return null;
+          const segments = events.filter((e) => e.trip_id === trip.id);
+          return (
+            <TripView
+              trip={trip}
+              segments={segments}
+              kids={kids}
+              members={members}
+              onClose={() => setOpenTripId(null)}
+              onUpdateTrip={async (patch) => {
+                await updateTrip(trip.id, patch);
+              }}
+              onDeleteTrip={async () => {
+                await deleteTrip(trip.id);
+                setOpenTripId(null);
+                await refetch();
+              }}
+              onAddLodging={() => {
+                // TODO chunk 2 — wire LodgingForm
+                alert("Lodging form ships in chunk 2.");
+              }}
+              onAddTransport={() => {
+                // TODO Phase 2
+                alert("Transport forms ship in Phase 2.");
+              }}
+              onEditSegment={(_seg) => {
+                // TODO chunk 2 — wire segment edit
+              }}
+              onDeleteSegment={async (segId) => {
+                await deleteEvent(segId);
+                await recomputeTripDates(trip.id);
+              }}
+            />
+          );
+        })()}
 
       {showTravelModal && (
         <TravelModal

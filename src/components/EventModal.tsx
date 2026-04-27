@@ -47,6 +47,10 @@ interface EventModalProps {
     dropoffLocation: string;
     notes: string;
   }) => void;
+  /** When the user picks "Travel" on a NEW event, the modal redirects
+   *  to the Trip creation flow. Calendar page handles the redirect:
+   *  closes EventModal, opens TripCreationModal. */
+  onCreateTripRequested?: (initialTitle: string) => void;
 }
 
 const EVENT_TYPES = Object.entries(EVENT_TYPE_CONFIG) as [
@@ -63,6 +67,7 @@ export default function EventModal({
   onClose,
   onOpenTravel,
   onCreateCustodyExchange,
+  onCreateTripRequested,
 }: EventModalProps) {
   const isNew = !event?.id;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -266,7 +271,22 @@ export default function EventModal({
               <button
                 key={type}
                 type="button"
-                onClick={() => update("event_type", type)}
+                onClick={() => {
+                  // Travel for a NEW event redirects to the Trip
+                  // creation flow. Editing an existing trip-linked
+                  // event opens TripView (handled by the calendar
+                  // page) — by the time we're here on an edit, the
+                  // type pill is informational only.
+                  if (
+                    type === "travel" &&
+                    isNew &&
+                    onCreateTripRequested
+                  ) {
+                    onCreateTripRequested(form.title || "");
+                    return;
+                  }
+                  update("event_type", type);
+                }}
                 className={`
                   inline-flex items-center gap-1 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border
                   ${

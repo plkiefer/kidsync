@@ -1,0 +1,617 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import {
+  X,
+  MapPin,
+  Plane as PlaneIcon,
+  Scale,
+  Paperclip,
+  Trash2,
+  Pencil,
+} from "lucide-react";
+import {
+  CalendarEvent,
+  Kid,
+  Profile,
+  Trip,
+  TripGuest,
+  TripType,
+  isLodgingSegment,
+} from "@/lib/types";
+import {
+  formatShortDate,
+  parseTimestamp,
+} from "@/lib/dates";
+
+interface TripViewProps {
+  trip: Trip;
+  /** All segments belonging to this trip. Filtered upstream. */
+  segments: CalendarEvent[];
+  kids: Kid[];
+  members: Profile[];
+  onClose: () => void;
+  onUpdateTrip: (patch: Partial<Trip>) => Promise<void>;
+  onDeleteTrip: () => Promise<void>;
+  /** Add lodging — opens lodging form (built in chunk 2). */
+  onAddLodging?: () => void;
+  /** Add transport segment — built in Phase 2. */
+  onAddTransport?: (kind: "flight" | "drive" | "train" | "ferry" | "cruise") => void;
+  /** Open existing segment for editing. */
+  onEditSegment?: (segment: CalendarEvent) => void;
+  /** Delete a segment from the trip. */
+  onDeleteSegment?: (segmentId: string) => Promise<void>;
+}
+
+const TRIP_TYPE_LABELS: Record<TripType, string> = {
+  vacation: "Vacation",
+  custody_time: "Custody time",
+  visit_family: "Visit family",
+  business: "Business",
+  other: "Other",
+};
+
+/**
+ * Trip View modal — main editing surface for a trip.
+ *
+ * Sections (plan §5.1):
+ *   1. Header (title, type, roster, dates, status)
+ *   2. Stays   — lodging-by-city ribbons (built out in chunk 2)
+ *   3. Transportation — flights/drives/trains/ferries/cruises (Phase 2)
+ *   4. Custody implications (Phase 2)
+ *   5. Files (Phase 5)
+ *
+ * This is the SHELL — sections render with empty states + CTAs.
+ * Subsequent chunks fill in the section editors.
+ */
+export default function TripView({
+  trip,
+  segments,
+  kids,
+  members,
+  onClose,
+  onUpdateTrip,
+  onDeleteTrip,
+  onAddLodging,
+  onAddTransport,
+  onEditSegment,
+  onDeleteSegment,
+}: TripViewProps) {
+  // Editable header state — autosave on blur
+  const [title, setTitle] = useState(trip.title);
+  const [tripType, setTripType] = useState<TripType>(trip.trip_type);
+
+  // Group segments by type for section rendering
+  const lodgings = useMemo(
+    () => segments.filter((s) => s.segment_type === "lodging"),
+    [segments]
+  );
+  const transports = useMemo(
+    () =>
+      segments
+        .filter((s) =>
+          [
+            "flight",
+            "drive",
+            "train",
+            "ferry",
+            "cruise",
+            "cruise_port_stop",
+            "other_transport",
+          ].includes(s.segment_type ?? "")
+        )
+        .sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+    [segments]
+  );
+
+  const rosterKids = kids.filter((k) => trip.kid_ids.includes(k.id));
+  const rosterMembers = members.filter((m) => trip.member_ids.includes(m.id));
+
+  // City-grouped stays (display only — same logic that drives the
+  // calendar ribbon labels). Group lodgings by (city, contiguous date
+  // range); each group is one "stay."
+  const stayGroups = useMemo(
+    () => groupLodgingsByCity(lodgings),
+    [lodgings]
+  );
+
+  const dateRange =
+    trip.starts_at && trip.ends_at
+      ? `${formatShortDate(trip.starts_at)} – ${formatShortDate(trip.ends_at)}`
+      : "Dates TBD";
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[var(--bg)] w-full max-w-2xl max-h-[92vh] flex flex-col border border-[var(--border-strong)] shadow-[var(--shadow-modal)] animate-scale-in"
+      >
+        {/* Header */}
+        <div className="flex items-start gap-3 px-6 py-4 border-b border-[var(--border-strong)]">
+          <PlaneIcon className="w-5 h-5 text-[var(--text-muted)] mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onBlur={() => {
+                if (title.trim() && title !== trip.title) {
+                  onUpdateTrip({ title: title.trim() });
+                }
+              }}
+              className="w-full text-xl font-display text-[var(--ink)] bg-transparent border-0 focus:outline-none focus:border-b focus:border-[var(--action)] pb-0.5"
+              placeholder="Untitled trip"
+            />
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)]">
+                {TRIP_TYPE_LABELS[tripType]}
+              </span>
+              <span className="text-[var(--text-faint)]">·</span>
+              <span className="text-[12px] text-[var(--text-muted)]">
+                {dateRange}
+              </span>
+              {trip.status === "draft" && (
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] px-1.5 py-0.5 bg-[var(--accent-amber-tint)] text-[var(--accent-amber)] rounded-sm">
+                  draft
+                </span>
+              )}
+              {trip.status === "canceled" && (
+                <span className="text-[10px] font-bold uppercase tracking-[0.12em] px-1.5 py-0.5 bg-[var(--accent-red-tint)] text-[var(--accent-red)] rounded-sm">
+                  canceled
+                </span>
+              )}
+            </div>
+            <RosterRow
+              kids={rosterKids}
+              members={rosterMembers}
+              guests={trip.guests}
+            />
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors shrink-0 mt-0.5"
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto">
+          {/* ─── Stays ───────────────────────── */}
+          <Section
+            icon={<MapPin size={14} />}
+            title="Stays"
+            actionLabel="+ Add stay"
+            onAction={onAddLodging}
+          >
+            {stayGroups.length === 0 ? (
+              <EmptyState
+                primary="No stays yet"
+                secondary="Add a city you'll be staying in. Lodging details (name, address, confirmation) can be filled in later."
+                ctaLabel="Add your first stay"
+                onCta={onAddLodging}
+              />
+            ) : (
+              <div className="space-y-3">
+                {stayGroups.map((group) => (
+                  <StayGroupRow
+                    key={group.id}
+                    group={group}
+                    onEdit={onEditSegment}
+                    onDelete={onDeleteSegment}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* ─── Transportation ──────────────── */}
+          <Section
+            icon={<PlaneIcon size={14} />}
+            title="Transportation"
+            actionLabel="+ Add"
+            actionMenu={[
+              { label: "Flight", onClick: () => onAddTransport?.("flight") },
+              { label: "Drive", onClick: () => onAddTransport?.("drive") },
+              { label: "Train", onClick: () => onAddTransport?.("train") },
+              { label: "Ferry", onClick: () => onAddTransport?.("ferry") },
+              { label: "Cruise", onClick: () => onAddTransport?.("cruise") },
+            ]}
+          >
+            {transports.length === 0 ? (
+              <p className="text-[12px] text-[var(--text-faint)] py-2">
+                Coming in Phase 2 — flights, drives, trains, ferries, cruises.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {transports.map((t) => (
+                  <TransportRow
+                    key={t.id}
+                    segment={t}
+                    onEdit={onEditSegment}
+                    onDelete={onDeleteSegment}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          {/* ─── Custody implications ────────── */}
+          <Section icon={<Scale size={14} />} title="Custody">
+            <p className="text-[12px] text-[var(--text-faint)] py-2">
+              Phase 2 — auto-detect when override is needed and propose dates.
+            </p>
+          </Section>
+
+          {/* ─── Files ───────────────────────── */}
+          <Section
+            icon={<Paperclip size={14} />}
+            title="Files"
+            actionLabel="+ Attach file"
+          >
+            <p className="text-[12px] text-[var(--text-faint)] py-2">
+              Phase 5 — confirmation PDFs, ticket scans, etc.
+            </p>
+          </Section>
+
+          {/* ─── Footer (delete) ─────────────── */}
+          <div className="px-6 py-4 border-t border-[var(--border)]">
+            <button
+              onClick={() => {
+                if (confirm("Delete this trip and all its segments?")) {
+                  onDeleteTrip();
+                }
+              }}
+              className="text-[var(--accent-red)] hover:text-[var(--accent-red)] text-xs font-semibold inline-flex items-center gap-1.5"
+            >
+              <Trash2 size={12} /> Delete trip
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Subcomponents ─────────────────────────────────────────────
+
+function Section({
+  icon,
+  title,
+  children,
+  actionLabel,
+  onAction,
+  actionMenu,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+  actionLabel?: string;
+  onAction?: () => void;
+  actionMenu?: { label: string; onClick?: () => void }[];
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <div className="px-6 py-5 border-b border-[var(--border)]">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-6 h-6 rounded-sm bg-[var(--bg-sunken)] flex items-center justify-center text-[var(--text-muted)] shrink-0">
+          {icon}
+        </div>
+        <h3 className="text-[11px] font-bold tracking-[0.14em] uppercase text-[var(--text-faint)] flex-1">
+          {title}
+        </h3>
+        {actionLabel && onAction && (
+          <button
+            type="button"
+            onClick={onAction}
+            className="text-[11px] font-semibold text-[var(--action)] hover:text-[var(--action-hover)] transition-colors"
+          >
+            {actionLabel}
+          </button>
+        )}
+        {actionMenu && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="text-[11px] font-semibold text-[var(--action)] hover:text-[var(--action-hover)] transition-colors"
+            >
+              + Add
+            </button>
+            {menuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={() => setMenuOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 z-20 bg-[var(--bg)] border border-[var(--border-strong)] shadow-[var(--shadow-md)] rounded-sm py-1 min-w-[120px]">
+                  {actionMenu.map((m) => (
+                    <button
+                      key={m.label}
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        m.onClick?.();
+                      }}
+                      className="w-full text-left px-3 py-1.5 text-[12px] text-[var(--ink)] hover:bg-[var(--bg-sunken)] transition-colors"
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function EmptyState({
+  primary,
+  secondary,
+  ctaLabel,
+  onCta,
+}: {
+  primary: string;
+  secondary?: string;
+  ctaLabel?: string;
+  onCta?: () => void;
+}) {
+  return (
+    <div className="text-center py-6 px-3">
+      <p className="text-[13px] font-semibold text-[var(--ink)] mb-1">
+        {primary}
+      </p>
+      {secondary && (
+        <p className="text-[11px] text-[var(--text-muted)] mb-3 leading-relaxed max-w-md mx-auto">
+          {secondary}
+        </p>
+      )}
+      {ctaLabel && onCta && (
+        <button
+          type="button"
+          onClick={onCta}
+          className="px-4 py-2 bg-[var(--ink)] text-[var(--accent-ink)] text-[12px] font-semibold rounded-sm hover:bg-[var(--accent-hover)] transition-colors"
+        >
+          {ctaLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function RosterRow({
+  kids,
+  members,
+  guests,
+}: {
+  kids: Kid[];
+  members: Profile[];
+  guests: TripGuest[];
+}) {
+  const total = kids.length + members.length + guests.length;
+  if (total === 0) {
+    return (
+      <p className="text-[11px] text-[var(--text-faint)] mt-1">
+        No travelers yet
+      </p>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+      {members.map((m) => (
+        <span
+          key={m.id}
+          className="inline-flex items-center px-2 py-0.5 rounded-sm bg-[var(--bg-sunken)] text-[10.5px] font-medium text-[var(--ink)]"
+        >
+          {m.full_name?.split(" ")[0] || m.email}
+        </span>
+      ))}
+      {kids.map((k) => (
+        <span
+          key={k.id}
+          className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10.5px] font-bold text-white"
+          style={{ backgroundColor: k.color }}
+        >
+          {k.name}
+        </span>
+      ))}
+      {guests.map((g) => (
+        <span
+          key={g.id}
+          className="inline-flex items-center px-2 py-0.5 rounded-sm border border-[var(--border)] text-[10.5px] font-medium text-[var(--text-muted)]"
+          title={`${g.relationship}${g.phone ? ` · ${g.phone}` : ""}`}
+        >
+          {g.name}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+interface StayGroup {
+  id: string;
+  city: string;
+  state: string;
+  country: string;
+  starts_at: string;
+  ends_at: string;
+  lodgings: CalendarEvent[];
+}
+
+/**
+ * Group lodgings by city and contiguous date range so the UI mirrors
+ * how the calendar will render them (one ribbon per city-stay).
+ *
+ * v1 grouping: same (city, state, country) AND any date overlap or
+ * touching ranges → single group. Sequential same-city stays without
+ * a gap collapse into one group.
+ */
+function groupLodgingsByCity(lodgings: CalendarEvent[]): StayGroup[] {
+  if (lodgings.length === 0) return [];
+  const sorted = [...lodgings].sort((a, b) =>
+    a.starts_at.localeCompare(b.starts_at)
+  );
+  const groups: StayGroup[] = [];
+  for (const lodging of sorted) {
+    if (!isLodgingSegment(lodging)) continue;
+    const data = lodging.segment_data;
+    const city = data.city || "";
+    const state = data.state || "";
+    const country = data.country || "";
+    const last = groups[groups.length - 1];
+    const sameCity =
+      last && last.city === city && last.state === state && last.country === country;
+    const datesTouch =
+      last &&
+      // current starts before or right after last ends
+      lodging.starts_at <= last.ends_at;
+    if (sameCity && datesTouch) {
+      last.ends_at =
+        lodging.ends_at > last.ends_at ? lodging.ends_at : last.ends_at;
+      last.lodgings.push(lodging);
+    } else {
+      groups.push({
+        id: lodging.id,
+        city,
+        state,
+        country,
+        starts_at: lodging.starts_at,
+        ends_at: lodging.ends_at,
+        lodgings: [lodging],
+      });
+    }
+  }
+  return groups;
+}
+
+function StayGroupRow({
+  group,
+  onEdit,
+  onDelete,
+}: {
+  group: StayGroup;
+  onEdit?: (s: CalendarEvent) => void;
+  onDelete?: (id: string) => Promise<void>;
+}) {
+  const cityLabel = formatCityLabel(group.city, group.state, group.country);
+  return (
+    <div className="border border-[var(--border)] rounded-sm overflow-hidden">
+      <div className="px-3 py-2 bg-[var(--bg-sunken)] flex items-center gap-2">
+        <span className="text-[12px] font-semibold text-[var(--ink)] flex-1">
+          📍 {cityLabel || "Untitled location"}
+        </span>
+        <span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+          {formatShortDate(group.starts_at)} – {formatShortDate(group.ends_at)}
+        </span>
+      </div>
+      <div className="divide-y divide-[var(--border)]">
+        {group.lodgings.map((l) => {
+          if (!isLodgingSegment(l)) return null;
+          const d = l.segment_data;
+          return (
+            <div
+              key={l.id}
+              className="px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-sunken)] transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-medium text-[var(--ink)] truncate">
+                  {d.name || "Untitled lodging"}
+                </div>
+                {d.address && (
+                  <div className="text-[10.5px] text-[var(--text-muted)] truncate">
+                    {d.address}
+                  </div>
+                )}
+              </div>
+              {onEdit && (
+                <button
+                  onClick={() => onEdit(l)}
+                  className="text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors p-1"
+                  aria-label="Edit lodging"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={() => {
+                    if (confirm("Remove this lodging?")) onDelete(l.id);
+                  }}
+                  className="text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors p-1"
+                  aria-label="Delete lodging"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TransportRow({
+  segment,
+  onEdit,
+  onDelete,
+}: {
+  segment: CalendarEvent;
+  onEdit?: (s: CalendarEvent) => void;
+  onDelete?: (id: string) => Promise<void>;
+}) {
+  const date = formatShortDate(segment.starts_at);
+  const time = parseTimestamp(segment.starts_at).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return (
+    <div className="border border-[var(--border)] rounded-sm px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-sunken)] transition-colors">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)] shrink-0 w-14">
+        {segment.segment_type}
+      </span>
+      <span className="text-[12px] text-[var(--ink)] flex-1 truncate">
+        {segment.title}
+      </span>
+      <span className="text-[10.5px] text-[var(--text-muted)] tabular-nums shrink-0">
+        {date} {time}
+      </span>
+      {onEdit && (
+        <button
+          onClick={() => onEdit(segment)}
+          className="text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors p-1"
+          aria-label="Edit segment"
+        >
+          <Pencil size={12} />
+        </button>
+      )}
+      {onDelete && (
+        <button
+          onClick={() => {
+            if (confirm("Remove this segment?")) onDelete(segment.id);
+          }}
+          className="text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors p-1"
+          aria-label="Delete segment"
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatCityLabel(city: string, state: string, country: string): string {
+  if (!city) return "";
+  if (state) return `${city}, ${state}`;
+  if (country && country !== "USA" && country !== "United States") {
+    return `${city}, ${country}`;
+  }
+  return city;
+}

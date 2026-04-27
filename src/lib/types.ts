@@ -582,6 +582,80 @@ export function getEventKidIds(event: CalendarEvent): string[] {
   return [event.kid_id];
 }
 
+// ── Segment type guards ─────────────────────────────────────
+// Narrow CalendarEvent.segment_data by segment_type. Use these
+// instead of casting — TypeScript can otherwise see that segment_data
+// is the SegmentData union (or null) and refuse direct field access.
+
+export interface LodgingSegment extends CalendarEvent {
+  segment_type: "lodging";
+  segment_data: LodgingSegmentData;
+}
+export function isLodgingSegment(e: CalendarEvent): e is LodgingSegment {
+  return e.segment_type === "lodging" && e.segment_data != null;
+}
+
+export interface FlightSegment extends CalendarEvent {
+  segment_type: "flight";
+  segment_data: FlightSegmentData;
+}
+export function isFlightSegment(e: CalendarEvent): e is FlightSegment {
+  return e.segment_type === "flight" && e.segment_data != null;
+}
+
+export interface DriveSegment extends CalendarEvent {
+  segment_type: "drive";
+  segment_data: DriveSegmentData;
+}
+export function isDriveSegment(e: CalendarEvent): e is DriveSegment {
+  return e.segment_type === "drive" && e.segment_data != null;
+}
+
+export interface TrainSegment extends CalendarEvent {
+  segment_type: "train";
+  segment_data: TrainSegmentData;
+}
+export function isTrainSegment(e: CalendarEvent): e is TrainSegment {
+  return e.segment_type === "train" && e.segment_data != null;
+}
+
+export interface FerrySegment extends CalendarEvent {
+  segment_type: "ferry";
+  segment_data: FerrySegmentData;
+}
+export function isFerrySegment(e: CalendarEvent): e is FerrySegment {
+  return e.segment_type === "ferry" && e.segment_data != null;
+}
+
+export interface CruiseSegment extends CalendarEvent {
+  segment_type: "cruise";
+  segment_data: CruiseSegmentData;
+}
+export function isCruiseSegment(e: CalendarEvent): e is CruiseSegment {
+  return e.segment_type === "cruise" && e.segment_data != null;
+}
+
+export interface CruisePortStopSegment extends CalendarEvent {
+  segment_type: "cruise_port_stop";
+  segment_data: CruisePortStopSegmentData;
+}
+export function isCruisePortStopSegment(
+  e: CalendarEvent
+): e is CruisePortStopSegment {
+  return e.segment_type === "cruise_port_stop" && e.segment_data != null;
+}
+
+/** Any transport-type segment (everything except lodging). */
+export function isTransportSegment(e: CalendarEvent): boolean {
+  if (!e.segment_type) return false;
+  return e.segment_type !== "lodging";
+}
+
+/** Any trip segment at all. */
+export function isTripSegment(e: CalendarEvent): boolean {
+  return e.trip_id != null && e.segment_type != null;
+}
+
 // ── Sport-specific emoji lookup ────────────────────────────
 
 const SPORT_EMOJIS: [RegExp, string][] = [
