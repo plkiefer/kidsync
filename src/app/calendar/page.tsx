@@ -8,6 +8,7 @@ import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
 import { useCustody } from "@/hooks/useCustody";
 import { CalendarEvent, EventFormData, TravelFormData, EventAttachment, getEventKidIds, OverrideStatus } from "@/lib/types";
+import { paletteBg, DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR } from "@/lib/palette";
 import {
   formatMonthYear,
   addMonths,
@@ -779,30 +780,58 @@ export default function CalendarPage() {
             </div>
           ) : (
             <>
-              {view === "month" && (
-                <MonthView
-                  currentDate={currentDate}
-                  events={filteredEvents}
-                  kids={kids}
-                  onDayClick={handleDayClick}
-                  onEventClick={handleEventClick}
-                  getCustodyForDate={getCustodyForDate}
-                  currentUserId={user?.id}
-                  parentAId={schedules[0]?.parent_a_id}
-                />
-              )}
-              {view === "week" && (
-                <WeekView
-                  currentDate={currentDate}
-                  events={filteredEvents}
-                  kids={kids}
-                  onDayClick={handleDayClick}
-                  onEventClick={handleEventClick}
-                  getCustodyForDate={getCustodyForDate}
-                  currentUserId={user?.id}
-                  parentAId={schedules[0]?.parent_a_id}
-                />
-              )}
+              {(() => {
+                // Resolve each parent's chosen palette key → bg tint.
+                // Pulled from `members` (profiles), keyed off the
+                // schedule's parent_a/parent_b ids. Falls back to the
+                // legacy mist/cream defaults when no preference is set.
+                const parentA = members.find(
+                  (m) => m.id === schedules[0]?.parent_a_id
+                );
+                const parentB = members.find(
+                  (m) => m.id === schedules[0]?.parent_b_id
+                );
+                const parentABg = paletteBg(
+                  parentA?.color_preference,
+                  DEFAULT_PARENT_A_COLOR
+                );
+                const parentBBg = paletteBg(
+                  parentB?.color_preference,
+                  DEFAULT_PARENT_B_COLOR
+                );
+                return (
+                  <>
+                    {view === "month" && (
+                      <MonthView
+                        currentDate={currentDate}
+                        events={filteredEvents}
+                        kids={kids}
+                        onDayClick={handleDayClick}
+                        onEventClick={handleEventClick}
+                        getCustodyForDate={getCustodyForDate}
+                        currentUserId={user?.id}
+                        parentAId={schedules[0]?.parent_a_id}
+                        parentABg={parentABg}
+                        parentBBg={parentBBg}
+                      />
+                    )}
+                    {view === "week" && (
+                      <WeekView
+                        currentDate={currentDate}
+                        events={filteredEvents}
+                        kids={kids}
+                        onDayClick={handleDayClick}
+                        onEventClick={handleEventClick}
+                        getCustodyForDate={getCustodyForDate}
+                        currentUserId={user?.id}
+                        parentAId={schedules[0]?.parent_a_id}
+                        parentABg={parentABg}
+                        parentBBg={parentBBg}
+                      />
+                    )}
+                  </>
+                );
+              })()}
               {view === "list" && (
                 <ListView
                   currentDate={currentDate}

@@ -37,6 +37,10 @@ export interface Profile {
   role: UserRole;
   avatar_url: string | null;
   ical_token: string | null;
+  /** Palette key (see src/lib/palette.ts). Resolved to bg/swatch
+   *  at render time. Optional for back-compat with existing rows
+   *  that haven't been backfilled yet. */
+  color_preference: string | null;
   created_at: string;
   updated_at: string;
 }

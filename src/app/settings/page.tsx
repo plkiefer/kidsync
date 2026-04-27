@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Mail, Lock, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Mail, Lock, Check, Loader2, Palette } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getSupabase } from "@/lib/supabase";
+import { Kid } from "@/lib/types";
+import { DEFAULT_PARENT_A_COLOR, resolvePalette } from "@/lib/palette";
+import ColorPicker from "@/components/ColorPicker";
 
 export default function SettingsPage() {
   const { user, profile, loading } = useAuth();
@@ -25,11 +28,82 @@ export default function SettingsPage() {
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
+  // Color preferences — own color + per-kid colors. Optimistic
+  // updates: write to DB on click, revert on error.
+  const [myColor, setMyColor] = useState<string>(DEFAULT_PARENT_A_COLOR);
+  const [kids, setKids] = useState<Kid[]>([]);
+  const [colorSavingKey, setColorSavingKey] = useState<string | null>(null);
+  const [colorError, setColorError] = useState("");
+
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
   }, [loading, user, router]);
+
+  // Hydrate own color preference from profile
+  useEffect(() => {
+    if (profile?.color_preference) {
+      setMyColor(profile.color_preference);
+    }
+  }, [profile?.color_preference]);
+
+  // Load kids for color editing
+  useEffect(() => {
+    if (!user || !profile?.family_id) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("kids")
+        .select("*")
+        .order("name");
+      if (!cancelled && !error && data) setKids(data as Kid[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, profile?.family_id, supabase]);
+
+  const handleChangeMyColor = useCallback(
+    async (key: string) => {
+      if (!user) return;
+      const previous = myColor;
+      setMyColor(key); // optimistic
+      setColorSavingKey("self");
+      setColorError("");
+      const { error } = await supabase
+        .from("profiles")
+        .update({ color_preference: key })
+        .eq("id", user.id);
+      setColorSavingKey(null);
+      if (error) {
+        setMyColor(previous);
+        setColorError(error.message);
+      }
+    },
+    [user, myColor, supabase]
+  );
+
+  const handleChangeKidColor = useCallback(
+    async (kidId: string, key: string) => {
+      const previous = kids.find((k) => k.id === kidId)?.color;
+      setKids((prev) => prev.map((k) => (k.id === kidId ? { ...k, color: key } : k)));
+      setColorSavingKey(kidId);
+      setColorError("");
+      const { error } = await supabase
+        .from("kids")
+        .update({ color: key })
+        .eq("id", kidId);
+      setColorSavingKey(null);
+      if (error) {
+        setKids((prev) =>
+          prev.map((k) => (k.id === kidId ? { ...k, color: previous ?? k.color } : k))
+        );
+        setColorError(error.message);
+      }
+    },
+    [kids, supabase]
+  );
 
   const handleChangeEmail = async () => {
     setEmailError("");
@@ -122,6 +196,68 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-5">
+        {/* Colors Card */}
+        <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm shadow-[var(--shadow-sm)] p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Palette className="w-4 h-4 text-[var(--color-text-muted)]" />
+            <h2 className="font-display text-base font-semibold text-[var(--color-text)]">
+              Colors
+            </h2>
+          </div>
+          <p className="text-[11px] text-[var(--color-text-faint)] mb-5 ml-6">
+            Pick a color for yourself and each kid. Used to tint days on the calendar
+            and identify whose event is whose. Each parent can choose independently.
+          </p>
+
+          {colorError && (
+            <div
+              className="text-xs rounded-sm p-2.5 border mb-4"
+              style={{
+                color: "var(--accent-red)",
+                background: "var(--accent-red-tint)",
+                borderColor: "color-mix(in srgb, var(--accent-red) 30%, transparent)",
+              }}
+            >
+              {colorError}
+            </div>
+          )}
+
+          <div className="space-y-5">
+            {/* Self */}
+            <ColorRow
+              label="You"
+              sublabel={profile?.full_name ?? user.email ?? ""}
+              previewBg={resolvePalette(myColor).bg}
+              saving={colorSavingKey === "self"}
+            >
+              <ColorPicker
+                value={myColor}
+                onChange={handleChangeMyColor}
+                disabled={colorSavingKey === "self"}
+                label="Your color"
+              />
+            </ColorRow>
+
+            {/* Kids */}
+            {kids.map((kid) => (
+              <ColorRow
+                key={kid.id}
+                label={kid.name}
+                sublabel="Kid"
+                previewBg={resolvePalette(kid.color).bg}
+                saving={colorSavingKey === kid.id}
+              >
+                <ColorPicker
+                  value={kid.color}
+                  onChange={(key) => handleChangeKidColor(kid.id, key)}
+                  disabled={colorSavingKey === kid.id}
+                  label={`${kid.name}'s color`}
+                />
+              </ColorRow>
+            ))}
+          </div>
+        </div>
+
         {/* Change Email Card */}
         <div className="bg-[var(--bg)] border border-[var(--border-strong)] rounded-sm shadow-[var(--shadow-sm)] p-5">
           <div className="flex items-center gap-2 mb-1">
@@ -235,6 +371,44 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── ColorRow ────────────────────────────────────────────────
+// Single row in the colors card: name + day-cell preview swatch
+// on the left, picker grid on the right.
+
+interface ColorRowProps {
+  label: string;
+  sublabel: string;
+  previewBg: string;
+  saving: boolean;
+  children: React.ReactNode;
+}
+
+function ColorRow({ label, sublabel, previewBg, saving, children }: ColorRowProps) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-3">
+        <div
+          className="h-7 w-10 rounded-sm border border-[var(--border)] flex-shrink-0"
+          style={{ backgroundColor: previewBg }}
+          aria-hidden
+        />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium text-[var(--text)] leading-tight">
+            {label}
+          </div>
+          <div className="text-[11px] text-[var(--text-faint)] leading-tight">
+            {sublabel}
+          </div>
+        </div>
+        {saving && (
+          <Loader2 className="w-3.5 h-3.5 text-[var(--text-faint)] animate-spin flex-shrink-0" />
+        )}
+      </div>
+      <div className="ml-[52px]">{children}</div>
     </div>
   );
 }

@@ -21,6 +21,10 @@ interface WeekViewProps {
   currentUserId?: string;
   /** parent_a (alt-weekend parent) UUID. See MonthView for color rationale. */
   parentAId?: string;
+  /** Resolved bg tint (hex) for parent_a's day cells. Defaults to --them-bg. */
+  parentABg?: string;
+  /** Resolved bg tint (hex) for parent_b's day cells. Defaults to --you-bg. */
+  parentBBg?: string;
 }
 
 const HOUR_HEIGHT = 56;
@@ -59,6 +63,8 @@ export default function WeekView({
   getCustodyForDate,
   currentUserId,
   parentAId,
+  parentABg,
+  parentBBg,
 }: WeekViewProps) {
   const days = getWeekDays(currentDate);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -140,13 +146,16 @@ export default function WeekView({
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    // Parent-role-based color identity (see MonthView). parent_a → cool,
-    // parent_b → cream, regardless of which user is signed in.
+    // Parent-role-based color identity. Each parent's tint comes
+    // from their profiles.color_preference (resolved in calendar
+    // page → palette → bg). parent_a → parentABg, parent_b →
+    // parentBBg. Falls back to --them-bg / --you-bg when props
+    // aren't supplied.
+    const parentAColor = parentABg ?? "var(--them-bg)";
+    const parentBColor = parentBBg ?? "var(--you-bg)";
     const colorFor = (parentId: string | undefined): string => {
       if (parentAId) {
-        return parentId === parentAId
-          ? "var(--them-bg)"
-          : "var(--you-bg)";
+        return parentId === parentAId ? parentAColor : parentBColor;
       }
       return parentId === currentUserId
         ? "var(--you-bg)"

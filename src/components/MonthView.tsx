@@ -27,12 +27,15 @@ interface MonthViewProps {
   /**
    * UUID of parent_a in this family (the alternating-weekend / "visiting"
    * parent — typically the one who picks up on weekends). Color identity
-   * is keyed off this rather than the logged-in user, so each parent is
-   * a fixed color regardless of which account is signed in: parent_a →
-   * cool, parent_b → cream. When undefined we fall back to the legacy
-   * you/them mapping based on currentUserId.
+   * is keyed off this so each parent is a fixed color regardless of
+   * which account is signed in. When undefined we fall back to the
+   * legacy you/them mapping based on currentUserId.
    */
   parentAId?: string;
+  /** Resolved bg tint (hex) for parent_a's day cells. Defaults to --them-bg. */
+  parentABg?: string;
+  /** Resolved bg tint (hex) for parent_b's day cells. Defaults to --you-bg. */
+  parentBBg?: string;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -154,6 +157,8 @@ export default function MonthView({
   getCustodyForDate,
   currentUserId,
   parentAId,
+  parentABg,
+  parentBBg,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
   const weeks: Date[][] = [];
@@ -256,17 +261,18 @@ export default function MonthView({
 
     const firstParentId = custody[kidIds[0]].parentId;
     const allSame = kidIds.every((k) => custody[k].parentId === firstParentId);
-    // Color identity is parent-role-based, not relative to the logged-in
-    // user. parent_a (alternating-weekend parent) → cool (--them-bg);
-    // parent_b (primary custodian) → cream (--you-bg). This keeps the
-    // visual identity stable regardless of which family member is
-    // currently signed in. Falls back to currentUserId-relative when
-    // parentAId isn't supplied (legacy callers).
+    // Color identity is parent-role-based: parent_a → parentABg,
+    // parent_b → parentBBg. Each parent picks their own color in
+    // settings, so each side of the family sees their preferred
+    // tint regardless of which account is signed in. Falls back to
+    // the legacy --them-bg / --you-bg CSS vars when prop colors
+    // aren't supplied (e.g. before a schedule exists), and further
+    // back to currentUserId-relative when parentAId is also missing.
+    const parentAColor = parentABg ?? "var(--them-bg)";
+    const parentBColor = parentBBg ?? "var(--you-bg)";
     const colorFor = (parentId: string | undefined): string => {
       if (parentAId) {
-        return parentId === parentAId
-          ? "var(--them-bg)"
-          : "var(--you-bg)";
+        return parentId === parentAId ? parentAColor : parentBColor;
       }
       return parentId === currentUserId
         ? "var(--you-bg)"
