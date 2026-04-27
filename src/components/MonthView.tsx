@@ -532,10 +532,12 @@ export default function MonthView({
                     {/* Split-mode: bands-by-time backdrop. Each band is
                         either solid (joint parent for that time-window)
                         or diagonal stripes (kids actually divergent here).
-                        Stripes only appear in the post-handoff portion of
-                        the cell when the day starts whole and becomes
-                        split — so the cell still reads correctly as
-                        "morning was Mom, evening is split." */}
+                        Crisp ink dividers at every interior band boundary
+                        make the start/end of stripes unambiguous — without
+                        them, the stripes' parent-A bands visually bleed
+                        into an adjacent solid parent-A region (since the
+                        colors are identical) and the eye reads the
+                        diagonal as "going past the exchange." */}
                     {view.mode === "split" && (
                       <div className="absolute inset-0 pointer-events-none">
                         {view.bands.map((band, idx) => {
@@ -563,6 +565,20 @@ export default function MonthView({
                             />
                           );
                         })}
+                        {/* Boundary dividers — one per interior boundary. */}
+                        {view.bands.slice(0, -1).map((band, idx) => (
+                          <div
+                            key={`bd-${idx}`}
+                            className="absolute left-0 right-0"
+                            style={{
+                              top: `${band.endPct}%`,
+                              height: 1,
+                              background: "var(--ink)",
+                              opacity: 0.7,
+                              transform: "translateY(-0.5px)",
+                            }}
+                          />
+                        ))}
                       </div>
                     )}
                     {/* Day number */}
@@ -577,86 +593,6 @@ export default function MonthView({
                       {day.getDate()}
                     </div>
 
-                    {/* Turnover pills — one per handoff group, rendered
-                        inline below the day number. Format:
-                          [time]  [parent acting]  [Pick Up | Drop-off]  [E][H]
-                        Multi-kid handoffs (e.g. both kids picked up at
-                        the same time by the same parent) collapse into
-                        one pill with both kid chips. Click opens the
-                        underlying turnover event. */}
-                    {view.turnoverPills.length > 0 && (
-                      <div className="relative z-[2] mb-1 space-y-[2px]">
-                        {view.turnoverPills.map((pill) => {
-                          const matchingKids = kids.filter((k) =>
-                            pill.kidIds.includes(k.id)
-                          );
-                          const action = pill.isPickup ? "Pick Up" : "Drop-off";
-                          return (
-                            <div
-                              key={`${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                if (pill.events[0]) onEventClick(pill.events[0]);
-                              }}
-                              className="
-                                flex items-center gap-1.5
-                                text-[10.5px] font-medium leading-tight
-                                bg-white/95 text-[var(--ink)]
-                                px-1.5 py-[2px]
-                                border-l-[3px]
-                                shadow-[0_0_0_1px_var(--border)]
-                                cursor-pointer hover:translate-x-[1px] transition-transform
-                                overflow-hidden
-                              "
-                              style={{ borderLeftColor: pill.parentSwatch }}
-                              title={`${pill.time} ${pill.parentName} ${action}`}
-                            >
-                              <span className="tabular-nums text-[var(--text-muted)] shrink-0">
-                                {pill.time}
-                              </span>
-                              <span
-                                className="font-semibold truncate"
-                                style={{ color: pill.parentSwatch }}
-                              >
-                                {pill.parentName}
-                              </span>
-                              <span className="text-[var(--text-muted)] shrink-0">
-                                {action}
-                              </span>
-                              <span className="flex gap-[2px] shrink-0 ml-auto">
-                                {matchingKids.map((kid) => {
-                                  const slot = kidSlot(kid, kids);
-                                  const chipClass =
-                                    slot === "ethan" || slot === "harrison"
-                                      ? kidIndicatorClass[slot]
-                                      : "";
-                                  return (
-                                    <span
-                                      key={kid.id}
-                                      title={kid.name}
-                                      className={`
-                                        inline-flex items-center justify-center
-                                        w-[14px] h-[14px] rounded-sm
-                                        text-[8px] font-bold text-white
-                                        ${chipClass}
-                                      `}
-                                      style={
-                                        chipClass
-                                          ? undefined
-                                          : { background: kid.color }
-                                      }
-                                    >
-                                      {kid.name.charAt(0).toUpperCase()}
-                                    </span>
-                                  );
-                                })}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
                     {/* Ribbon-area spacer — reserved height equal to the
                         week's multi-day ribbon stack so the ribbons (rendered
                         at the week-row level below) don't sit on top of
@@ -665,68 +601,176 @@ export default function MonthView({
                       <div style={{ height: ribbonAreaHeight }} />
                     )}
 
-                    {/* Chronological event stack (max 3). Turnovers are
-                        excluded from this list — they ride on the pill layer
-                        below. Events above the pill are pre-handoff, events
-                        below are post-handoff (natural chrono order). */}
-                    {nonTurnoverEvents.slice(0, 3).map((evt) => {
-                      const typeColor = getEventTypeColor(evt);
-                      const kidBadge = singleKidIndicator(evt);
-                      const dashed = evt._tentative;
-                      const isHoliday = evt.id.startsWith("holiday-");
-                      const showTime = !evt.all_day && !isHoliday;
-                      const timeStr = showTime
-                        ? formatShortTime(parseTimestamp(evt.starts_at))
-                        : null;
-                      return (
-                        <div
-                          key={evt.id}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            onEventClick(evt);
-                          }}
-                          className={`
-                            relative z-[2]
-                            flex items-center gap-1
-                            text-[11px] font-medium leading-tight
-                            bg-white text-[var(--ink)]
-                            px-1.5 py-[3px] mb-0.5
-                            border-l-[3px]
-                            ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                            shadow-[0_0_0_1px_var(--border)]
-                            cursor-pointer hover:translate-x-[1px] transition-transform
-                            overflow-hidden
-                          `}
-                          style={{ borderLeftColor: typeColor }}
-                        >
-                          {timeStr && (
-                            <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
-                              {timeStr}
-                            </span>
-                          )}
-                          {kidBadge && (
-                            <span
-                              className={`
-                                inline-flex items-center justify-center shrink-0
-                                w-[14px] h-[14px] rounded-sm
-                                text-[8px] font-bold text-white
-                                ${kidIndicatorClass[kidBadge]}
-                              `}
-                              title={kidBadge === "ethan" ? "Ethan" : "Harrison"}
-                            >
-                              {kidBadge === "ethan" ? "E" : "H"}
-                            </span>
-                          )}
-                          <span className="truncate">{evt.title}</span>
-                        </div>
+                    {/* Merged chronological item list. Turnover pills
+                        (handoffs — e.g. "7:00pm Patrick Pick Up [E]")
+                        and regular events (e.g. "5:30p Soccer") sort
+                        together by start time so the cell reads in
+                        chrono order top-to-bottom. Total cap of 3
+                        items; turnovers always shown, regular events
+                        get whatever slots remain. */}
+                    {(() => {
+                      const TOTAL_SLOTS = 3;
+                      const turnoverItems = view.turnoverPills.map((p) => ({
+                        kind: "turnover" as const,
+                        sortKey: p.timeIso,
+                        pill: p,
+                      }));
+                      const remaining = Math.max(
+                        0,
+                        TOTAL_SLOTS - turnoverItems.length
                       );
-                    })}
-
-                    {nonTurnoverEvents.length > 3 && (
-                      <div className="relative z-[2] text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
-                        +{nonTurnoverEvents.length - 3} more
-                      </div>
-                    )}
+                      const visibleEvents = nonTurnoverEvents.slice(0, remaining);
+                      const eventItems = visibleEvents.map((e) => ({
+                        kind: "event" as const,
+                        sortKey: e.starts_at,
+                        evt: e,
+                      }));
+                      const items = [...turnoverItems, ...eventItems].sort(
+                        (a, b) => a.sortKey.localeCompare(b.sortKey)
+                      );
+                      const hiddenCount =
+                        nonTurnoverEvents.length - visibleEvents.length;
+                      return (
+                        <>
+                          {items.map((item) => {
+                            if (item.kind === "turnover") {
+                              const pill = item.pill;
+                              const matchingKids = kids.filter((k) =>
+                                pill.kidIds.includes(k.id)
+                              );
+                              const action = pill.isPickup
+                                ? "Pick Up"
+                                : "Drop-off";
+                              return (
+                                <div
+                                  key={`t-${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    if (pill.events[0])
+                                      onEventClick(pill.events[0]);
+                                  }}
+                                  className="
+                                    relative z-[2]
+                                    flex items-center gap-1.5
+                                    text-[10.5px] font-medium leading-tight
+                                    bg-white/95 text-[var(--ink)]
+                                    px-1.5 py-[2px] mb-0.5
+                                    border-l-[3px]
+                                    shadow-[0_0_0_1px_var(--border)]
+                                    cursor-pointer hover:translate-x-[1px] transition-transform
+                                    overflow-hidden
+                                  "
+                                  style={{
+                                    borderLeftColor: pill.parentSwatch,
+                                  }}
+                                  title={`${pill.time} ${pill.parentName} ${action}`}
+                                >
+                                  <span className="tabular-nums text-[var(--text-muted)] shrink-0">
+                                    {pill.time}
+                                  </span>
+                                  <span
+                                    className="font-semibold truncate"
+                                    style={{ color: pill.parentSwatch }}
+                                  >
+                                    {pill.parentName}
+                                  </span>
+                                  <span className="text-[var(--text-muted)] shrink-0">
+                                    {action}
+                                  </span>
+                                  <span className="flex gap-[2px] shrink-0 ml-auto">
+                                    {matchingKids.map((kid) => {
+                                      const slot = kidSlot(kid, kids);
+                                      const chipClass =
+                                        slot === "ethan" || slot === "harrison"
+                                          ? kidIndicatorClass[slot]
+                                          : "";
+                                      return (
+                                        <span
+                                          key={kid.id}
+                                          title={kid.name}
+                                          className={`
+                                            inline-flex items-center justify-center
+                                            w-[14px] h-[14px] rounded-sm
+                                            text-[8px] font-bold text-white
+                                            ${chipClass}
+                                          `}
+                                          style={
+                                            chipClass
+                                              ? undefined
+                                              : { background: kid.color }
+                                          }
+                                        >
+                                          {kid.name.charAt(0).toUpperCase()}
+                                        </span>
+                                      );
+                                    })}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            // event
+                            const evt = item.evt;
+                            const typeColor = getEventTypeColor(evt);
+                            const kidBadge = singleKidIndicator(evt);
+                            const dashed = evt._tentative;
+                            const isHoliday = evt.id.startsWith("holiday-");
+                            const showTime = !evt.all_day && !isHoliday;
+                            const timeStr = showTime
+                              ? formatShortTime(parseTimestamp(evt.starts_at))
+                              : null;
+                            return (
+                              <div
+                                key={evt.id}
+                                onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  onEventClick(evt);
+                                }}
+                                className={`
+                                  relative z-[2]
+                                  flex items-center gap-1
+                                  text-[11px] font-medium leading-tight
+                                  bg-white text-[var(--ink)]
+                                  px-1.5 py-[3px] mb-0.5
+                                  border-l-[3px]
+                                  ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                                  shadow-[0_0_0_1px_var(--border)]
+                                  cursor-pointer hover:translate-x-[1px] transition-transform
+                                  overflow-hidden
+                                `}
+                                style={{ borderLeftColor: typeColor }}
+                              >
+                                {timeStr && (
+                                  <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
+                                    {timeStr}
+                                  </span>
+                                )}
+                                {kidBadge && (
+                                  <span
+                                    className={`
+                                      inline-flex items-center justify-center shrink-0
+                                      w-[14px] h-[14px] rounded-sm
+                                      text-[8px] font-bold text-white
+                                      ${kidIndicatorClass[kidBadge]}
+                                    `}
+                                    title={
+                                      kidBadge === "ethan" ? "Ethan" : "Harrison"
+                                    }
+                                  >
+                                    {kidBadge === "ethan" ? "E" : "H"}
+                                  </span>
+                                )}
+                                <span className="truncate">{evt.title}</span>
+                              </div>
+                            );
+                          })}
+                          {hiddenCount > 0 && (
+                            <div className="relative z-[2] text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
+                              +{hiddenCount} more
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {/* All handoff information is rendered inline above
                         as turnoverPills. The whole-mode background
