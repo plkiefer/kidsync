@@ -13,6 +13,7 @@ import {
 import {
   CalendarEvent,
   CustodyOverride,
+  EventAttachment,
   Kid,
   Profile,
   Trip,
@@ -56,6 +57,19 @@ interface TripViewProps {
   onDeleteSegment?: (segmentId: string) => Promise<void>;
   /** Open the override-proposal modal. Disabled when no conflict. */
   onProposeOverride?: () => void;
+  /** Trip-level file attachments callbacks. Each segment carries
+   *  its own attachments via calendar_events.attachments — these are
+   *  for trip-WIDE files (passport scans, custody letter, etc.). */
+  onUploadTripFile?: (file: File) => Promise<void>;
+  onRemoveTripFile?: (attachment: EventAttachment) => Promise<void>;
+  onOpenAttachment?: (path: string) => Promise<void>;
+  /** Per-segment file callbacks — calendar_events already supports
+   *  attachments; these wrap the existing useEvents helpers. */
+  onUploadSegmentFile?: (segmentId: string, file: File) => Promise<void>;
+  onRemoveSegmentFile?: (
+    segmentId: string,
+    attachment: EventAttachment
+  ) => Promise<void>;
 }
 
 const TRIP_TYPE_LABELS: Record<TripType, string> = {
@@ -94,6 +108,11 @@ export default function TripView({
   onEditSegment,
   onDeleteSegment,
   onProposeOverride,
+  onUploadTripFile,
+  onRemoveTripFile,
+  onOpenAttachment,
+  onUploadSegmentFile,
+  onRemoveSegmentFile,
 }: TripViewProps) {
   // Editable header state — autosave on blur
   const [title, setTitle] = useState(trip.title);
@@ -285,14 +304,16 @@ export default function TripView({
           </Section>
 
           {/* ─── Files ───────────────────────── */}
-          <Section
-            icon={<Paperclip size={14} />}
-            title="Files"
-            actionLabel="+ Attach file"
-          >
-            <p className="text-[12px] text-[var(--text-faint)] py-2">
-              Phase 5 — confirmation PDFs, ticket scans, etc.
-            </p>
+          <Section icon={<Paperclip size={14} />} title="Files">
+            <FilesSection
+              trip={trip}
+              segments={segments}
+              onUploadTripFile={onUploadTripFile}
+              onRemoveTripFile={onRemoveTripFile}
+              onOpenAttachment={onOpenAttachment}
+              onUploadSegmentFile={onUploadSegmentFile}
+              onRemoveSegmentFile={onRemoveSegmentFile}
+            />
           </Section>
 
           {/* ─── Footer (delete) ─────────────── */}
@@ -827,6 +848,269 @@ function CustodySection({
       </button>
     </div>
   );
+}
+
+// ─── FilesSection ────────────────────────────────────────────
+// Trip-level files (passport scans, custody letter) at the top,
+// then per-segment attachments grouped by segment underneath.
+// Each row has open + remove. Upload buttons inline.
+
+interface FilesSectionProps {
+  trip: Trip;
+  segments: CalendarEvent[];
+  onUploadTripFile?: (file: File) => Promise<void>;
+  onRemoveTripFile?: (attachment: EventAttachment) => Promise<void>;
+  onOpenAttachment?: (path: string) => Promise<void>;
+  onUploadSegmentFile?: (segmentId: string, file: File) => Promise<void>;
+  onRemoveSegmentFile?: (
+    segmentId: string,
+    attachment: EventAttachment
+  ) => Promise<void>;
+}
+
+function FilesSection({
+  trip,
+  segments,
+  onUploadTripFile,
+  onRemoveTripFile,
+  onOpenAttachment,
+  onUploadSegmentFile,
+  onRemoveSegmentFile,
+}: FilesSectionProps) {
+  const tripFiles = trip.attachments ?? [];
+  const segmentsWithFiles = segments.filter(
+    (s) => (s.attachments ?? []).length > 0
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Trip-level */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10.5px] font-semibold tracking-[0.12em] uppercase text-[var(--text-faint)]">
+            Trip-wide
+          </span>
+          {onUploadTripFile && (
+            <UploadButton
+              label="Attach file"
+              onPick={async (file) => {
+                await onUploadTripFile(file);
+              }}
+            />
+          )}
+        </div>
+        {tripFiles.length === 0 ? (
+          <p className="text-[11px] text-[var(--text-faint)]">
+            Passport scans, custody letter, court orders. Visible to both
+            parents.
+          </p>
+        ) : (
+          <div className="space-y-1">
+            {tripFiles.map((a) => (
+              <FileRow
+                key={a.path}
+                attachment={a}
+                onOpen={onOpenAttachment}
+                onRemove={
+                  onRemoveTripFile
+                    ? () => onRemoveTripFile(a)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Per-segment */}
+      {segmentsWithFiles.map((seg) => (
+        <div key={seg.id}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10.5px] font-semibold tracking-[0.12em] uppercase text-[var(--text-faint)] truncate">
+              {seg.title || seg.segment_type || "Segment"}
+            </span>
+            {onUploadSegmentFile && (
+              <UploadButton
+                label="Attach file"
+                onPick={async (file) => {
+                  await onUploadSegmentFile(seg.id, file);
+                }}
+              />
+            )}
+          </div>
+          <div className="space-y-1">
+            {(seg.attachments ?? []).map((a) => (
+              <FileRow
+                key={a.path}
+                attachment={a}
+                onOpen={onOpenAttachment}
+                onRemove={
+                  onRemoveSegmentFile
+                    ? () => onRemoveSegmentFile(seg.id, a)
+                    : undefined
+                }
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Per-segment upload entry — let user attach to any segment
+          even when it has no files yet, via a small picker. Skipped
+          when no segments exist (the trip-wide upload above is enough
+          for that case). */}
+      {segments.length > 0 && onUploadSegmentFile && (
+        <SegmentUploadPicker
+          segments={segments}
+          onUpload={onUploadSegmentFile}
+        />
+      )}
+    </div>
+  );
+}
+
+function FileRow({
+  attachment,
+  onOpen,
+  onRemove,
+}: {
+  attachment: EventAttachment;
+  onOpen?: (path: string) => Promise<void>;
+  onRemove?: () => Promise<void>;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 border border-[var(--border)] rounded-sm bg-[var(--bg-sunken)]">
+      <Paperclip
+        size={11}
+        className="text-[var(--text-faint)] shrink-0"
+        aria-hidden
+      />
+      <button
+        type="button"
+        onClick={() => onOpen?.(attachment.path)}
+        className="flex-1 min-w-0 text-left text-[12px] text-[var(--ink)] hover:text-[var(--action)] truncate"
+      >
+        {attachment.name}
+      </button>
+      <span className="text-[10px] text-[var(--text-faint)] shrink-0 tabular-nums">
+        {formatFileSize(attachment.size)}
+      </span>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm(`Remove ${attachment.name}?`)) onRemove();
+          }}
+          className="text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors p-1 shrink-0"
+          aria-label="Remove file"
+        >
+          <Trash2 size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function UploadButton({
+  label,
+  onPick,
+}: {
+  label: string;
+  onPick: (file: File) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <label
+      className={`text-[11px] font-semibold transition-colors cursor-pointer ${
+        busy
+          ? "text-[var(--text-faint)] cursor-wait"
+          : "text-[var(--action)] hover:text-[var(--action-hover)]"
+      }`}
+    >
+      {busy ? "Uploading…" : `+ ${label}`}
+      <input
+        type="file"
+        className="hidden"
+        disabled={busy}
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          setBusy(true);
+          try {
+            await onPick(file);
+          } finally {
+            setBusy(false);
+            e.target.value = "";
+          }
+        }}
+      />
+    </label>
+  );
+}
+
+function SegmentUploadPicker({
+  segments,
+  onUpload,
+}: {
+  segments: CalendarEvent[];
+  onUpload: (segmentId: string, file: File) => Promise<void>;
+}) {
+  const [pickedSeg, setPickedSeg] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="border-t border-[var(--border)] pt-3">
+      <div className="text-[10.5px] font-semibold tracking-[0.12em] uppercase text-[var(--text-faint)] mb-2">
+        Attach to a segment
+      </div>
+      <div className="flex items-center gap-2">
+        <select
+          value={pickedSeg}
+          onChange={(e) => setPickedSeg(e.target.value)}
+          className="flex-1 px-2 py-1.5 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[12px] text-[var(--ink)]"
+        >
+          <option value="">Pick a segment…</option>
+          {segments.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.title || s.segment_type || "Segment"}
+            </option>
+          ))}
+        </select>
+        <label
+          className={`text-[11px] font-semibold cursor-pointer ${
+            busy || !pickedSeg
+              ? "text-[var(--text-faint)] cursor-not-allowed"
+              : "text-[var(--action)] hover:text-[var(--action-hover)]"
+          }`}
+        >
+          {busy ? "Uploading…" : "+ Attach"}
+          <input
+            type="file"
+            className="hidden"
+            disabled={busy || !pickedSeg}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file || !pickedSeg) return;
+              setBusy(true);
+              try {
+                await onUpload(pickedSeg, file);
+              } finally {
+                setBusy(false);
+                e.target.value = "";
+                setPickedSeg("");
+              }
+            }}
+          />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function formatFileSize(bytes: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ─── WarningsBanner ──────────────────────────────────────────

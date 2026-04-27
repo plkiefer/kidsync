@@ -66,6 +66,9 @@ export interface Trip {
   guests: TripGuest[];
   status: TripStatus;
   notes: string | null;
+  /** Trip-level attachments (passport scans, court orders, etc.).
+   *  Per-segment attachments live on calendar_events.attachments. */
+  attachments?: EventAttachment[];
   created_by: string;
   updated_by: string | null;
   created_at: string;

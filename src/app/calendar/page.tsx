@@ -119,6 +119,9 @@ export default function CalendarPage() {
     updateTrip,
     deleteTrip,
     recomputeTripDates,
+    uploadTripAttachment,
+    removeTripAttachment,
+    getTripAttachmentUrl,
   } = useTrips(dataReady, user?.id, profile?.family_id);
 
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -1142,6 +1145,28 @@ export default function CalendarPage() {
               }}
               onProposeOverride={() => {
                 setOverrideProposalTripId(trip.id);
+              }}
+              onUploadTripFile={async (file) => {
+                await uploadTripAttachment(trip.id, file);
+              }}
+              onRemoveTripFile={async (a) => {
+                await removeTripAttachment(trip.id, a);
+              }}
+              onOpenAttachment={async (path) => {
+                // Both trip-level and segment paths live in the same
+                // bucket — either signed-URL helper works.
+                const url = await getTripAttachmentUrl(path);
+                if (url && typeof window !== "undefined") {
+                  window.open(url, "_blank", "noopener,noreferrer");
+                }
+              }}
+              onUploadSegmentFile={async (segId, file) => {
+                await uploadAttachment(segId, file);
+                await refetch();
+              }}
+              onRemoveSegmentFile={async (segId, a) => {
+                await removeAttachment(segId, a);
+                await refetch();
               }}
               onAddLodging={() =>
                 setLodgingForm({ tripId: trip.id, editing: null })

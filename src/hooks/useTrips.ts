@@ -2,7 +2,14 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { Trip, TripGuest, TripType, TripStatus, CalendarEvent } from "@/lib/types";
+import {
+  Trip,
+  TripGuest,
+  TripType,
+  TripStatus,
+  CalendarEvent,
+  EventAttachment,
+} from "@/lib/types";
 
 /**
  * Fire-and-forget notification to the existing notify-parent edge
@@ -49,6 +56,19 @@ interface UseTripsState {
   /** Recompute trip.starts_at/ends_at from its segment events. Called
    *  whenever segments are added/edited/removed. */
   recomputeTripDates: (tripId: string) => Promise<void>;
+  /** Trip-level file attachments. Storage path convention:
+   *  "trip/<trip_id>/<timestamp>-<filename>" in event-attachments
+   *  bucket (sharing the bucket with per-segment attachments). */
+  uploadTripAttachment: (
+    tripId: string,
+    file: File
+  ) => Promise<EventAttachment | null>;
+  removeTripAttachment: (
+    tripId: string,
+    attachment: EventAttachment
+  ) => Promise<boolean>;
+  /** Generate a signed URL for downloading a trip-attachment file. */
+  getTripAttachmentUrl: (path: string) => Promise<string | null>;
   refetch: () => Promise<void>;
 }
 
@@ -338,6 +358,101 @@ export function useTrips(
     [supabase]
   );
 
+  // ─── Trip-level attachments ─────────────────────────────
+  // Storage path: trip/<trip_id>/<timestamp>-<filename> inside the
+  // existing event-attachments bucket. The trips row's attachments
+  // jsonb column tracks the manifest, mirroring calendar_events.
+
+  const uploadTripAttachment = useCallback(
+    async (tripId: string, file: File): Promise<EventAttachment | null> => {
+      try {
+        const path = `trip/${tripId}/${Date.now()}-${file.name}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("event-attachments")
+          .upload(path, file);
+        if (uploadErr) throw uploadErr;
+
+        const attachment: EventAttachment = {
+          name: file.name,
+          path,
+          size: file.size,
+          type: file.type,
+          uploaded_at: new Date().toISOString(),
+        };
+
+        const { data: trip } = await supabase
+          .from("trips")
+          .select("attachments")
+          .eq("id", tripId)
+          .single();
+        const current = (trip?.attachments as EventAttachment[]) || [];
+        const updated = [...current, attachment];
+
+        const { error: updateErr } = await supabase
+          .from("trips")
+          .update({ attachments: updated })
+          .eq("id", tripId);
+        if (updateErr) throw updateErr;
+
+        await fetchTrips();
+        return attachment;
+      } catch (err) {
+        console.error("Error uploading trip attachment:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to upload attachment"
+        );
+        return null;
+      }
+    },
+    [supabase, fetchTrips]
+  );
+
+  const removeTripAttachment = useCallback(
+    async (tripId: string, attachment: EventAttachment): Promise<boolean> => {
+      try {
+        await supabase.storage
+          .from("event-attachments")
+          .remove([attachment.path]);
+
+        const { data: trip } = await supabase
+          .from("trips")
+          .select("attachments")
+          .eq("id", tripId)
+          .single();
+        const current = (trip?.attachments as EventAttachment[]) || [];
+        const updated = current.filter((a) => a.path !== attachment.path);
+
+        await supabase
+          .from("trips")
+          .update({ attachments: updated })
+          .eq("id", tripId);
+
+        await fetchTrips();
+        return true;
+      } catch (err) {
+        console.error("Error removing trip attachment:", err);
+        return false;
+      }
+    },
+    [supabase, fetchTrips]
+  );
+
+  const getTripAttachmentUrl = useCallback(
+    async (path: string): Promise<string | null> => {
+      try {
+        const { data, error: urlErr } = await supabase.storage
+          .from("event-attachments")
+          .createSignedUrl(path, 3600);
+        if (urlErr) throw urlErr;
+        return data.signedUrl;
+      } catch (err) {
+        console.error("Error getting trip attachment URL:", err);
+        return null;
+      }
+    },
+    [supabase]
+  );
+
   return {
     trips,
     loading,
@@ -346,6 +461,9 @@ export function useTrips(
     updateTrip,
     deleteTrip,
     recomputeTripDates,
+    uploadTripAttachment,
+    removeTripAttachment,
+    getTripAttachmentUrl,
     refetch: fetchTrips,
   };
 }
