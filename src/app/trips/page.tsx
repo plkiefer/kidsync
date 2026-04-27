@@ -8,6 +8,8 @@ import {
   Plane,
   Plus,
   Loader2,
+  Search,
+  X as XIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useFamily } from "@/hooks/useFamily";
@@ -66,6 +68,7 @@ export default function TripsPage() {
   } = useCustody(dataReady);
 
   const [filter, setFilter] = useState<FilterTab>("all");
+  const [search, setSearch] = useState<string>("");
   const [showCreate, setShowCreate] = useState(false);
   const [openTripId, setOpenTripId] = useState<string | null>(null);
   const [lodgingForm, setLodgingForm] = useState<{
@@ -118,6 +121,21 @@ export default function TripsPage() {
     } else if (filter === "draft") {
       list = trips.filter((t) => t.status === "draft");
     }
+    // Search by title + guest names + trip type. Substring match,
+    // case-insensitive. Empty search = pass everything through.
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((t) => {
+        if (t.title.toLowerCase().includes(q)) return true;
+        if (t.trip_type.toLowerCase().includes(q.replace(/\s/g, "_")))
+          return true;
+        if (t.notes && t.notes.toLowerCase().includes(q)) return true;
+        for (const g of t.guests) {
+          if (g.name.toLowerCase().includes(q)) return true;
+        }
+        return false;
+      });
+    }
     // Upcoming sorted ascending (next first); past descending; default
     // by created_at descending.
     return [...list].sort((a, b) => {
@@ -131,7 +149,7 @@ export default function TripsPage() {
       }
       return b.created_at.localeCompare(a.created_at);
     });
-  }, [trips, filter]);
+  }, [trips, filter, search]);
 
   const sectioned = useMemo(() => {
     const now = new Date().toISOString();
@@ -175,6 +193,31 @@ export default function TripsPage() {
         </button>
       </div>
 
+      {/* Search */}
+      <div className="relative mb-4">
+        <Search
+          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-faint)] pointer-events-none"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search trips by title, type, guest, notes…"
+          className="w-full pl-10 pr-9 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-sm placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors"
+            aria-label="Clear search"
+          >
+            <XIcon size={14} />
+          </button>
+        )}
+      </div>
+
       {/* Filter tabs */}
       <div className="flex items-center gap-1 mb-6 border-b border-[var(--border-strong)]">
         {(["all", "upcoming", "past", "draft"] as FilterTab[]).map((tab) => (
@@ -204,18 +247,22 @@ export default function TripsPage() {
         <div className="py-16 text-center">
           <Plane className="w-10 h-10 text-[var(--text-faint)] mx-auto mb-3" />
           <p className="text-[14px] font-semibold text-[var(--ink)] mb-1">
-            {filter === "all"
+            {search.trim()
+              ? `No trips match "${search.trim()}"`
+              : filter === "all"
               ? "No trips yet"
               : `No ${filter} trips`}
           </p>
           <p className="text-[12px] text-[var(--text-muted)] mb-4">
-            Create one to plan flights, lodging, and custody coordination.
+            {search.trim()
+              ? "Try a different search or clear it to see all trips."
+              : "Create one to plan flights, lodging, and custody coordination."}
           </p>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => (search.trim() ? setSearch("") : setShowCreate(true))}
             className="px-5 py-2 bg-[var(--ink)] text-[var(--accent-ink)] text-[12px] font-semibold rounded-sm hover:bg-[var(--accent-hover)] transition-colors"
           >
-            New trip
+            {search.trim() ? "Clear search" : "New trip"}
           </button>
         </div>
       ) : showSections ? (
