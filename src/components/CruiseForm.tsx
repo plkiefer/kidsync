@@ -21,6 +21,7 @@ import {
 import { toDateTimeLocal } from "@/lib/dates";
 import TimezonePicker from "@/components/TimezonePicker";
 import type { NewSegmentInput } from "@/hooks/useEvents";
+import { kidColorCss } from "@/lib/palette";
 
 interface CruiseFormProps {
   trip: Trip;
@@ -531,15 +532,15 @@ export default function CruiseForm({
                             }
                             className="inline-flex items-center gap-1 px-2 py-1 rounded-sm text-[10.5px] font-semibold transition-colors border"
                             style={{
-                              backgroundColor: sel ? k.color : "var(--bg)",
-                              borderColor: sel ? k.color : "var(--border)",
+                              backgroundColor: sel ? kidColorCss(k.color) : "var(--bg)",
+                              borderColor: sel ? kidColorCss(k.color) : "var(--border)",
                               color: sel ? "#ffffff" : "var(--text-muted)",
                             }}
                           >
                             <span
                               className="inline-block w-1.5 h-1.5 rounded-full"
                               style={{
-                                backgroundColor: sel ? "#ffffff" : k.color,
+                                backgroundColor: sel ? "#ffffff" : kidColorCss(k.color),
                               }}
                             />
                             {k.name}
@@ -714,15 +715,15 @@ export default function CruiseForm({
                     onClick={() => toggleId(kidIds, setKidIds, k.id)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border"
                     style={{
-                      backgroundColor: sel ? k.color : "var(--bg)",
-                      borderColor: sel ? k.color : "var(--border)",
+                      backgroundColor: sel ? kidColorCss(k.color) : "var(--bg)",
+                      borderColor: sel ? kidColorCss(k.color) : "var(--border)",
                       color: sel ? "#ffffff" : "var(--text-muted)",
                     }}
                   >
                     <span
                       className="inline-block w-2 h-2 rounded-full"
                       style={{
-                        backgroundColor: sel ? "#ffffff" : k.color,
+                        backgroundColor: sel ? "#ffffff" : kidColorCss(k.color),
                       }}
                     />
                     {k.name}

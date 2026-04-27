@@ -6,6 +6,7 @@ import {
   getEventKidIds,
   getEventTypeColor,
 } from "@/lib/types";
+import { kidColorCss } from "@/lib/palette";
 import {
   getCalendarDays,
   isSameMonth,
@@ -933,7 +934,7 @@ export default function MonthView({
                                       style={
                                         chipClass
                                           ? undefined
-                                          : { background: kid.color }
+                                          : { background: kidColorCss(kid.color) }
                                       }
                                     >
                                       {kid.name.charAt(0).toUpperCase()}

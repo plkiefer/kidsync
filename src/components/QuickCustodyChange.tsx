@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { CalendarEvent, Kid, Profile } from "@/lib/types";
+import { kidColorCss } from "@/lib/palette";
 import { formatShortDate, formatTime } from "@/lib/dates";
 
 interface QuickCustodyChangeProps {
@@ -200,15 +201,15 @@ export default function QuickCustodyChange({
                           onClick={() => toggleKid(kid.id)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors border"
                           style={{
-                            backgroundColor: selected ? kid.color : "var(--bg)",
+                            backgroundColor: selected ? kidColorCss(kid.color) : "var(--bg)",
                             color: selected ? "#ffffff" : "var(--text-muted)",
-                            borderColor: selected ? kid.color : "var(--border)",
+                            borderColor: selected ? kidColorCss(kid.color) : "var(--border)",
                           }}
                         >
                           <span
                             className="w-2.5 h-2.5 rounded-sm shrink-0"
                             style={{
-                              backgroundColor: selected ? "#ffffff" : kid.color,
+                              backgroundColor: selected ? "#ffffff" : kidColorCss(kid.color),
                               opacity: selected ? 0.8 : 1,
                             }}
                           />

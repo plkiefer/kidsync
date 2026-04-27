@@ -11,6 +11,7 @@ import {
 } from "@/lib/types";
 import { formatAllDayTimestamp } from "@/lib/allDay";
 import { parseTimestamp } from "@/lib/dates";
+import { kidColorCss } from "@/lib/palette";
 import {
   Upload,
   X,
@@ -1127,9 +1128,9 @@ function ConfigureStep(props: {
                 onClick={() => toggleKid(kid.id)}
                 style={{
                   padding: "8px 14px",
-                  border: `1.5px solid ${active ? kid.color : "var(--border)"}`,
-                  background: active ? `${kid.color}14` : "transparent",
-                  color: active ? kid.color : "var(--text-muted)",
+                  border: `1.5px solid ${active ? kidColorCss(kid.color) : "var(--border)"}`,
+                  background: active ? `${kidColorCss(kid.color)}14` : "transparent",
+                  color: active ? kidColorCss(kid.color) : "var(--text-muted)",
                   fontSize: 13,
                   fontWeight: 600,
                 }}
@@ -1644,9 +1645,9 @@ function KidChipPicker(props: {
               fontSize: 11,
               fontWeight: 700,
               fontFamily: "var(--font-dm-sans), sans-serif",
-              border: `1.5px solid ${active ? kid.color : "var(--border)"}`,
-              background: active ? `${kid.color}1f` : "transparent",
-              color: active ? kid.color : "var(--text-faint)",
+              border: `1.5px solid ${active ? kidColorCss(kid.color) : "var(--border)"}`,
+              background: active ? `${kidColorCss(kid.color)}1f` : "transparent",
+              color: active ? kidColorCss(kid.color) : "var(--text-faint)",
               lineHeight: 1,
             }}
           >

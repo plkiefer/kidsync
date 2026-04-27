@@ -30,6 +30,7 @@ import {
   tripExceedsOverrideWindow,
 } from "@/lib/tripCustody";
 import { validateTrip, TripWarning } from "@/lib/tripValidation";
+import { kidColorCss } from "@/lib/palette";
 
 interface TripViewProps {
   trip: Trip;
@@ -497,7 +498,7 @@ function RosterRow({
         <span
           key={k.id}
           className="inline-flex items-center px-2 py-0.5 rounded-sm text-[10.5px] font-bold text-white"
-          style={{ backgroundColor: k.color }}
+          style={{ backgroundColor: kidColorCss(k.color) }}
         >
           {k.name}
         </span>

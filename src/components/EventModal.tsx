@@ -17,6 +17,7 @@ import {
 } from "@/lib/timezones";
 import RecurrencePicker from "@/components/RecurrencePicker";
 import TimezonePicker from "@/components/TimezonePicker";
+import { kidColorCss } from "@/lib/palette";
 import {
   X,
   Clock,
@@ -229,10 +230,12 @@ export default function EventModal({
   const colorBarStyle =
     selectedKids.length > 1
       ? {
-          background: `linear-gradient(to right, ${selectedKids.map((k) => k.color).join(", ")})`,
+          background: `linear-gradient(to right, ${selectedKids.map((k) => kidColorCss(k.color)).join(", ")})`,
         }
       : {
-          backgroundColor: selectedKids[0]?.color || "var(--color-accent)",
+          backgroundColor: selectedKids[0]
+            ? kidColorCss(selectedKids[0].color)
+            : "var(--color-accent)",
         };
 
   return (
@@ -329,15 +332,15 @@ export default function EventModal({
                   onClick={() => toggleKid(kid.id)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-sm text-xs font-semibold transition-colors border"
                   style={{
-                    backgroundColor: selected ? kid.color : "var(--bg)",
+                    backgroundColor: selected ? kidColorCss(kid.color) : "var(--bg)",
                     color: selected ? "#ffffff" : "var(--text-muted)",
-                    borderColor: selected ? kid.color : "var(--border)",
+                    borderColor: selected ? kidColorCss(kid.color) : "var(--border)",
                   }}
                 >
                   <span
                     className="w-2.5 h-2.5 rounded-sm shrink-0"
                     style={{
-                      backgroundColor: selected ? "#ffffff" : kid.color,
+                      backgroundColor: selected ? "#ffffff" : kidColorCss(kid.color),
                       opacity: selected ? 0.8 : 1,
                     }}
                   />

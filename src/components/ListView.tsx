@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarEvent, Kid, Profile, EVENT_TYPE_CONFIG, getEventKidIds, getEventIcon, getEventTypeColor } from "@/lib/types";
+import { kidColorCss } from "@/lib/palette";
 import {
   isSameMonth,
   formatShortDate,
@@ -128,8 +129,8 @@ export default function ListView({
                     key={kid.id}
                     className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-sm border"
                     style={{
-                      backgroundColor: kid.color,
-                      borderColor: kid.color,
+                      backgroundColor: kidColorCss(kid.color),
+                      borderColor: kidColorCss(kid.color),
                       color: "#ffffff",
                     }}
                   >

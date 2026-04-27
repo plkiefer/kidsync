@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, Scale, Minus, Plus } from "lucide-react";
 import { Kid, Trip } from "@/lib/types";
+import { kidColorCss } from "@/lib/palette";
 
 interface TripOverrideProposalModalProps {
   trip: Trip;
@@ -224,14 +225,14 @@ export default function TripOverrideProposalModal({
                     onClick={() => toggleKid(kid.id)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border"
                     style={{
-                      backgroundColor: sel ? kid.color : "var(--bg)",
-                      borderColor: sel ? kid.color : "var(--border)",
+                      backgroundColor: sel ? kidColorCss(kid.color) : "var(--bg)",
+                      borderColor: sel ? kidColorCss(kid.color) : "var(--border)",
                       color: sel ? "#ffffff" : "var(--text-muted)",
                     }}
                   >
                     <span
                       className="inline-block w-2 h-2 rounded-full"
-                      style={{ backgroundColor: sel ? "#ffffff" : kid.color }}
+                      style={{ backgroundColor: sel ? "#ffffff" : kidColorCss(kid.color) }}
                     />
                     {kid.name}
                   </button>

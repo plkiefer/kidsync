@@ -85,3 +85,24 @@ export function paletteBg(value: string | null | undefined, fallback?: string): 
 export function paletteSwatch(value: string | null | undefined, fallback?: string): string {
   return resolvePalette(value, fallback).swatch;
 }
+
+/**
+ * Resolve a stored kid/parent color to a CSS-safe color string. Handles
+ * BOTH formats that exist in production:
+ *   - Palette key like "blueberry" → returns its swatch hex
+ *   - Raw hex string like "#D14545" (legacy, pre-palette) → returns as-is
+ *   - Anything else → graphite swatch fallback
+ *
+ * Use this anywhere a kid/parent color is fed directly into CSS
+ * (style={{ backgroundColor: ... }}, borderColor, etc). Raw `kid.color`
+ * works only when the value happens to be a hex; it silently breaks
+ * (browser logs "Expected color but found 'blueberry'") for any kid
+ * whose color was set via the palette picker.
+ */
+export function kidColorCss(value: string | null | undefined): string {
+  if (!value) return PALETTE_BY_KEY.graphite.swatch;
+  if (PALETTE_BY_KEY[value]) return PALETTE_BY_KEY[value].swatch;
+  // Raw CSS color (hex, rgb(), rgba(), hsl(), named color)
+  if (/^#|^rgb|^hsl/i.test(value)) return value;
+  return PALETTE_BY_KEY.graphite.swatch;
+}

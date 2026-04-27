@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarEvent, Kid, EVENT_TYPE_CONFIG, Profile, EventAttachment, CustodyOverride, getEventKidIds, getEventIcon, getEventTypeColor, describeRRule } from "@/lib/types";
+import { kidColorCss } from "@/lib/palette";
 import { formatShortDate, formatTime, format, parseISO } from "@/lib/dates";
 import { X, Pencil, Trash2, MapPin, Clock, User, FileText, Plane, Repeat, Building2, Paperclip, Download, AlertCircle, History } from "lucide-react";
 
@@ -103,7 +104,7 @@ export default function EventDetailModal({
                   <div
                     key={kid.id}
                     className="w-7 h-7 rounded-sm flex items-center justify-center text-xs font-bold text-white"
-                    style={{ backgroundColor: kid.color }}
+                    style={{ backgroundColor: kidColorCss(kid.color) }}
                     title={kid.name}
                   >
                     {kid.name.charAt(0)}
@@ -116,7 +117,7 @@ export default function EventDetailModal({
                 </div>
                 <div className="flex items-center gap-2">
                   {eventKids.map((kid) => (
-                    <span key={kid.id} className="text-sm font-medium" style={{ color: kid.color }}>
+                    <span key={kid.id} className="text-sm font-medium" style={{ color: kidColorCss(kid.color) }}>
                       {kid.name}
                     </span>
                   ))}

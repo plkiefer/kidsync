@@ -10,6 +10,7 @@ import {
   TripType,
 } from "@/lib/types";
 import type { NewTripInput } from "@/hooks/useTrips";
+import { kidColorCss } from "@/lib/palette";
 
 interface TripCreationModalProps {
   kids: Kid[];
@@ -199,15 +200,15 @@ export default function TripCreationModal({
                       onClick={() => toggleKid(kid.id)}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border"
                       style={{
-                        backgroundColor: selected ? kid.color : "var(--bg)",
-                        borderColor: selected ? kid.color : "var(--border)",
+                        backgroundColor: selected ? kidColorCss(kid.color) : "var(--bg)",
+                        borderColor: selected ? kidColorCss(kid.color) : "var(--border)",
                         color: selected ? "#ffffff" : "var(--text-muted)",
                       }}
                     >
                       <span
                         className="inline-block w-2 h-2 rounded-full"
                         style={{
-                          backgroundColor: selected ? "#ffffff" : kid.color,
+                          backgroundColor: selected ? "#ffffff" : kidColorCss(kid.color),
                         }}
                       />
                       {kid.name}

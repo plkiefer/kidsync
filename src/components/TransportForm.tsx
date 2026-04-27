@@ -25,6 +25,7 @@ import {
 import { toDateTimeLocal } from "@/lib/dates";
 import TimezonePicker from "@/components/TimezonePicker";
 import type { NewSegmentInput } from "@/hooks/useEvents";
+import { kidColorCss } from "@/lib/palette";
 
 export type TransportKind = "flight" | "drive" | "train" | "ferry";
 
@@ -725,14 +726,14 @@ export default function TransportForm({
                     onClick={() => toggleId(kidIds, setKidIds, k.id)}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-sm text-[11px] font-semibold transition-colors border"
                     style={{
-                      backgroundColor: sel ? k.color : "var(--bg)",
-                      borderColor: sel ? k.color : "var(--border)",
+                      backgroundColor: sel ? kidColorCss(k.color) : "var(--bg)",
+                      borderColor: sel ? kidColorCss(k.color) : "var(--border)",
                       color: sel ? "#ffffff" : "var(--text-muted)",
                     }}
                   >
                     <span
                       className="inline-block w-2 h-2 rounded-full"
-                      style={{ backgroundColor: sel ? "#ffffff" : k.color }}
+                      style={{ backgroundColor: sel ? "#ffffff" : kidColorCss(k.color) }}
                     />
                     {k.name}
                   </button>

@@ -18,6 +18,7 @@ import { useCustody } from "@/hooks/useCustody";
 import { useTrips, NewTripInput } from "@/hooks/useTrips";
 import { Trip, TripStatus, OverrideStatus } from "@/lib/types";
 import { formatShortDate } from "@/lib/dates";
+import { kidColorCss } from "@/lib/palette";
 import TripCreationModal from "@/components/TripCreationModal";
 import TripView from "@/components/TripView";
 import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
@@ -766,7 +767,7 @@ function TripRow({
                 <span
                   key={k.id}
                   className="inline-flex items-center px-1.5 rounded-sm text-[10px] font-bold text-white"
-                  style={{ backgroundColor: k.color }}
+                  style={{ backgroundColor: kidColorCss(k.color) }}
                 >
                   {k.name}
                 </span>
