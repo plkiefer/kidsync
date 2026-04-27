@@ -35,6 +35,144 @@ function toICalLocalDateTime(day: Date, hour: number, minute: number): string {
   return `${yr}${pad(mo)}${pad(dy)}T${pad(hour)}${pad(minute)}00`;
 }
 
+/** Build a per-segment SUMMARY string. Falls back to the event
+ *  title; segments with rich segment_data get a smarter label. */
+function buildSegmentSummary(
+  evt: { title?: string; kid?: unknown },
+  segmentType: string | undefined,
+  data: Record<string, unknown> | null | undefined,
+  kidName: string
+): string {
+  const title = evt.title || "Event";
+  if (!segmentType) {
+    return `[${kidName}] ${title}`;
+  }
+  switch (segmentType) {
+    case "lodging": {
+      const name = (data?.name as string) || title;
+      const city = (data?.city as string) || "";
+      const state = (data?.state as string) || "";
+      const cityLabel = state ? `${city}, ${state}` : city;
+      return cityLabel ? `🏨 ${name} · ${cityLabel}` : `🏨 ${name}`;
+    }
+    case "flight": {
+      const carrier = (data?.carrier as string) || "";
+      const flightNum = (data?.flight_number as string) || "";
+      const dep = (data?.departure_airport as string) || "";
+      const arr = (data?.arrival_airport as string) || "";
+      const route = [dep, arr].filter(Boolean).join(" → ");
+      const carrierLabel = [carrier, flightNum].filter(Boolean).join(" ").trim();
+      return `✈️ ${[carrierLabel, route].filter(Boolean).join(" · ") || title}`;
+    }
+    case "drive":
+      return `🚗 ${title}`;
+    case "train":
+      return `🚆 ${title}`;
+    case "ferry":
+      return `⛴️ ${title}`;
+    case "cruise": {
+      const ship = (data?.ship_name as string) || "";
+      const line = (data?.cruise_line as string) || "";
+      return `🚢 ${[ship, line].filter(Boolean).join(" · ") || title}`;
+    }
+    case "cruise_port_stop": {
+      const port = (data?.port as string) || title;
+      return `⚓ ${port}`;
+    }
+    default:
+      return `[${kidName}] ${title}`;
+  }
+}
+
+/** Description from segment_data: confirmation #s, timezones,
+ *  whatever's useful as text reference in the subscriber's app. */
+function buildSegmentDescription(
+  evt: { notes?: string | null },
+  segmentType: string | undefined,
+  data: Record<string, unknown> | null | undefined
+): string {
+  const lines: string[] = [];
+  if (evt.notes) lines.push(evt.notes);
+  if (!segmentType || !data) return lines.join("\\n");
+  switch (segmentType) {
+    case "lodging": {
+      if (data.address) lines.push(`Address: ${data.address}`);
+      if (data.phone) lines.push(`Phone: ${data.phone}`);
+      if (data.confirmation) lines.push(`Confirmation: ${data.confirmation}`);
+      break;
+    }
+    case "flight": {
+      if (data.confirmation) lines.push(`Confirmation: ${data.confirmation}`);
+      if (Array.isArray(data.seats) && data.seats.length > 0)
+        lines.push(`Seats: ${(data.seats as string[]).join(", ")}`);
+      const depTz = data.departure_timezone;
+      const arrTz = data.arrival_timezone;
+      if (depTz && arrTz && depTz !== arrTz) {
+        lines.push(`Zones: ${depTz} → ${arrTz}`);
+      }
+      break;
+    }
+    case "drive": {
+      if (data.vehicle_details) lines.push(`Vehicle: ${data.vehicle_details}`);
+      if (data.rental_confirmation)
+        lines.push(`Rental: ${data.rental_confirmation}`);
+      break;
+    }
+    case "train":
+    case "ferry": {
+      if (data.confirmation) lines.push(`Confirmation: ${data.confirmation}`);
+      break;
+    }
+    case "cruise": {
+      if (data.confirmation) lines.push(`Confirmation: ${data.confirmation}`);
+      if (Array.isArray(data.cabins)) {
+        for (const cabin of data.cabins as Array<{ number?: string }>) {
+          if (cabin.number) lines.push(`Cabin: ${cabin.number}`);
+        }
+      }
+      break;
+    }
+    case "cruise_port_stop": {
+      if (data.tender) lines.push("Tender boat to shore");
+      if (data.notes) lines.push(String(data.notes));
+      break;
+    }
+  }
+  return lines.join("\\n");
+}
+
+/** LOCATION header — short single-line "where" string. */
+function buildSegmentLocation(
+  evt: { location?: string | null },
+  segmentType: string | undefined,
+  data: Record<string, unknown> | null | undefined
+): string {
+  if (segmentType && data) {
+    if (segmentType === "lodging") {
+      const parts = [
+        data.name,
+        data.address,
+      ].filter(Boolean) as string[];
+      if (parts.length > 0) return parts.join(", ");
+    }
+    if (segmentType === "flight") {
+      const dep = data.departure_airport as string | undefined;
+      const arr = data.arrival_airport as string | undefined;
+      const both = [dep, arr].filter(Boolean).join(" → ");
+      if (both) return both;
+    }
+    if (segmentType === "cruise") {
+      const ship = data.ship_name as string | undefined;
+      if (ship) return ship;
+    }
+    if (segmentType === "cruise_port_stop") {
+      const port = data.port as string | undefined;
+      if (port) return port;
+    }
+  }
+  return evt.location || "";
+}
+
 /**
  * VTIMEZONE block for America/New_York. Without this, calendars
  * receiving DTSTART;TZID=... can't resolve the offset and may
@@ -128,28 +266,57 @@ export async function GET(request: NextRequest) {
   ];
 
   // ── DB Events ──────────────────────────────────────────
+  // Trip segments get type-aware emission (plan §10):
+  //   - lodging + cruise body → all-day multi-day events. The
+  //     subscriber's calendar shows them as "blocks" spanning the
+  //     stay/cruise dates rather than weird non-all-day chunks
+  //     anchored at check-in time.
+  //   - flight/drive/train/ferry/cruise_port_stop → timed events
+  //     emitted in UTC. The subscriber's calendar handles
+  //     UTC→local conversion. Per-leg TZ data goes into the
+  //     description as text labels for cross-zone clarity.
+  //   - non-segment events → existing path (UTC timed or all-day).
   for (const evt of events) {
     const kidName = (evt.kid as any)?.name || "Unknown";
     const start = new Date(evt.starts_at);
     const end = new Date(evt.ends_at);
+    const segmentType: string | undefined = (evt as any).segment_type;
+    const segmentData = (evt as any).segment_data;
+    const isStayLikeSegment =
+      segmentType === "lodging" || segmentType === "cruise";
 
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${evt.id}@kidsync`);
 
-    if (evt.all_day) {
-      lines.push(`DTSTART;VALUE=DATE:${toICalDate(start)}`);
-      const endDate = new Date(end);
-      endDate.setDate(endDate.getDate() + 1); // iCal all-day end is exclusive
+    if (evt.all_day || isStayLikeSegment) {
+      // Multi-day all-day. End date is the day AFTER the last
+      // night the user was sleeping there (iCal exclusive end).
+      // For lodging this is the check-out day; for cruise this is
+      // the disembarkation day. starts_at/ends_at are UTC ISO so
+      // we use date-only extraction.
+      const startDate = isStayLikeSegment
+        ? new Date(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())
+        : start;
+      const endDate = isStayLikeSegment
+        ? new Date(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate())
+        : new Date(end);
+      // For all-day events, advance end by 1 day (iCal exclusive)
+      endDate.setDate(endDate.getDate() + 1);
+      lines.push(`DTSTART;VALUE=DATE:${toICalDate(startDate)}`);
       lines.push(`DTEND;VALUE=DATE:${toICalDate(endDate)}`);
     } else {
       lines.push(`DTSTART:${toICalDateTime(start)}`);
       lines.push(`DTEND:${toICalDateTime(end)}`);
     }
 
-    lines.push(`SUMMARY:[${escapeIcal(kidName)}] ${escapeIcal(evt.title)}`);
+    // Summary: segment-aware label so subscribers see "Hilton ·
+    // Honolulu, HI" not just the raw title which might be empty.
+    const summary = buildSegmentSummary(evt, segmentType, segmentData, kidName);
+    lines.push(`SUMMARY:${escapeIcal(summary)}`);
 
-    // Add RRULE for recurring events
-    if (evt.recurring_rule) {
+    // Add RRULE for recurring events (only on non-segment events;
+    // segments don't recur).
+    if (evt.recurring_rule && !segmentType) {
       lines.push(`RRULE:${evt.recurring_rule}`);
     }
 
@@ -163,26 +330,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Description with travel details
-    let description = evt.notes || "";
-    const travel = evt.travel as any;
-    if (travel && Array.isArray(travel) && travel.length > 0) {
-      const t = travel[0];
-      if (t.lodging_name) {
-        description += `\\nLODGING: ${t.lodging_name}`;
-        if (t.lodging_address) description += `\\n${t.lodging_address}`;
-      }
-      if (t.flights) {
-        try {
-          const flights = typeof t.flights === "string" ? JSON.parse(t.flights) : t.flights;
-          for (const f of flights) {
-            description += `\\nFLIGHT: ${f.carrier} ${f.flight_number} ${f.departure_airport}-${f.arrival_airport}`;
-          }
-        } catch { /* ignore */ }
-      }
-    }
+    // Description: rich for segments (location names, conf #s,
+    // per-leg timezones), plain notes otherwise.
+    const description = buildSegmentDescription(evt, segmentType, segmentData);
     if (description) lines.push(`DESCRIPTION:${escapeIcal(description)}`);
-    if (evt.location) lines.push(`LOCATION:${escapeIcal(evt.location)}`);
+
+    // LOCATION header — pull from segment_data when present,
+    // otherwise the event's location field.
+    const location = buildSegmentLocation(evt, segmentType, segmentData);
+    if (location) lines.push(`LOCATION:${escapeIcal(location)}`);
     lines.push("END:VEVENT");
   }
 
