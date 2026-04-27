@@ -249,9 +249,11 @@ export default function MonthView({
   type TurnoverPill = {
     time: string;
     timeIso: string;
-    /** Vertical position (0-100) where this pill should float —
-     *  the same % as the band boundary it sits on. */
-    boundaryPct: number;
+    /** Time-of-day pct (0-100) — where the band boundary SHOULD be
+     *  in a strict time-encoded cell. Render layer remaps this to
+     *  the pill's rendered slot pct so events can flow naturally
+     *  above/below the pill in chronological order. */
+    timeOfDayPct: number;
     isPickup: boolean;
     parentId: string;
     parentName: string;
@@ -259,27 +261,26 @@ export default function MonthView({
     kidIds: string[];
     events: CalendarEvent[];
   };
-  type WholeCustodyView = {
-    mode: "whole";
-    background: string | undefined;
-    splitPct: number | null;
-    turnoverPills: TurnoverPill[];
-  };
-  type SplitCustodyView = {
-    mode: "split";
+  /**
+   * Unified view shape — every day cell has a list of bands (in
+   * time-of-day coordinates) and a list of turnover pills. The
+   * render layer maps the time-of-day band coordinates to rendered
+   * slot pcts so the layout looks balanced regardless of how early
+   * or late in the day the handoff happens.
+   */
+  type CustodyView = {
     bands: CustodyBand[];
     turnoverPills: TurnoverPill[];
   };
-  type CustodyView = WholeCustodyView | SplitCustodyView;
 
   function custodyView(day: Date, dayEvents: CalendarEvent[]): CustodyView {
     if (!getCustodyForDate || !currentUserId) {
-      return { mode: "whole", background: undefined, splitPct: null, turnoverPills: [] };
+      return { bands: [], turnoverPills: [] };
     }
     const custody = getCustodyForDate(day);
     const kidIds = Object.keys(custody);
     if (kidIds.length === 0) {
-      return { mode: "whole", background: undefined, splitPct: null, turnoverPills: [] };
+      return { bands: [], turnoverPills: [] };
     }
     // Color identity is parent-role-based: parent_a → parentABg,
     // parent_b → parentBBg. Each parent picks their own color in
@@ -405,11 +406,11 @@ export default function MonthView({
       const turnoverDate = parseTimestamp(evt.starts_at);
       const hourFrac =
         turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
-      const boundaryPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
+      const timeOfDayPct = Math.max(0, Math.min(100, (hourFrac / 24) * 100));
       turnoverGroups.set(key, {
         time: formatShortTime(turnoverDate),
         timeIso: evt.starts_at,
-        boundaryPct,
+        timeOfDayPct,
         isPickup,
         parentId: todayParent,
         parentName,
@@ -422,45 +423,26 @@ export default function MonthView({
       a.timeIso.localeCompare(b.timeIso)
     );
 
-    // ─── Mode selection ────────────────────────────────────────────
-    // Whole mode whenever no band has stripes — including the joint-
-    // handoff case where both kids transition together (bands look
-    // like solidA → solidB; we synthesize a vertical gradient that
-    // matches the existing whole-mode visual). Bands mode otherwise.
-    if (!hasStripes) {
-      if (bands.length === 1) {
-        return {
-          mode: "whole",
-          background:
-            bands[0].fill.type === "solid" ? bands[0].fill.color : undefined,
-          splitPct: null,
-          turnoverPills,
-        };
+    // Single unified return — the render layer handles solid/stripes/
+    // gradient cases uniformly via bands. Optionally collapse adjacent
+    // identical solid bands so a no-transition or same-color day
+    // renders as a single backdrop without unnecessary divider lines.
+    const collapsed: CustodyBand[] = [];
+    bands.forEach((b) => {
+      const last = collapsed[collapsed.length - 1];
+      if (
+        last &&
+        last.fill.type === "solid" &&
+        b.fill.type === "solid" &&
+        last.fill.color === b.fill.color
+      ) {
+        last.endPct = b.endPct;
+      } else {
+        collapsed.push({ ...b });
       }
-      const firstBand = bands[0];
-      const lastBand = bands[bands.length - 1];
-      const firstColor =
-        firstBand.fill.type === "solid" ? firstBand.fill.color : "";
-      const lastColor =
-        lastBand.fill.type === "solid" ? lastBand.fill.color : "";
-      if (firstColor === lastColor) {
-        return {
-          mode: "whole",
-          background: firstColor || undefined,
-          splitPct: null,
-          turnoverPills,
-        };
-      }
-      const splitPct = firstBand.endPct;
-      return {
-        mode: "whole",
-        background: `linear-gradient(to bottom, ${firstColor} 0%, ${firstColor} ${splitPct}%, ${lastColor} ${splitPct}%, ${lastColor} 100%)`,
-        splitPct,
-        turnoverPills,
-      };
-    }
-
-    return { mode: "split", bands, turnoverPills };
+    });
+    void hasStripes;
+    return { bands: collapsed, turnoverPills };
   }
 
   return (
@@ -514,6 +496,85 @@ export default function MonthView({
                     !e.id.startsWith("turnover-") && !isMultiDayEvent(e)
                 );
 
+                // ─── Cell layout (single IIFE) ──────────────────────
+                // Items (events + turnover pills) are sorted chrono and
+                // distributed evenly through the cell. Each pill's
+                // rendered slot pct drives the band boundary, so the
+                // boundary line passes through the pill's middle and
+                // events flow naturally above (pre-handoff) or below
+                // (post-handoff) the pill.
+                //
+                // We don't try to honor exact time-of-day pcts because
+                // a 9pm pickup at 87.5% of the cell looks crammed; even
+                // distribution reads cleaner and still preserves chrono
+                // order top-to-bottom.
+                const sortedEvents = [...nonTurnoverEvents].sort((a, b) =>
+                  a.starts_at.localeCompare(b.starts_at)
+                );
+                const TOTAL_SLOTS = 3;
+                const remainingSlots = Math.max(
+                  0,
+                  TOTAL_SLOTS - view.turnoverPills.length
+                );
+                const visibleEvents = sortedEvents.slice(0, remainingSlots);
+                const hiddenCount = sortedEvents.length - visibleEvents.length;
+                type CellItem =
+                  | { kind: "pill"; sortKey: string; pill: TurnoverPill }
+                  | { kind: "event"; sortKey: string; evt: CalendarEvent };
+                const items: CellItem[] = [
+                  ...view.turnoverPills.map(
+                    (p): CellItem => ({
+                      kind: "pill",
+                      sortKey: p.timeIso,
+                      pill: p,
+                    })
+                  ),
+                  ...visibleEvents.map(
+                    (e): CellItem => ({
+                      kind: "event",
+                      sortKey: e.starts_at,
+                      evt: e,
+                    })
+                  ),
+                ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+                // Item layout: distribute space-evenly inside [START,END]
+                // (top=22% leaves room for the day number; bottom=96%
+                // leaves a small margin for "+N more" if present).
+                const ITEMS_START = 22;
+                const ITEMS_END = 96;
+                const itemPct = (idx: number): number => {
+                  if (items.length === 0) return 50;
+                  return (
+                    ITEMS_START +
+                    ((idx + 1) / (items.length + 1)) *
+                      (ITEMS_END - ITEMS_START)
+                  );
+                };
+
+                // Build pill timeOfDayPct → renderedPct so we can remap
+                // the time-of-day band boundaries onto the cell's
+                // rendered layout coordinates.
+                const renderedByTodPct = new Map<number, number>();
+                items.forEach((item, idx) => {
+                  if (item.kind === "pill") {
+                    renderedByTodPct.set(
+                      item.pill.timeOfDayPct,
+                      itemPct(idx)
+                    );
+                  }
+                });
+                const remapPct = (timePct: number): number => {
+                  if (timePct <= 0) return 0;
+                  if (timePct >= 100) return 100;
+                  return renderedByTodPct.get(timePct) ?? timePct;
+                };
+                const renderedBands = view.bands.map((band) => ({
+                  ...band,
+                  startPct: remapPct(band.startPct),
+                  endPct: remapPct(band.endPct),
+                }));
+
                 return (
                   <div
                     key={di}
@@ -523,24 +584,14 @@ export default function MonthView({
                       ${isLastCol ? "" : "border-r border-[var(--border-strong)]"}
                       ${inMonth ? "" : "opacity-55"}
                     `}
-                    style={
-                      view.mode === "whole" && view.background
-                        ? { background: view.background }
-                        : undefined
-                    }
                   >
-                    {/* Split-mode: bands-by-time backdrop. Each band is
-                        either solid (joint parent for that time-window)
-                        or diagonal stripes (kids actually divergent here).
-                        Crisp ink dividers at every interior band boundary
-                        make the start/end of stripes unambiguous — without
-                        them, the stripes' parent-A bands visually bleed
-                        into an adjacent solid parent-A region (since the
-                        colors are identical) and the eye reads the
-                        diagonal as "going past the exchange." */}
-                    {view.mode === "split" && (
+                    {/* Backdrop bands. Solid fills for whole-state
+                        bands, diagonal stripes for split-state bands.
+                        Crisp ink hairline at every interior boundary so
+                        the start/end of stripes is unambiguous. */}
+                    {renderedBands.length > 0 && (
                       <div className="absolute inset-0 pointer-events-none">
-                        {view.bands.map((band, idx) => {
+                        {renderedBands.map((band, idx) => {
                           const stripeBg = `repeating-linear-gradient(45deg, ${
                             parentABg ?? "var(--them-bg)"
                           } 0px, ${
@@ -565,8 +616,7 @@ export default function MonthView({
                             />
                           );
                         })}
-                        {/* Boundary dividers — one per interior boundary. */}
-                        {view.bands.slice(0, -1).map((band, idx) => (
+                        {renderedBands.slice(0, -1).map((band, idx) => (
                           <div
                             key={`bd-${idx}`}
                             className="absolute left-0 right-0"
@@ -581,7 +631,8 @@ export default function MonthView({
                         ))}
                       </div>
                     )}
-                    {/* Day number */}
+
+                    {/* Day number — flow */}
                     <div
                       className={`
                         relative z-[2] inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
@@ -593,179 +644,160 @@ export default function MonthView({
                       {day.getDate()}
                     </div>
 
-                    {/* Ribbon-area spacer — reserved height equal to the
-                        week's multi-day ribbon stack so the ribbons (rendered
-                        at the week-row level below) don't sit on top of
-                        single-day chips. */}
+                    {/* Ribbon-area spacer — flow */}
                     {ribbonAreaHeight > 0 && (
                       <div style={{ height: ribbonAreaHeight }} />
                     )}
 
-                    {/* Regular event stack — chronological top-to-bottom,
-                        cap 3, "+N more" for the rest. Turnover pills are
-                        rendered separately as floating elements on their
-                        band-boundary lines so the user can see exactly
-                        WHEN the handoff happens within the day. */}
-                    {(() => {
-                      const sortedEvents = [...nonTurnoverEvents].sort((a, b) =>
-                        a.starts_at.localeCompare(b.starts_at)
-                      );
-                      const visibleEvents = sortedEvents.slice(0, 3);
-                      const hiddenCount = sortedEvents.length - visibleEvents.length;
-                      return (
-                        <>
-                          {visibleEvents.map((evt) => {
-                            const typeColor = getEventTypeColor(evt);
-                            const kidBadge = singleKidIndicator(evt);
-                            const dashed = evt._tentative;
-                            const isHoliday = evt.id.startsWith("holiday-");
-                            const showTime = !evt.all_day && !isHoliday;
-                            const timeStr = showTime
-                              ? formatShortTime(parseTimestamp(evt.starts_at))
-                              : null;
-                            return (
-                              <div
-                                key={evt.id}
-                                onClick={(ev) => {
-                                  ev.stopPropagation();
-                                  onEventClick(evt);
-                                }}
-                                className={`
-                                  relative z-[2]
-                                  flex items-center gap-1
-                                  text-[11px] font-medium leading-tight
-                                  bg-white text-[var(--ink)]
-                                  px-1.5 py-[3px] mb-0.5
-                                  border-l-[3px]
-                                  ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                                  shadow-[0_0_0_1px_var(--border)]
-                                  cursor-pointer hover:translate-x-[1px] transition-transform
-                                  overflow-hidden
-                                `}
-                                style={{ borderLeftColor: typeColor }}
-                              >
-                                {timeStr && (
-                                  <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
-                                    {timeStr}
-                                  </span>
-                                )}
-                                {kidBadge && (
-                                  <span
-                                    className={`
-                                      inline-flex items-center justify-center shrink-0
-                                      w-[14px] h-[14px] rounded-sm
-                                      text-[8px] font-bold text-white
-                                      ${kidIndicatorClass[kidBadge]}
-                                    `}
-                                    title={
-                                      kidBadge === "ethan" ? "Ethan" : "Harrison"
-                                    }
-                                  >
-                                    {kidBadge === "ethan" ? "E" : "H"}
-                                  </span>
-                                )}
-                                <span className="truncate">{evt.title}</span>
-                              </div>
-                            );
-                          })}
-                          {hiddenCount > 0 && (
-                            <div className="relative z-[2] text-[10.5px] text-[var(--text-faint)] pl-1.5 font-medium">
-                              +{hiddenCount} more
+                    {/* Items — absolute by index pct. Pills sit on the
+                        band boundary (boundary pct = pill's itemPct);
+                        events flow above/below in chrono order. */}
+                    {items.map((item, idx) => {
+                      const top = itemPct(idx);
+                      const positionStyle: React.CSSProperties = {
+                        position: "absolute",
+                        left: 6,
+                        right: 6,
+                        top: `${top}%`,
+                        transform: "translateY(-50%)",
+                      };
+                      if (item.kind === "pill") {
+                        const pill = item.pill;
+                        const matchingKids = kids.filter((k) =>
+                          pill.kidIds.includes(k.id)
+                        );
+                        const action = pill.isPickup ? "Pick Up" : "Drop-off";
+                        return (
+                          <div
+                            key={`t-${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
+                            style={{ ...positionStyle, zIndex: 5 }}
+                            className="pointer-events-none"
+                          >
+                            <div
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (pill.events[0])
+                                  onEventClick(pill.events[0]);
+                              }}
+                              className="
+                                pointer-events-auto
+                                flex items-center gap-1
+                                text-[11px] font-medium leading-tight
+                                bg-white text-[var(--ink)]
+                                px-1.5 py-[3px]
+                                border-l-[3px]
+                                shadow-[0_0_0_1px_var(--border)]
+                                cursor-pointer hover:translate-x-[1px] transition-transform
+                                overflow-hidden
+                              "
+                              style={{ borderLeftColor: pill.parentSwatch }}
+                              title={`${pill.time} ${action} (${pill.parentName})`}
+                            >
+                              <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
+                                {pill.time}
+                              </span>
+                              <span className="flex gap-[2px] shrink-0">
+                                {matchingKids.map((kid) => {
+                                  const slot = kidSlot(kid, kids);
+                                  const chipClass =
+                                    slot === "ethan" || slot === "harrison"
+                                      ? kidIndicatorClass[slot]
+                                      : "";
+                                  return (
+                                    <span
+                                      key={kid.id}
+                                      title={kid.name}
+                                      className={`
+                                        inline-flex items-center justify-center
+                                        w-[14px] h-[14px] rounded-sm
+                                        text-[8px] font-bold text-white
+                                        ${chipClass}
+                                      `}
+                                      style={
+                                        chipClass
+                                          ? undefined
+                                          : { background: kid.color }
+                                      }
+                                    >
+                                      {kid.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  );
+                                })}
+                              </span>
+                              <span className="truncate">
+                                {action}{" "}
+                                <span className="text-[var(--text-muted)] font-medium">
+                                  ({pill.parentName})
+                                </span>
+                              </span>
                             </div>
-                          )}
-                        </>
-                      );
-                    })()}
-
-                    {/* Floating turnover pill(s) — absolutely positioned
-                        on the band boundary at the handoff time. Reads
-                        as one continuous horizontal rule with the band
-                        divider passing through the pill's middle.
-                        Format mirrors a regular event pill:
-                          [time]  [E][H]  Pick Up (Patrick) */}
-                    {view.turnoverPills.map((pill) => {
-                      const matchingKids = kids.filter((k) =>
-                        pill.kidIds.includes(k.id)
-                      );
-                      const action = pill.isPickup ? "Pick Up" : "Drop-off";
-                      // Clamp so the pill never overlaps the day-number
-                      // strip at the top or runs off the bottom edge.
-                      const clampedTop = Math.max(
-                        20,
-                        Math.min(92, pill.boundaryPct)
-                      );
+                          </div>
+                        );
+                      }
+                      // event
+                      const evt = item.evt;
+                      const typeColor = getEventTypeColor(evt);
+                      const kidBadge = singleKidIndicator(evt);
+                      const dashed = evt._tentative;
+                      const isHoliday = evt.id.startsWith("holiday-");
+                      const showTime = !evt.all_day && !isHoliday;
+                      const timeStr = showTime
+                        ? formatShortTime(parseTimestamp(evt.starts_at))
+                        : null;
                       return (
                         <div
-                          key={`t-${pill.timeIso}-${pill.parentId}-${pill.isPickup}`}
-                          className="absolute left-1.5 right-1.5 pointer-events-none"
+                          key={evt.id}
                           style={{
-                            top: `${clampedTop}%`,
-                            transform: "translateY(-50%)",
-                            zIndex: 5,
+                            ...positionStyle,
+                            zIndex: 2,
+                            borderLeftColor: typeColor,
                           }}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onEventClick(evt);
+                          }}
+                          className={`
+                            flex items-center gap-1
+                            text-[11px] font-medium leading-tight
+                            bg-white text-[var(--ink)]
+                            px-1.5 py-[3px]
+                            border-l-[3px]
+                            ${dashed ? "border-dashed opacity-75" : "border-solid"}
+                            shadow-[0_0_0_1px_var(--border)]
+                            cursor-pointer hover:translate-x-[1px] transition-transform
+                            overflow-hidden
+                          `}
                         >
-                          <div
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              if (pill.events[0]) onEventClick(pill.events[0]);
-                            }}
-                            className="
-                              pointer-events-auto
-                              flex items-center gap-1
-                              text-[11px] font-medium leading-tight
-                              bg-white text-[var(--ink)]
-                              px-1.5 py-[3px]
-                              border-l-[3px]
-                              shadow-[0_0_0_1px_var(--border)]
-                              cursor-pointer hover:translate-x-[1px] transition-transform
-                              overflow-hidden
-                            "
-                            style={{ borderLeftColor: pill.parentSwatch }}
-                            title={`${pill.time} ${action} (${pill.parentName})`}
-                          >
+                          {timeStr && (
                             <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
-                              {pill.time}
+                              {timeStr}
                             </span>
-                            <span className="flex gap-[2px] shrink-0">
-                              {matchingKids.map((kid) => {
-                                const slot = kidSlot(kid, kids);
-                                const chipClass =
-                                  slot === "ethan" || slot === "harrison"
-                                    ? kidIndicatorClass[slot]
-                                    : "";
-                                return (
-                                  <span
-                                    key={kid.id}
-                                    title={kid.name}
-                                    className={`
-                                      inline-flex items-center justify-center
-                                      w-[14px] h-[14px] rounded-sm
-                                      text-[8px] font-bold text-white
-                                      ${chipClass}
-                                    `}
-                                    style={
-                                      chipClass
-                                        ? undefined
-                                        : { background: kid.color }
-                                    }
-                                  >
-                                    {kid.name.charAt(0).toUpperCase()}
-                                  </span>
-                                );
-                              })}
+                          )}
+                          {kidBadge && (
+                            <span
+                              className={`
+                                inline-flex items-center justify-center shrink-0
+                                w-[14px] h-[14px] rounded-sm
+                                text-[8px] font-bold text-white
+                                ${kidIndicatorClass[kidBadge]}
+                              `}
+                              title={
+                                kidBadge === "ethan" ? "Ethan" : "Harrison"
+                              }
+                            >
+                              {kidBadge === "ethan" ? "E" : "H"}
                             </span>
-                            <span className="truncate">
-                              {action}{" "}
-                              <span
-                                className="text-[var(--text-muted)] font-medium"
-                              >
-                                ({pill.parentName})
-                              </span>
-                            </span>
-                          </div>
+                          )}
+                          <span className="truncate">{evt.title}</span>
                         </div>
                       );
                     })}
+
+                    {hiddenCount > 0 && (
+                      <div className="absolute bottom-1 left-2 right-2 z-[2] text-[10.5px] text-[var(--text-faint)] font-medium pointer-events-none">
+                        +{hiddenCount} more
+                      </div>
+                    )}
                   </div>
                 );
               })}
