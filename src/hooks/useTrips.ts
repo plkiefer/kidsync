@@ -199,6 +199,19 @@ export function useTrips(
             userId
           );
         }
+        // Optimistically add to local state so callers can immediately
+        // route to TripView by id. Without this the calendar's
+        // post-create handoff (setOpenTripId(trip.id) → trips.find(...))
+        // races against the realtime subscription and the modal
+        // silently fails to open. Dedupe by id in case realtime also
+        // delivers the insert.
+        if (newTrip) {
+          setTrips((prev) =>
+            prev.some((t) => t.id === (newTrip as Trip).id)
+              ? prev
+              : [...prev, newTrip as Trip]
+          );
+        }
         return newTrip as Trip;
       } catch (err) {
         console.error("Error creating trip:", err);
@@ -255,6 +268,15 @@ export function useTrips(
             userId
           );
         }
+        // Optimistic local update — same rationale as createTrip.
+        // Realtime may not fire fast enough (or at all if the
+        // publication doesn't include trips), so do not depend on it
+        // for the user's own writes.
+        if (updated) {
+          setTrips((prev) =>
+            prev.map((t) => (t.id === id ? (updated as Trip) : t))
+          );
+        }
         return updated as Trip;
       } catch (err) {
         console.error("Error updating trip:", err);
@@ -305,6 +327,8 @@ export function useTrips(
             );
           }
         }
+        // Optimistic removal — see createTrip for rationale.
+        setTrips((prev) => prev.filter((t) => t.id !== id));
         return true;
       } catch (err) {
         console.error("Error deleting trip:", err);
