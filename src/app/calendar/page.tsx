@@ -46,6 +46,7 @@ import LodgingForm, { NewLodgingInput } from "@/components/LodgingForm";
 import TransportForm, { TransportKind } from "@/components/TransportForm";
 import CruiseForm, { CruiseSaveInput } from "@/components/CruiseForm";
 import PortStopPopover from "@/components/PortStopPopover";
+import TransportPopover from "@/components/TransportPopover";
 import TripOverrideProposalModal from "@/components/TripOverrideProposalModal";
 import {
   detectTripCustodyConflict,
@@ -170,6 +171,13 @@ export default function CalendarPage() {
   } | null>(null);
   const [portStopPopover, setPortStopPopover] = useState<{
     portStopId: string;
+  } | null>(null);
+  // Read-only transport popover, opened from a flight/drive/train/
+  // ferry chip click on the calendar. Plan §10c-style: don't drag
+  // the user into the full TripView for what's usually just "show
+  // me the flight number / confirmation / seats" reference.
+  const [transportPopover, setTransportPopover] = useState<{
+    segmentId: string;
   } | null>(null);
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
@@ -307,9 +315,24 @@ export default function CalendarPage() {
       setOpenTripId(event.trip_id);
       return;
     }
-    // Trip-linked segments open Trip View instead of the regular
-    // event detail modal — the user wants to see all the trip's
-    // segments together, not just this one chip.
+    // Flight / drive / train / ferry chips → lightweight popover
+    // showing confirmation #, seats, terminals etc. The user mostly
+    // clicks these to grab a reference detail (gate, conf #) — not
+    // to edit the whole trip. They can still jump to Trip View from
+    // the popover footer if they want the broader view.
+    if (
+      isTripSegment(event) &&
+      (event.segment_type === "flight" ||
+        event.segment_type === "drive" ||
+        event.segment_type === "train" ||
+        event.segment_type === "ferry")
+    ) {
+      setTransportPopover({ segmentId: event.id });
+      return;
+    }
+    // Other trip-linked segments (lodging stay ribbons, cruise body)
+    // still open Trip View — they're contextual to the broader trip
+    // and benefit from seeing all segments together.
     if (isTripSegment(event) && event.trip_id) {
       setOpenTripId(event.trip_id);
       return;
@@ -1523,6 +1546,60 @@ export default function CalendarPage() {
                 if (portStop.trip_id) setOpenTripId(portStop.trip_id);
                 setPortStopPopover(null);
               }}
+            />
+          );
+        })()}
+
+      {/* Transport popover — flight/drive/train/ferry chip click on
+          the calendar opens this read-only details view (conf #,
+          seats, terminals, who's on). Avoids the heavy TripView
+          surface for what's usually a quick reference glance. */}
+      {transportPopover &&
+        (() => {
+          const seg = events.find((e) => e.id === transportPopover.segmentId);
+          if (!seg) {
+            setTransportPopover(null);
+            return null;
+          }
+          const trip = seg.trip_id
+            ? trips.find((t) => t.id === seg.trip_id)
+            : undefined;
+          return (
+            <TransportPopover
+              segment={seg}
+              kids={kids}
+              members={members}
+              guests={trip?.guests ?? []}
+              onClose={() => setTransportPopover(null)}
+              onEdit={() => {
+                if (
+                  seg.segment_type === "flight" ||
+                  seg.segment_type === "drive" ||
+                  seg.segment_type === "train" ||
+                  seg.segment_type === "ferry"
+                ) {
+                  setTransportPopover(null);
+                  setTransportForm({
+                    tripId: seg.trip_id ?? "",
+                    type: seg.segment_type,
+                    editing: seg,
+                  });
+                }
+              }}
+              onDelete={async () => {
+                setTransportPopover(null);
+                await deleteEvent(seg.id);
+                if (seg.trip_id) await recomputeTripDates(seg.trip_id);
+                await refetch();
+              }}
+              onViewTrip={
+                seg.trip_id
+                  ? () => {
+                      if (seg.trip_id) setOpenTripId(seg.trip_id);
+                      setTransportPopover(null);
+                    }
+                  : undefined
+              }
             />
           );
         })()}

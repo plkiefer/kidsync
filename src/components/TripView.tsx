@@ -32,6 +32,7 @@ import {
 import { validateTrip, TripWarning } from "@/lib/tripValidation";
 import { kidColorCss } from "@/lib/palette";
 import LodgingPopover from "@/components/LodgingPopover";
+import TransportPopover from "@/components/TransportPopover";
 
 interface TripViewProps {
   trip: Trip;
@@ -127,6 +128,17 @@ export default function TripView({
   const viewingLodging =
     viewingLodgingId
       ? segments.find((s) => s.id === viewingLodgingId) ?? null
+      : null;
+
+  // Same pattern for transport segments. Cruise body still routes
+  // straight to edit because it has cabins/port stops too rich for
+  // a popover; flight/drive/train/ferry get the popover.
+  const [viewingTransportId, setViewingTransportId] = useState<string | null>(
+    null
+  );
+  const viewingTransport =
+    viewingTransportId
+      ? segments.find((s) => s.id === viewingTransportId) ?? null
       : null;
 
   // Group segments by type for section rendering
@@ -298,6 +310,16 @@ export default function TripView({
                     segment={t}
                     onEdit={onEditSegment}
                     onDelete={onDeleteSegment}
+                    onView={(seg) => {
+                      // Cruise body still routes straight to its own
+                      // editor (CruiseForm) — its cabins + port stops
+                      // are too rich for the popover.
+                      if (seg.segment_type === "cruise") {
+                        onEditSegment?.(seg);
+                        return;
+                      }
+                      setViewingTransportId(seg.id);
+                    }}
                   />
                 ))}
               </div>
@@ -382,6 +404,29 @@ export default function TripView({
           onDelete={async () => {
             const seg = viewingLodging;
             setViewingLodgingId(null);
+            await onDeleteSegment?.(seg.id);
+          }}
+        />
+      )}
+
+      {/* Transport details popover (read-only) — same pattern for
+          flight/drive/train/ferry rows. Cruise body skips this and
+          goes straight to its own form (handled in onView wiring). */}
+      {viewingTransport && (
+        <TransportPopover
+          segment={viewingTransport}
+          kids={kids}
+          members={members}
+          guests={trip.guests}
+          onClose={() => setViewingTransportId(null)}
+          onEdit={() => {
+            const seg = viewingTransport;
+            setViewingTransportId(null);
+            onEditSegment?.(seg);
+          }}
+          onDelete={async () => {
+            const seg = viewingTransport;
+            setViewingTransportId(null);
             await onDeleteSegment?.(seg.id);
           }}
         />
@@ -717,10 +762,15 @@ function TransportRow({
   segment,
   onEdit,
   onDelete,
+  onView,
 }: {
   segment: CalendarEvent;
   onEdit?: (s: CalendarEvent) => void;
   onDelete?: (id: string) => Promise<void>;
+  /** Open the read-only details popover. Pencil icon still goes
+   *  straight to edit; trash still deletes. Click on row body =
+   *  view, matching the lodging row pattern. */
+  onView?: (s: CalendarEvent) => void;
 }) {
   const date = formatShortDate(segment.starts_at);
   const time = parseTimestamp(segment.starts_at).toLocaleTimeString([], {
@@ -728,7 +778,20 @@ function TransportRow({
     minute: "2-digit",
   });
   return (
-    <div className="border border-[var(--border)] rounded-sm px-3 py-2 flex items-center gap-2 hover:bg-[var(--bg-sunken)] transition-colors">
+    <div
+      role={onView ? "button" : undefined}
+      tabIndex={onView ? 0 : undefined}
+      onClick={() => onView?.(segment)}
+      onKeyDown={(e) => {
+        if (onView && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onView(segment);
+        }
+      }}
+      className={`border border-[var(--border)] rounded-sm px-3 py-2 flex items-center gap-2 transition-colors ${
+        onView ? "hover:bg-[var(--bg-sunken)] cursor-pointer" : ""
+      }`}
+    >
       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--text-faint)] shrink-0 w-14">
         {segment.segment_type}
       </span>
@@ -740,7 +803,10 @@ function TransportRow({
       </span>
       {onEdit && (
         <button
-          onClick={() => onEdit(segment)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(segment);
+          }}
           className="text-[var(--text-muted)] hover:text-[var(--ink)] transition-colors p-1"
           aria-label="Edit segment"
         >
@@ -749,7 +815,8 @@ function TransportRow({
       )}
       {onDelete && (
         <button
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             if (confirm("Remove this segment?")) onDelete(segment.id);
           }}
           className="text-[var(--text-muted)] hover:text-[var(--accent-red)] transition-colors p-1"
