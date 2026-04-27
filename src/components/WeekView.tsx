@@ -10,6 +10,12 @@ import {
   eventCoversDay,
   getWeekDays,
 } from "@/lib/dates";
+import {
+  formatTimeInZone,
+  getBrowserTimezone,
+  tzAbbreviation,
+  zonesEquivalent,
+} from "@/lib/timezones";
 
 interface WeekViewProps {
   currentDate: Date;
@@ -309,7 +315,13 @@ export default function WeekView({
                   const kidBadge = singleKidIndicator(evt);
                   const { top, height } = getTopAndHeight(evt);
                   const dashed = evt._tentative;
-                  const timeStr = formatShortTime(parseTimestamp(evt.starts_at));
+                  const browserTz = getBrowserTimezone();
+                  const evtTz = evt.time_zone || browserTz;
+                  const evtInstant = parseTimestamp(evt.starts_at);
+                  const timeStr = formatTimeInZone(evtInstant, evtTz);
+                  const tzLabel = !zonesEquivalent(evtTz, browserTz)
+                    ? tzAbbreviation(evtTz, evtInstant)
+                    : null;
 
                   return (
                     <div
@@ -347,7 +359,12 @@ export default function WeekView({
                       </div>
                       {height > 30 && (
                         <div className="text-[10px] tabular-nums text-[var(--text-muted)] truncate mt-0.5">
-                          {timeStr} – {formatTime(evt.ends_at)}
+                          {timeStr} – {formatTimeInZone(parseTimestamp(evt.ends_at), evtTz)}
+                          {tzLabel && (
+                            <span className="ml-1 text-[var(--text-faint)]">
+                              {tzLabel}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

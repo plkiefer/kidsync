@@ -115,6 +115,15 @@ export interface FlightLeg {
   arrival_airport: string;
   departure_time: string;
   arrival_time: string;
+  /** IANA zone the departure clock-time is anchored to. departure_time
+   *  is still UTC; this lets the form/details UI render & edit in the
+   *  origin airport's local zone (e.g. NY for JFK, Tokyo for HND).
+   *  Falls back to the parent event's time_zone when null. */
+  departure_timezone?: string | null;
+  /** Same idea for arrival — anchored to the destination airport's
+   *  local zone so a JFK→HND flight reads as "10:00pm JFK → 2:30am+1
+   *  HND" regardless of where the viewer is. */
+  arrival_timezone?: string | null;
   confirmation: string;
   seat: string;
   notes: string;
@@ -126,8 +135,14 @@ export interface GroundTransport {
   confirmation: string;
   pickup_location: string;
   pickup_time: string;
+  /** IANA zone the pickup time is anchored to. Defaults to event TZ. */
+  pickup_timezone?: string | null;
   dropoff_location?: string;
   dropoff_time: string;
+  /** IANA zone for the dropoff time — typically the destination
+   *  city for cross-zone trips (e.g. drop-off after a Tokyo→NY
+   *  return needs the home zone). */
+  dropoff_timezone?: string | null;
   notes: string;
 }
 
@@ -317,6 +332,10 @@ export interface EventFormData {
   travel_arrival_airport?: string;
   travel_departure_time?: string;
   travel_arrival_time?: string;
+  /** IANA zone for the departure time. Defaults to event time_zone. */
+  travel_departure_timezone?: string;
+  /** IANA zone for the arrival time. Defaults to event time_zone. */
+  travel_arrival_timezone?: string;
   travel_lodging_name?: string;
   travel_lodging_address?: string;
   travel_lodging_phone?: string;

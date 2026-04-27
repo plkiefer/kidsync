@@ -11,6 +11,12 @@ import {
 } from "@/lib/types";
 import { toDateTimeLocal } from "@/lib/dates";
 import {
+  getBrowserTimezone,
+  localTimeToUtc,
+  utcToLocalTimeString,
+} from "@/lib/timezones";
+import TimezonePicker from "@/components/TimezonePicker";
+import {
   X,
   Plane,
   Building2,
@@ -30,6 +36,7 @@ interface TravelModalProps {
 }
 
 function emptyFlightLeg(leg: number, direction: "outbound" | "return"): FlightLeg {
+  const tz = getBrowserTimezone();
   return {
     leg,
     direction,
@@ -39,6 +46,13 @@ function emptyFlightLeg(leg: number, direction: "outbound" | "return"): FlightLe
     arrival_airport: "",
     departure_time: "",
     arrival_time: "",
+    // New legs default both ends to the user's home zone. Once
+    // departure_airport / arrival_airport are filled we could
+    // auto-detect (LAX → PT, HND → JST), but for now the user
+    // picks via the TZ picker. Browser default keeps single-zone
+    // trips zero-friction.
+    departure_timezone: tz,
+    arrival_timezone: tz,
     confirmation: "",
     seat: "",
     notes: "",
@@ -322,30 +336,77 @@ export default function TravelModal({
                     <input
                       type="datetime-local"
                       className={`${inputCls}`}
-                      value={flight.departure_time ? toDateTimeLocal(new Date(flight.departure_time)) : ""}
+                      value={
+                        flight.departure_time
+                          ? utcToLocalTimeString(
+                              new Date(flight.departure_time),
+                              flight.departure_timezone || getBrowserTimezone()
+                            )
+                          : ""
+                      }
                       onChange={(e) =>
                         updateFlight(
                           i,
                           "departure_time",
-                          e.target.value ? new Date(e.target.value).toISOString() : ""
+                          e.target.value
+                            ? localTimeToUtc(
+                                e.target.value,
+                                flight.departure_timezone || getBrowserTimezone()
+                              ).toISOString()
+                            : ""
                         )
                       }
                     />
+                    <div className="mt-1.5">
+                      <TimezonePicker
+                        value={flight.departure_timezone || getBrowserTimezone()}
+                        onChange={(tz) => {
+                          // When the picker changes, re-anchor the
+                          // existing UTC instant to the new zone so
+                          // the form input redisplays correctly.
+                          // This DOESN'T reinterpret the wall-clock —
+                          // 3pm-EDT becomes "3pm in NY" displayed,
+                          // but viewing in another zone keeps that
+                          // same UTC instant.
+                          updateFlight(i, "departure_timezone", tz);
+                        }}
+                        compact
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className={labelCls}>Arrives</label>
                     <input
                       type="datetime-local"
                       className={`${inputCls}`}
-                      value={flight.arrival_time ? toDateTimeLocal(new Date(flight.arrival_time)) : ""}
+                      value={
+                        flight.arrival_time
+                          ? utcToLocalTimeString(
+                              new Date(flight.arrival_time),
+                              flight.arrival_timezone || getBrowserTimezone()
+                            )
+                          : ""
+                      }
                       onChange={(e) =>
                         updateFlight(
                           i,
                           "arrival_time",
-                          e.target.value ? new Date(e.target.value).toISOString() : ""
+                          e.target.value
+                            ? localTimeToUtc(
+                                e.target.value,
+                                flight.arrival_timezone || getBrowserTimezone()
+                              ).toISOString()
+                            : ""
                         )
                       }
                     />
+                    <div className="mt-1.5">
+                      <TimezonePicker
+                        value={flight.arrival_timezone || getBrowserTimezone()}
+                        onChange={(tz) => updateFlight(i, "arrival_timezone", tz)}
+                        compact
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className={labelCls}>Confirmation #</label>

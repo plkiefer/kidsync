@@ -14,6 +14,12 @@ import {
   eventCoversDay,
 } from "@/lib/dates";
 import type { KidId } from "./ui/KidChip";
+import {
+  formatTimeInZone,
+  getBrowserTimezone,
+  tzAbbreviation,
+  zonesEquivalent,
+} from "@/lib/timezones";
 
 interface MonthViewProps {
   currentDate: Date;
@@ -741,9 +747,22 @@ export default function MonthView({
                       const dashed = evt._tentative;
                       const isHoliday = evt.id.startsWith("holiday-");
                       const showTime = !evt.all_day && !isHoliday;
+                      // Render the time in the event's saved zone so a
+                      // 10am-Tokyo flight shows "10:00am" regardless
+                      // of where the viewer is. If the zone differs
+                      // from the browser, append a short label like
+                      // "JST" so the user knows they're looking at
+                      // a different zone's clock.
+                      const browserTz = getBrowserTimezone();
+                      const evtTz = evt.time_zone || browserTz;
+                      const evtInstant = parseTimestamp(evt.starts_at);
                       const timeStr = showTime
-                        ? formatShortTime(parseTimestamp(evt.starts_at))
+                        ? formatTimeInZone(evtInstant, evtTz)
                         : null;
+                      const tzLabel =
+                        showTime && !zonesEquivalent(evtTz, browserTz)
+                          ? tzAbbreviation(evtTz, evtInstant)
+                          : null;
                       return (
                         <div
                           key={evt.id}
@@ -771,6 +790,11 @@ export default function MonthView({
                           {timeStr && (
                             <span className="text-[10px] tabular-nums text-[var(--text-muted)] shrink-0">
                               {timeStr}
+                              {tzLabel && (
+                                <span className="ml-0.5 text-[var(--text-faint)]">
+                                  {tzLabel}
+                                </span>
+                              )}
                             </span>
                           )}
                           {kidBadge && (

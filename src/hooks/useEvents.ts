@@ -51,6 +51,8 @@ function extractTravelFields(data: EventFormData) {
     travel_arrival_airport,
     travel_departure_time,
     travel_arrival_time,
+    travel_departure_timezone,
+    travel_arrival_timezone,
     travel_lodging_name,
     travel_lodging_address,
     travel_lodging_phone,
@@ -64,6 +66,8 @@ function extractTravelFields(data: EventFormData) {
       travel_arrival_airport,
       travel_departure_time,
       travel_arrival_time,
+      travel_departure_timezone,
+      travel_arrival_timezone,
       travel_lodging_name,
       travel_lodging_address,
       travel_lodging_phone,
@@ -308,6 +312,10 @@ export function useEvents(
                       departure_time:
                         travelFields.travel_departure_time || "",
                       arrival_time: travelFields.travel_arrival_time || "",
+                      departure_timezone:
+                        travelFields.travel_departure_timezone || null,
+                      arrival_timezone:
+                        travelFields.travel_arrival_timezone || null,
                       confirmation: "",
                       seat: "",
                       notes: "",
@@ -484,6 +492,8 @@ export function useEvents(
             travel_arrival_airport: _b,
             travel_departure_time: _c,
             travel_arrival_time: _d,
+            travel_departure_timezone: _ctz,
+            travel_arrival_timezone: _dtz,
             travel_lodging_name: _e,
             travel_lodging_address: _f,
             travel_lodging_phone: _g,
@@ -547,6 +557,8 @@ export function useEvents(
           travel_arrival_airport,
           travel_departure_time,
           travel_arrival_time,
+          travel_departure_timezone,
+          travel_arrival_timezone,
           travel_lodging_name,
           travel_lodging_address,
           travel_lodging_phone,
@@ -570,6 +582,8 @@ export function useEvents(
         delete updatePayload.travel_arrival_airport;
         delete updatePayload.travel_departure_time;
         delete updatePayload.travel_arrival_time;
+        delete updatePayload.travel_departure_timezone;
+        delete updatePayload.travel_arrival_timezone;
         delete updatePayload.travel_lodging_name;
         delete updatePayload.travel_lodging_address;
         delete updatePayload.travel_lodging_phone;
@@ -624,6 +638,8 @@ export function useEvents(
                       arrival_airport: travel_arrival_airport || "",
                       departure_time: travel_departure_time || "",
                       arrival_time: travel_arrival_time || "",
+                      departure_timezone: travel_departure_timezone || null,
+                      arrival_timezone: travel_arrival_timezone || null,
                       confirmation: "",
                       seat: "",
                       notes: "",

@@ -103,14 +103,26 @@ export default function EventModal({
     recurring_rule: event?.recurring_rule || "",
     location: event?.location || "",
     notes: event?.notes || "",
-    // Inline travel
+    // Inline travel — each flight time has its OWN zone (origin
+    // for departure, destination for arrival). Defaults to the
+    // event's main zone so single-zone trips just work.
     travel_departure_airport: existingFlight?.departure_airport || "",
     travel_arrival_airport: existingFlight?.arrival_airport || "",
+    travel_departure_timezone:
+      existingFlight?.departure_timezone || initialTz,
+    travel_arrival_timezone:
+      existingFlight?.arrival_timezone || initialTz,
     travel_departure_time: existingFlight?.departure_time
-      ? toDateTimeLocal(parseTimestamp(existingFlight.departure_time))
+      ? utcToLocalTimeString(
+          parseTimestamp(existingFlight.departure_time),
+          existingFlight.departure_timezone || initialTz
+        )
       : "",
     travel_arrival_time: existingFlight?.arrival_time
-      ? toDateTimeLocal(parseTimestamp(existingFlight.arrival_time))
+      ? utcToLocalTimeString(
+          parseTimestamp(existingFlight.arrival_time),
+          existingFlight.arrival_timezone || initialTz
+        )
       : "",
     travel_lodging_name: existingTravel?.lodging_name || "",
     travel_lodging_address: existingTravel?.lodging_address || "",
@@ -182,13 +194,13 @@ export default function EventModal({
         travel_departure_time: form.travel_departure_time
           ? localTimeToUtc(
               form.travel_departure_time,
-              form.time_zone
+              form.travel_departure_timezone || form.time_zone
             ).toISOString()
           : "",
         travel_arrival_time: form.travel_arrival_time
           ? localTimeToUtc(
               form.travel_arrival_time,
-              form.time_zone
+              form.travel_arrival_timezone || form.time_zone
             ).toISOString()
           : "",
       },
@@ -556,22 +568,36 @@ export default function EventModal({
                       placeholder="To (e.g. MCI)"
                       className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs placeholder-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
                     />
-                    <input
-                      type="datetime-local"
-                      value={form.travel_departure_time || ""}
-                      onChange={(e) =>
-                        update("travel_departure_time", e.target.value)
-                      }
-                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
-                    />
-                    <input
-                      type="datetime-local"
-                      value={form.travel_arrival_time || ""}
-                      onChange={(e) =>
-                        update("travel_arrival_time", e.target.value)
-                      }
-                      className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
-                    />
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="datetime-local"
+                        value={form.travel_departure_time || ""}
+                        onChange={(e) =>
+                          update("travel_departure_time", e.target.value)
+                        }
+                        className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
+                      />
+                      <TimezonePicker
+                        value={form.travel_departure_timezone || form.time_zone}
+                        onChange={(tz) => update("travel_departure_timezone", tz)}
+                        compact
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="datetime-local"
+                        value={form.travel_arrival_time || ""}
+                        onChange={(e) =>
+                          update("travel_arrival_time", e.target.value)
+                        }
+                        className="px-3 py-2 bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm text-[var(--ink)] text-xs focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] transition-colors"
+                      />
+                      <TimezonePicker
+                        value={form.travel_arrival_timezone || form.time_zone}
+                        onChange={(tz) => update("travel_arrival_timezone", tz)}
+                        compact
+                      />
+                    </div>
                   </div>
                 </div>
 

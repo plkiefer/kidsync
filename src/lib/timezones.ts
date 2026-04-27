@@ -268,3 +268,62 @@ export function currentOffsetString(iana: string, instant = new Date()): string 
   const mm = abs % 60;
   return mm === 0 ? `GMT${sign}${hh}` : `GMT${sign}${hh}:${String(mm).padStart(2, "0")}`;
 }
+
+/**
+ * Format a UTC instant as a compact clock-time string in a given
+ * IANA zone — like "3:00pm" / "10:15am". Mirrors MonthView's
+ * formatShortTime but anchors to a specific zone instead of the
+ * browser's locale.
+ */
+export function formatTimeInZone(instant: Date, iana: string): string {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: iana,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+  });
+  let h = 0;
+  let m = 0;
+  for (const p of fmt.formatToParts(instant)) {
+    if (p.type === "hour") h = parseInt(p.value, 10);
+    if (p.type === "minute") m = parseInt(p.value, 10);
+  }
+  if (Number.isNaN(h)) h = 0;
+  if (h === 24) h = 0;
+  const meridian = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")}${meridian}`;
+}
+
+/**
+ * Short timezone name like "EDT", "PST", "JST" for a given zone
+ * at a given instant. Used as a suffix on calendar pills when the
+ * event's zone differs from the viewer's, so "10:00am JST" reads
+ * unambiguously even when the viewer is in another zone.
+ */
+export function tzAbbreviation(iana: string, instant = new Date()): string {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: iana,
+      timeZoneName: "short",
+    });
+    const parts = fmt.formatToParts(instant);
+    return (
+      parts.find((p) => p.type === "timeZoneName")?.value ||
+      iana.split("/").slice(-1)[0] ||
+      iana
+    );
+  } catch {
+    return iana;
+  }
+}
+
+/** True when two IANA zones currently produce the same offset. */
+export function zonesEquivalent(a: string, b: string, instant = new Date()): boolean {
+  if (a === b) return true;
+  try {
+    return getZoneOffsetMinutes(a, instant) === getZoneOffsetMinutes(b, instant);
+  } catch {
+    return false;
+  }
+}

@@ -7,6 +7,12 @@ import {
   formatTime,
   parseTimestamp,
 } from "@/lib/dates";
+import {
+  formatTimeInZone,
+  getBrowserTimezone,
+  tzAbbreviation,
+  zonesEquivalent,
+} from "@/lib/timezones";
 
 interface ListViewProps {
   currentDate: Date;
@@ -89,7 +95,23 @@ export default function ListView({
               </div>
               <div className="text-xs text-[var(--color-text-faint)]">
                 {formatShortDate(evt.starts_at)} ·{" "}
-                {evt.all_day ? "All day" : `${formatTime(evt.starts_at)} – ${formatTime(evt.ends_at)}`}
+                {evt.all_day
+                  ? "All day"
+                  : (() => {
+                      // Render time in event's saved TZ; suffix with
+                      // a short label when the event lives in a zone
+                      // different from the viewer's browser.
+                      const browserTz = getBrowserTimezone();
+                      const evtTz = evt.time_zone || browserTz;
+                      const startInst = parseTimestamp(evt.starts_at);
+                      const endInst = parseTimestamp(evt.ends_at);
+                      const startStr = formatTimeInZone(startInst, evtTz);
+                      const endStr = formatTimeInZone(endInst, evtTz);
+                      const suffix = !zonesEquivalent(evtTz, browserTz)
+                        ? ` ${tzAbbreviation(evtTz, startInst)}`
+                        : "";
+                      return `${startStr} – ${endStr}${suffix}`;
+                    })()}
               </div>
               {evt.notes && (
                 <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5 truncate">
