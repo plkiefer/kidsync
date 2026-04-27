@@ -177,9 +177,116 @@ function normalizeCityKey(city: string | null | undefined): string {
 }
 
 /**
+ * Common IATA airport codes → city names. The validator uses
+ * substring matching against transport-location strings; airport
+ * codes (SEA) don't substring-match city names (Seattle), so we
+ * expand each known code to its city before matching. Coverage is
+ * "common North American + a few internationals the user is likely
+ * to hit." Adding more is cheap and false negatives are fine —
+ * worst case we miss a warning. Keys are uppercase IATA codes.
+ */
+const AIRPORT_TO_CITY: Record<string, string> = {
+  // US — east coast
+  JFK: "new york",
+  LGA: "new york",
+  EWR: "newark",
+  BOS: "boston",
+  DCA: "washington",
+  IAD: "washington dulles",
+  BWI: "baltimore",
+  PHL: "philadelphia",
+  ATL: "atlanta",
+  MIA: "miami",
+  FLL: "fort lauderdale",
+  MCO: "orlando",
+  TPA: "tampa",
+  CLT: "charlotte",
+  RDU: "raleigh durham",
+  // US — central / midwest
+  ORD: "chicago",
+  MDW: "chicago",
+  DTW: "detroit",
+  MSP: "minneapolis",
+  STL: "st louis",
+  MCI: "kansas city",
+  IAH: "houston",
+  HOU: "houston",
+  DFW: "dallas",
+  DAL: "dallas",
+  AUS: "austin",
+  SAT: "san antonio",
+  MSY: "new orleans",
+  // US — mountain / west
+  DEN: "denver",
+  SLC: "salt lake city",
+  PHX: "phoenix",
+  LAS: "las vegas",
+  ABQ: "albuquerque",
+  BIL: "billings",
+  BZN: "bozeman",
+  // US — west coast / pacific
+  LAX: "los angeles",
+  BUR: "burbank",
+  SAN: "san diego",
+  SFO: "san francisco",
+  OAK: "oakland",
+  SJC: "san jose",
+  SMF: "sacramento",
+  PDX: "portland",
+  SEA: "seattle",
+  ANC: "anchorage",
+  HNL: "honolulu",
+  OGG: "kahului maui",
+  KOA: "kona",
+  // Canada
+  YYZ: "toronto",
+  YUL: "montreal",
+  YVR: "vancouver",
+  YYC: "calgary",
+  // Common intl
+  LHR: "london",
+  LGW: "london",
+  CDG: "paris",
+  ORY: "paris",
+  AMS: "amsterdam",
+  FRA: "frankfurt",
+  MUC: "munich",
+  ZRH: "zurich",
+  FCO: "rome",
+  MAD: "madrid",
+  BCN: "barcelona",
+  DUB: "dublin",
+  NRT: "tokyo",
+  HND: "tokyo",
+  ICN: "seoul",
+  HKG: "hong kong",
+  SIN: "singapore",
+  SYD: "sydney",
+  MEX: "mexico city",
+  CUN: "cancun",
+  CZM: "cozumel",
+};
+
+/**
+ * Expand an airport code (e.g. "SEA") to its city, normalized.
+ * Returns "" if the code is unknown.
+ */
+function airportCityKey(code: string | undefined): string {
+  if (!code) return "";
+  const normalized = code.trim().toUpperCase();
+  return AIRPORT_TO_CITY[normalized] ?? "";
+}
+
+/**
  * Pull all "where" text from a transport segment for substring
  * matching against city names. Different segment types stash
  * locations in different fields.
+ *
+ * For flight segments we ALSO push the looked-up city for each
+ * airport code so "SEA" matches a "Seattle" lodging. Without this
+ * a flight DCA → SEA would trigger a false "no transport reaches
+ * Seattle" warning even though the arrival airport literally is
+ * the city's airport.
  */
 function transportLocationText(segment: CalendarEvent): string[] {
   if (!segment.segment_data) return [];
@@ -196,7 +303,13 @@ function transportLocationText(segment: CalendarEvent): string[] {
     data.embark_port,
     data.disembark_port,
   ];
-  return candidates.filter(Boolean).map((v) => normalizeCityKey(v));
+  const baseTokens = candidates.filter(Boolean).map((v) => normalizeCityKey(v));
+  // Add airport-code → city expansions so IATA codes match city names.
+  const expansions = [
+    airportCityKey(data.departure_airport),
+    airportCityKey(data.arrival_airport),
+  ].filter(Boolean);
+  return [...baseTokens, ...expansions];
 }
 
 function collectTransportLocations(segments: CalendarEvent[]): string[] {
