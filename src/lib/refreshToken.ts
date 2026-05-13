@@ -88,3 +88,63 @@ export async function manualTokenRefresh(): Promise<{
     return null;
   }
 }
+
+/**
+ * Update the current user's email or password by calling Supabase's
+ * `PUT /auth/v1/user` REST endpoint directly. Bypasses
+ * `supabase.auth.updateUser()`, which internally calls getSession() and
+ * hangs forever when the access token has aged into a refresh — same
+ * underlying issue manualTokenRefresh exists to dodge.
+ *
+ * For email changes, Supabase sends a confirmation link to the new
+ * address (and to the old one too if "Secure email change" is enabled
+ * in the project settings) — the email isn't actually changed until
+ * those links are clicked.
+ */
+export async function updateAuthUser(fields: {
+  email?: string;
+  password?: string;
+}): Promise<void> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+  const session = await manualTokenRefresh();
+  if (!session) {
+    throw new Error("Your session has expired. Please sign in again.");
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify(fields),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string }).name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok) {
+    let message = `Update failed (${response.status})`;
+    try {
+      const data = await response.json();
+      message = data?.msg || data?.error_description || data?.error || message;
+    } catch {
+      // response body wasn't JSON; fall back to status code
+    }
+    throw new Error(message);
+  }
+}

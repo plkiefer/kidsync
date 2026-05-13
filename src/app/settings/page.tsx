@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Mail, Lock, Check, Loader2, Palette } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getSupabase } from "@/lib/supabase";
+import { updateAuthUser } from "@/lib/refreshToken";
 import { Kid, Profile } from "@/lib/types";
 import { DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR, resolvePalette } from "@/lib/palette";
 import ColorPicker from "@/components/ColorPicker";
@@ -152,8 +153,7 @@ export default function SettingsPage() {
 
     setEmailLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ email: newEmail });
-      if (error) throw error;
+      await updateAuthUser({ email: newEmail });
       setEmailSuccess(`Confirmation email sent to ${newEmail}`);
       setNewEmail("");
     } catch (err: unknown) {
@@ -182,8 +182,7 @@ export default function SettingsPage() {
 
     setPasswordLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
+      await updateAuthUser({ password: newPassword });
       setPasswordSuccess("Password updated successfully.");
       setNewPassword("");
       setConfirmPassword("");
