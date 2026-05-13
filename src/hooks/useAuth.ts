@@ -160,8 +160,15 @@ export function useAuth(): AuthState {
     // Clear local state immediately so the UI redirects
     setUser(null);
     setProfile(null);
-    // Then sign out from Supabase (don't block on it — can hang if auth state is stale)
-    supabase.auth.signOut().catch(() => {});
+    // Await Supabase signOut so the auth cookie is cleared before the
+    // subsequent router.replace("/login") fires. If we don't await, the
+    // middleware running on /login may still see a valid session cookie
+    // and bounce us back to /calendar, hitting the basePath redirect bug.
+    // Race-time bound to ~3s so we don't hang the UI if Supabase is slow.
+    await Promise.race([
+      supabase.auth.signOut().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
   }, [supabase]);
 
   return {

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { BASE_PATH } from "@/lib/basePath";
 
 export async function middleware(req: NextRequest) {
   let res = NextResponse.next({ request: req });
@@ -31,9 +32,12 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // Redirect authenticated users away from /login
+  // Redirect authenticated users away from /login.
+  // NextResponse.redirect does NOT auto-prepend basePath, so we include it
+  // manually. Without the prefix, this redirects to e.g.
+  // https://niffty-ramen.com/calendar (no /kidsync) which 404s.
   if (user && req.nextUrl.pathname === "/login") {
-    const calendarUrl = new URL("/calendar", req.url);
+    const calendarUrl = new URL(`${BASE_PATH}/calendar`, req.url);
     return NextResponse.redirect(calendarUrl);
   }
 
