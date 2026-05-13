@@ -12,6 +12,7 @@ import {
 import { formatAllDayTimestamp } from "@/lib/allDay";
 import { parseTimestamp } from "@/lib/dates";
 import { kidColorCss } from "@/lib/palette";
+import { withBasePath } from "@/lib/basePath";
 import {
   Upload,
   X,
@@ -501,7 +502,7 @@ export default function ScheduleImportModal({
         // Doc mode — run through the existing text extractor first.
         const formData = new FormData();
         formData.append("file", files[0]);
-        const extractRes = await fetch("/api/custody/extract", {
+        const extractRes = await fetch(withBasePath("/api/custody/extract"), {
           method: "POST",
           body: formData,
         });
@@ -521,7 +522,7 @@ export default function ScheduleImportModal({
         };
       }
 
-      const parseRes = await fetch("/api/schedules/parse", {
+      const parseRes = await fetch(withBasePath("/api/schedules/parse"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parseBody),

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { withBasePath } from "@/lib/basePath";
 import { User, ArrowLeft, Loader2, Lock } from "lucide-react";
 
 interface FamilyMember {
@@ -43,7 +44,7 @@ export default function LoginPage() {
   useEffect(() => {
     async function fetchMembers() {
       try {
-        const res = await fetch("/api/family/members");
+        const res = await fetch(withBasePath("/api/family/members"));
         if (res.ok) {
           const data: FamilyMember[] = await res.json();
           setMembers(data);

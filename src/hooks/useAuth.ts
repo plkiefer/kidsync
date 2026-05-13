@@ -5,6 +5,7 @@ import { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import { manualTokenRefresh } from "@/lib/refreshToken";
 import { Profile } from "@/lib/types";
+import { BASE_PATH } from "@/lib/basePath";
 
 interface AuthState {
   user: User | null;
@@ -125,7 +126,7 @@ export function useAuth(): AuthState {
       const { error: magicError } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: `${window.location.origin}/calendar`,
+          emailRedirectTo: `${window.location.origin}${BASE_PATH}/calendar`,
         },
       });
       if (magicError) {
@@ -144,7 +145,7 @@ export function useAuth(): AuthState {
         password,
         options: {
           data: { full_name: fullName },
-          emailRedirectTo: `${window.location.origin}/calendar`,
+          emailRedirectTo: `${window.location.origin}${BASE_PATH}/calendar`,
         },
       });
       if (signUpError) {

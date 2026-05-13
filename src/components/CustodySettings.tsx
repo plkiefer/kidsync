@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { X, Upload, FileText, CheckCircle, AlertTriangle, Loader2, ExternalLink, Shield } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
+import { withBasePath } from "@/lib/basePath";
 import { Kid, Profile, ParsedCustodyTerms, CustodyAgreement, CustodySchedule } from "@/lib/types";
 
 interface CustodySettingsProps {
@@ -49,7 +50,7 @@ export default function CustodySettings({
     const formData = new FormData();
     formData.append("file", file);
 
-    const res = await fetch("/api/custody/extract", {
+    const res = await fetch(withBasePath("/api/custody/extract"), {
       method: "POST",
       body: formData,
     });
@@ -83,7 +84,7 @@ export default function CustodySettings({
       const filePath = `custody/${familyId}/${Date.now()}_${file.name}`;
       await supabase.storage.from("attachments").upload(filePath, file);
 
-      const parseRes = await fetch("/api/custody/parse", {
+      const parseRes = await fetch(withBasePath("/api/custody/parse"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, familyId }),

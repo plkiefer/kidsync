@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
+import { BASE_PATH } from "@/lib/basePath";
 import { useFamily } from "@/hooks/useFamily";
 import { useEvents } from "@/hooks/useEvents";
 import { useActivityLog } from "@/hooks/useActivityLog";
@@ -797,7 +798,7 @@ export default function CalendarPage() {
                         <button
                           onClick={() => {
                             navigator.clipboard.writeText(
-                              `${window.location.origin}/api/ical?token=${profile.ical_token}`
+                              `${window.location.origin}${BASE_PATH}/api/ical?token=${profile.ical_token}`
                             );
                             setFeedCopied(true);
                             setTimeout(() => setFeedCopied(false), 2000);
