@@ -187,9 +187,15 @@ export default function WeekView({
     // If there's a turnover (custody transition) on this day, split the
     // column vertically at the handoff time so each parent owns their
     // portion of the column.
-    const turnoverEvt = dayEvents.find((e) => e.id.startsWith("turnover-"));
+    // Approved turnovers only — pending (`_tentative`) chips shouldn't
+    // shift the column's color split (that's the calendar pre-rendering
+    // a proposal). Same `includes` over `endsWith` for ids with
+    // tentative suffixes.
+    const turnoverEvt = dayEvents.find(
+      (e) => e.id.startsWith("turnover-") && !e._tentative
+    );
     if (turnoverEvt && allSame) {
-      const isPickup = turnoverEvt.id.endsWith("-pickup");
+      const isPickup = turnoverEvt.id.includes("-pickup");
       const turnoverHour = getHourFromDateStr(turnoverEvt.starts_at);
       const rawPct = ((turnoverHour - startHour) / totalHours) * 100;
       const splitPct = Math.max(0, Math.min(100, rawPct));

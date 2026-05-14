@@ -1687,6 +1687,7 @@ export default function CalendarPage() {
           members={members}
           overrides={overrides}
           agreements={agreements}
+          schedules={schedules}
           currentUserId={user?.id ?? ""}
           onRespondToOverrides={respondToOverrides}
           onNotifyCustodyChange={notifyCustodyChange}

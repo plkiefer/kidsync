@@ -538,10 +538,14 @@ export default function MonthView({
     // that case must surface stripes.
     const orderedKids = kids.filter((k) => custody[k.id]);
     const kidStates = orderedKids.map((kid) => {
+      // Band geometry should only reflect the APPROVED schedule.
+      // Pending (`_tentative`) turnovers are proposals — letting them
+      // shift the cell's color split would pre-render the change.
       const turnoverEvt =
         dayEvents.find(
           (e) =>
             e.id.startsWith("turnover-") &&
+            !e._tentative &&
             (e.kid_ids ?? []).includes(kid.id)
         ) ?? null;
       const todayParent = custody[kid.id]?.parentId;
@@ -553,7 +557,10 @@ export default function MonthView({
           postParent: todayParent,
         };
       }
-      const isPickup = turnoverEvt.id.endsWith("-pickup");
+      // Includes (not endsWith) so tentative ids with extra suffix
+      // segments (e.g. `turnover-2026-05-22-pickup-pending-abc12345`)
+      // still detect the direction correctly.
+      const isPickup = turnoverEvt.id.includes("-pickup");
       const turnoverDate = parseTimestamp(turnoverEvt.starts_at);
       const hourFrac =
         turnoverDate.getHours() + turnoverDate.getMinutes() / 60;
@@ -614,7 +621,10 @@ export default function MonthView({
       if (evtKidIds.length === 0) return;
       const todayParent = custody[evtKidIds[0]]?.parentId;
       if (!todayParent) return;
-      const isPickup = evt.id.endsWith("-pickup");
+      // Same `includes` rather than `endsWith` so tentative pending
+      // ids (e.g. `turnover-...-pickup-pending-abc12345`) still
+      // resolve to the right direction.
+      const isPickup = evt.id.includes("-pickup");
       const key = `${evt.starts_at}|${isPickup ? "pickup" : "dropoff"}|${todayParent}`;
       if (turnoverGroups.has(key)) {
         const g = turnoverGroups.get(key)!;

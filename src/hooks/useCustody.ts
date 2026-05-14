@@ -451,7 +451,14 @@ export function useCustody(ready = true): CustodyState {
       await withdrawOverlapping(params.kidIds, withdrawalRanges);
 
       if (dateChanged) {
-        // Date changed — create override for the custody range
+        // Date changed — create override for the gap-day custody
+        // range. NO override_time on this row: the gap days are
+        // owned by the OTHER parent and don't have a turnover, so
+        // hanging override_time on them puts the new time on the
+        // wrong row (the post-approval `detectTransitions` looks
+        // for override_time at the NEW turnover date and won't find
+        // it). The time, if any, lives on its own same-day override
+        // below.
         await createOverrides(params.kidIds.map((kidId) => ({
           family_id: params.familyId,
           kid_id: kidId,
@@ -464,8 +471,32 @@ export function useCustody(ready = true): CustodyState {
           compliance_issues: null,
           status: "pending" as OverrideStatus,
           created_by: params.userId,
-          override_time: params.newTime || null,
+          override_time: null,
         })));
+
+        // If the user also changed the time, anchor it on the NEW
+        // turnover date — that's where the post-approval transition
+        // will be detected and where override_time needs to live.
+        // Parent for this row is the parent who'll have custody on
+        // that day after the move (parent_a for both pickup and
+        // drop-off — they're the alternating-weekend parent doing
+        // both handoffs).
+        if (timeChanged && params.newTime) {
+          await createOverrides(params.kidIds.map((kidId) => ({
+            family_id: params.familyId,
+            kid_id: kidId,
+            start_date: params.newDate,
+            end_date: params.newDate,
+            parent_id: schedule.parent_a_id,
+            note: params.note,
+            reason: params.reason,
+            compliance_status: "unchecked" as const,
+            compliance_issues: null,
+            status: "pending" as OverrideStatus,
+            created_by: params.userId,
+            override_time: params.newTime,
+          })));
+        }
       } else if (timeChanged) {
         // Time-only change (date matches standard) — create a same-day override
         // on the turnover date to carry the new time.

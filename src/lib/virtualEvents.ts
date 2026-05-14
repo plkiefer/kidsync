@@ -277,16 +277,18 @@ export function generatePendingTurnoverEvents(
     // override exists.
     if (!ownershipChange && !primary.override_time) continue;
 
-    // Both branches emit a pickup-style chip on start_date. For
-    // ownership changes the chip carries the proposed parent's name
-    // ("Pick Up — Patrick (proposed)"); for time-only changes it
-    // carries the same parent and the proposed time. The popover
-    // handles the full semantic detail.
+    // Direction (pickup vs drop-off) lives in the auto-gen note —
+    // QuickCustodyChange writes "Pickup for ..." or "Drop-off for ...".
+    // Default to pickup for unparseable / ownership-change-only
+    // requests since that's the more common case and the popover
+    // surfaces the precise semantics anyway.
+    const isPickup = !/^Drop-off for /i.test(primary.note ?? "");
+
     const transition: TurnoverTransition = {
       eventDate: startDate,
       dateStr: primary.start_date,
       toParentId: primary.parent_id,
-      isPickup: true,
+      isPickup,
       kidIds,
       familyId: primary.family_id,
       overrideTime: primary.override_time || null,

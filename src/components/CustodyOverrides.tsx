@@ -8,7 +8,6 @@ import {
   XCircle,
   Clock,
   Shield,
-  Loader2,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
@@ -17,9 +16,11 @@ import {
   Profile,
   CustodyOverride,
   CustodyAgreement,
+  CustodySchedule,
   OverrideStatus,
   ComplianceStatus,
 } from "@/lib/types";
+import { PendingDiffContent } from "@/components/PendingDiffPopover";
 
 interface CustodyOverridesProps {
   familyId: string;
@@ -27,6 +28,8 @@ interface CustodyOverridesProps {
   members: Profile[];
   overrides: CustodyOverride[];
   agreements: CustodyAgreement[];
+  /** Needed by PendingDiffContent to compute the "Currently" column. */
+  schedules: CustodySchedule[];
   currentUserId: string;
   onRespondToOverrides: (overrideIds: string[], status: OverrideStatus, note: string, userId: string) => Promise<boolean>;
   onNotifyCustodyChange: (params: {
@@ -97,14 +100,12 @@ export default function CustodyOverrides({
   members,
   overrides,
   agreements,
+  schedules,
   currentUserId,
   onRespondToOverrides,
   onNotifyCustodyChange,
   onClose,
 }: CustodyOverridesProps) {
-  const [respondingTo, setRespondingTo] = useState<string | null>(null);
-  const [responseNote, setResponseNote] = useState("");
-  const [respondLoading, setRespondLoading] = useState(false);
   const [expandedOverride, setExpandedOverride] = useState<string | null>(null);
 
   const getMemberName = (id: string) =>
@@ -113,35 +114,43 @@ export default function CustodyOverrides({
   const getKidName = (id: string) =>
     kids.find((k) => k.id === id)?.name || "Unknown";
 
+  // Derived once for PendingDiffContent (it computes the "Currently"
+  // column from approved overrides only).
+  const approvedOverrides = overrides.filter((o) => o.status === "approved");
 
+  // PendingDiffContent calls this with the same signature as the
+  // calendar-side popover. Wraps onRespondToOverrides + the notify
+  // call so the modal-side approve/dispute/withdraw matches the
+  // popover-side behavior exactly.
   const handleRespond = async (
     overrideIds: string[],
-    status: OverrideStatus
-  ) => {
-    setRespondLoading(true);
-    try {
-      await onRespondToOverrides(overrideIds, status, responseNote, currentUserId);
-      // Send one notification for all kids in this group
-      const firstOverride = overrides.find((o) => o.id === overrideIds[0]);
-      if (firstOverride) {
-        const kidIds = overrideIds
-          .map((id) => overrides.find((o) => o.id === id)?.kid_id)
-          .filter(Boolean) as string[];
-        onNotifyCustodyChange({
-          action: status as "approved" | "disputed" | "withdrawn",
-          override: { start_date: firstOverride.start_date, end_date: firstOverride.end_date, parent_id: firstOverride.parent_id, reason: firstOverride.reason, response_note: responseNote, note: firstOverride.note },
-          kidIds,
-          familyId,
-          changedBy: currentUserId,
-        });
-      }
-      setRespondingTo(null);
-      setResponseNote("");
-    } catch (err) {
-      console.error("[override] respond failed:", err);
-    } finally {
-      setRespondLoading(false);
+    status: OverrideStatus,
+    note: string,
+    userId: string
+  ): Promise<boolean> => {
+    const ok = await onRespondToOverrides(overrideIds, status, note, userId);
+    if (!ok) return false;
+    const firstOverride = overrides.find((o) => o.id === overrideIds[0]);
+    if (firstOverride) {
+      const kidIds = overrideIds
+        .map((id) => overrides.find((o) => o.id === id)?.kid_id)
+        .filter(Boolean) as string[];
+      onNotifyCustodyChange({
+        action: status as "approved" | "disputed" | "withdrawn",
+        override: {
+          start_date: firstOverride.start_date,
+          end_date: firstOverride.end_date,
+          parent_id: firstOverride.parent_id,
+          reason: firstOverride.reason,
+          response_note: note,
+          note: firstOverride.note,
+        },
+        kidIds,
+        familyId,
+        changedBy: userId,
+      });
     }
+    return true;
   };
 
   // Filter out old approved overrides (>14 days past end_date) and old disputed (>30 days)
@@ -202,6 +211,26 @@ export default function CustodyOverrides({
     (o) => o.status === "pending" && o.created_by !== currentUserId
   ).length;
 
+  // Split into Pending (rich diff cards) vs Resolved (compact rows).
+  // The pending side reuses PendingDiffContent so the modal feels
+  // identical to clicking the day-cell pending pill on the calendar.
+  const pendingGroups = sortedOverrides.filter(
+    (g) => g.primary.status === "pending"
+  );
+  const resolvedGroups = sortedOverrides.filter(
+    (g) => g.primary.status !== "pending"
+  );
+
+  // Auto-expand when there's exactly one pending — saves a click in
+  // the common "one thing to deal with" case. Multiple pending stay
+  // collapsed so the user can see the full list at a glance.
+  const initialExpanded =
+    pendingGroups.length === 1 ? pendingGroups[0].primary.id : null;
+  const effectiveExpanded =
+    expandedOverride === null && pendingGroups.length === 1
+      ? initialExpanded
+      : expandedOverride;
+
   return (
     <div
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
@@ -231,127 +260,176 @@ export default function CustodyOverrides({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Override list */}
-          {sortedOverrides.length === 0 ? (
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+          {sortedOverrides.length === 0 && (
             <div className="text-center py-8 text-xs text-[var(--color-text-faint)]">
               No custody change requests. To request a change, tap a
               pickup or drop-off event on the calendar.
             </div>
-          ) : (
+          )}
+
+          {/* ── PENDING SECTION ──
+              Each pending request renders as a rich card. Header row
+              is the summary (kids · dates · requester); clicking
+              expands to the same PendingDiffContent the calendar
+              pending-pill opens, so both surfaces feel identical.
+              Single-pending case auto-expands. */}
+          {pendingGroups.length > 0 && (
             <div className="space-y-2">
-              {sortedOverrides.map((group) => {
+              <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-text-faint)]">
+                Awaiting response · {pendingGroups.length}
+              </div>
+              {pendingGroups.map((group) => {
+                const override = group.primary;
+                const isExpanded = effectiveExpanded === override.id;
+                const isMyRequest = override.created_by === currentUserId;
+                const requesterName = override.created_by
+                  ? getMemberName(override.created_by)
+                  : "Unknown";
+                const kidNamesStr = group.kidIds.map(getKidName).join(" & ");
+                const shortDate = (d: string) => {
+                  const dt = new Date(d + "T12:00:00");
+                  return dt.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  });
+                };
+                const dateRange =
+                  override.start_date === override.end_date
+                    ? shortDate(override.start_date)
+                    : `${shortDate(override.start_date)} – ${shortDate(
+                        override.end_date
+                      )}`;
+                return (
+                  <div
+                    key={override.id}
+                    className="rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber-tint)]"
+                  >
+                    <button
+                      onClick={() =>
+                        setExpandedOverride(isExpanded ? null : override.id)
+                      }
+                      className="w-full flex items-center gap-3 p-3 text-left"
+                    >
+                      <Clock
+                        size={15}
+                        className="shrink-0"
+                        style={{ color: "var(--accent-amber)" }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-[var(--color-text)] truncate">
+                          {kidNamesStr} · {dateRange}
+                        </div>
+                        <div className="text-[11px] text-[var(--color-text-faint)]">
+                          {isMyRequest
+                            ? "Your request"
+                            : `Requested by ${requesterName}`}
+                        </div>
+                      </div>
+                      {isExpanded ? (
+                        <ChevronUp
+                          size={14}
+                          className="text-[var(--color-text-faint)] shrink-0"
+                        />
+                      ) : (
+                        <ChevronDown
+                          size={14}
+                          className="text-[var(--color-text-faint)] shrink-0"
+                        />
+                      )}
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-[var(--accent-amber)]/30 bg-[var(--bg)]">
+                        <PendingDiffContent
+                          overrides={group.all}
+                          kids={kids}
+                          members={members}
+                          schedules={schedules}
+                          approvedOverrides={approvedOverrides}
+                          agreements={agreements}
+                          currentUserId={currentUserId}
+                          onRespond={handleRespond}
+                          onResolved={() => setExpandedOverride(null)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── RESOLVED SECTION ──
+              Approved / disputed / withdrawn rows. Compact format
+              since these aren't actionable — just historical context. */}
+          {resolvedGroups.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[10px] uppercase tracking-[0.08em] font-semibold text-[var(--color-text-faint)]">
+                Recent decisions · {resolvedGroups.length}
+              </div>
+              {resolvedGroups.map((group) => {
                 const override = group.primary;
                 const allIds = group.all.map((o) => o.id);
+                void allIds;
                 const kidNamesStr = group.kidIds.map(getKidName).join(" & ");
                 const statusCfg = STATUS_CONFIG[override.status];
                 const StatusIcon = statusCfg.icon;
-                const isExpanded = expandedOverride === override.id;
-                const isMyRequest = override.created_by === currentUserId;
-                const needsMyResponse = !isMyRequest && override.status === "pending";
-                const requesterName = override.created_by ? getMemberName(override.created_by) : "Unknown";
-
-                // Build a short, clean title
+                const isExpanded = effectiveExpanded === override.id;
+                const requesterName = override.created_by
+                  ? getMemberName(override.created_by)
+                  : "Unknown";
                 const shortDate = (d: string) => {
                   const dt = new Date(d + "T12:00:00");
-                  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                  return dt.toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                  });
                 };
-                const dateRange = override.start_date === override.end_date
-                  ? shortDate(override.start_date)
-                  : `${shortDate(override.start_date)} – ${shortDate(override.end_date)}`;
-                const shortTitle = `${kidNamesStr} · ${dateRange}`;
-
-                // ── PENDING NEEDING MY RESPONSE: streamlined inline approve/dispute ──
-                if (needsMyResponse) {
-                  return (
-                    <div
-                      key={override.id}
-                      className="rounded-sm border border-[var(--accent-amber)]/40 bg-[var(--accent-amber-tint)] p-3 space-y-2.5"
-                    >
-                      <div className="flex items-start gap-2">
-                        <Clock size={15} className="text-amber-400 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-semibold text-[var(--color-text)]">
-                            {shortTitle}
-                          </div>
-                          {override.note && (
-                            <div className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-                              {override.note}
-                            </div>
-                          )}
-                          <div className="text-[11px] text-[var(--color-text-faint)] mt-0.5">
-                            Requested by {requesterName}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Comment box */}
-                      <textarea
-                        value={respondingTo === override.id ? responseNote : ""}
-                        onFocus={() => setRespondingTo(override.id)}
-                        onChange={(e) => {
-                          setRespondingTo(override.id);
-                          setResponseNote(e.target.value);
-                        }}
-                        placeholder="Add a comment (required to dispute)..."
-                        rows={1}
-                        className="w-full px-3 py-1.5 rounded-sm bg-[var(--bg)] border border-[var(--border)] text-xs text-[var(--ink)] placeholder:text-[var(--text-faint)] focus:outline-none focus:border-[var(--action)] focus:shadow-[0_0_0_3px_var(--action-ring)] resize-none"
-                      />
-
-                      {/* Approve / Dispute — always visible */}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleRespond(allIds, "approved")}
-                          disabled={respondLoading}
-                          className="flex-1 px-3 py-2 rounded-sm bg-[#3D7A4F] text-white text-xs font-semibold hover:bg-[#336942] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
-                        >
-                          {respondLoading && respondingTo === override.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <CheckCircle size={12} />
-                          )}
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleRespond(allIds, "disputed")}
-                          disabled={respondLoading || !(respondingTo === override.id && responseNote.trim())}
-                          className="flex-1 px-3 py-2 rounded-sm bg-[var(--accent-red)] text-white text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5"
-                        >
-                          {respondLoading && respondingTo === override.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <XCircle size={12} />
-                          )}
-                          Dispute
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                // ── ALL OTHER STATUSES: compact expandable card ──
+                const dateRange =
+                  override.start_date === override.end_date
+                    ? shortDate(override.start_date)
+                    : `${shortDate(override.start_date)} – ${shortDate(
+                        override.end_date
+                      )}`;
                 return (
                   <div
                     key={override.id}
                     className="rounded-sm border border-[var(--border)] bg-[var(--bg-sunken)]"
                   >
                     <button
-                      onClick={() => setExpandedOverride(isExpanded ? null : override.id)}
+                      onClick={() =>
+                        setExpandedOverride(isExpanded ? null : override.id)
+                      }
                       className="w-full flex items-center gap-3 p-3 text-left"
                     >
                       <StatusIcon size={15} className={statusCfg.color} />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold text-[var(--color-text)] truncate">
-                          {shortTitle}
+                          {kidNamesStr} · {dateRange}
                         </div>
                         <div className="text-[11px] text-[var(--color-text-faint)]">
-                          {requesterName} → {getMemberName(override.parent_id)}
+                          {requesterName} →{" "}
+                          {getMemberName(override.parent_id)}
                         </div>
                       </div>
-                      <span className={`px-1.5 py-[1px] rounded-sm border text-[10px] font-semibold uppercase tracking-[0.08em] ${statusCfg.bg} ${statusCfg.color}`}>
+                      <span
+                        className={`px-1.5 py-[1px] rounded-sm border text-[10px] font-semibold uppercase tracking-[0.08em] ${statusCfg.bg} ${statusCfg.color}`}
+                      >
                         {statusCfg.label}
                       </span>
-                      {isExpanded ? <ChevronUp size={14} className="text-[var(--color-text-faint)]" /> : <ChevronDown size={14} className="text-[var(--color-text-faint)]" />}
+                      {isExpanded ? (
+                        <ChevronUp
+                          size={14}
+                          className="text-[var(--color-text-faint)]"
+                        />
+                      ) : (
+                        <ChevronDown
+                          size={14}
+                          className="text-[var(--color-text-faint)]"
+                        />
+                      )}
                     </button>
 
                     {isExpanded && (
@@ -363,20 +441,13 @@ export default function CustodyOverrides({
                         )}
                         {override.responded_by && (
                           <div className="text-[11px] text-[var(--color-text-faint)]">
-                            {override.status === "approved" ? "Approved" : "Disputed"} by {getMemberName(override.responded_by)}
-                            {override.response_note && ` — "${override.response_note}"`}
+                            {override.status === "approved"
+                              ? "Approved"
+                              : "Disputed"}{" "}
+                            by {getMemberName(override.responded_by)}
+                            {override.response_note &&
+                              ` — "${override.response_note}"`}
                           </div>
-                        )}
-                        {/* Withdraw own request */}
-                        {isMyRequest && override.status === "pending" && (
-                          <button
-                            onClick={() => handleRespond(allIds, "withdrawn")}
-                            disabled={respondLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-[var(--border)] text-[10px] font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors"
-                          >
-                            <XCircle size={12} />
-                            Withdraw Request
-                          </button>
                         )}
                       </div>
                     )}
