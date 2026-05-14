@@ -11,6 +11,7 @@ import { useCustody } from "@/hooks/useCustody";
 import { useTrips, NewTripInput } from "@/hooks/useTrips";
 import {
   CalendarEvent,
+  CustodyOverride,
   EventFormData,
   TravelFormData,
   EventAttachment,
@@ -34,7 +35,11 @@ import {
 import { downloadICal } from "@/lib/ical";
 import { formatAllDayTimestamp } from "@/lib/allDay";
 import { expandRecurringEvents } from "@/lib/recurrence";
-import { generateTurnoverEvents, generateHolidayEvents } from "@/lib/virtualEvents";
+import {
+  generateTurnoverEvents,
+  generatePendingTurnoverEvents,
+  generateHolidayEvents,
+} from "@/lib/virtualEvents";
 import MonthView from "@/components/MonthView";
 import WeekView from "@/components/WeekView";
 import ListView from "@/components/ListView";
@@ -59,6 +64,7 @@ import KidFilter from "@/components/KidFilter";
 import ActivityFeed from "@/components/ActivityFeed";
 import CustodySettings from "@/components/CustodySettings";
 import CustodyOverrides from "@/components/CustodyOverrides";
+import PendingDiffPopover from "@/components/PendingDiffPopover";
 import ScheduleImportModal from "@/components/ScheduleImportModal";
 import {
   ChevronLeft,
@@ -106,7 +112,9 @@ export default function CalendarPage() {
   const {
     schedules,
     getCustodyForDate,
+    getPendingForDate,
     overrides,
+    pendingOverrides,
     agreements,
     createOverrides,
     respondToOverrides,
@@ -183,6 +191,12 @@ export default function CalendarPage() {
   const [showICalMenu, setShowICalMenu] = useState(false);
   const [feedCopied, setFeedCopied] = useState(false);
   const [quickChangeEvent, setQuickChangeEvent] = useState<CalendarEvent | null>(null);
+  // The diff popover opened from a dashed event chip OR a dashed
+  // day-cell pending stripe. Holds the grouped overrides for ONE
+  // logical pending request.
+  const [pendingDiffOverrides, setPendingDiffOverrides] = useState<
+    CustodyOverride[] | null
+  >(null);
 
   // Auth guard
   useEffect(() => {
@@ -239,14 +253,34 @@ export default function CalendarPage() {
   const visibleStart = startOfWeek(startOfMonth(currentDate));
   const visibleEnd = endOfWeek(endOfMonth(currentDate));
 
-  // Generate custody turnover events
+  // Approved-only overrides feed standard turnover generation, so the
+  // calendar shows the real schedule. Pending overrides feed a separate
+  // diff generator that emits dashed proposed-turnover chips.
+  const approvedOverridesForRender = overrides.filter(
+    (o) => o.status === "approved"
+  );
+
+  // Standard custody turnover events (solid)
   const turnoverEvents = generateTurnoverEvents(
     visibleStart,
     visibleEnd,
     schedules,
-    overrides,
+    approvedOverridesForRender,
     agreements,
     kids,
+    members
+  );
+
+  // Pending-diff turnover events (dashed) — only the transitions that
+  // would change if every pending override were approved. Empty when
+  // there are no pending overrides.
+  const pendingTurnoverEvents = generatePendingTurnoverEvents(
+    visibleStart,
+    visibleEnd,
+    schedules,
+    approvedOverridesForRender,
+    pendingOverrides,
+    agreements,
     members
   );
 
@@ -258,7 +292,13 @@ export default function CalendarPage() {
     profile?.family_id || ""
   );
 
-  const allEvents = [...expandedEvents, ...birthdayEvents, ...turnoverEvents, ...holidayEvents];
+  const allEvents = [
+    ...expandedEvents,
+    ...birthdayEvents,
+    ...turnoverEvents,
+    ...pendingTurnoverEvents,
+    ...holidayEvents,
+  ];
 
   // Filter events — multi-kid aware
   const filteredEvents =
@@ -955,6 +995,8 @@ export default function CalendarPage() {
                         parentASwatch={parentASwatch}
                         parentBSwatch={parentBSwatch}
                         memberNames={memberNames}
+                        getPendingForDate={getPendingForDate}
+                        onPendingClick={(ovs) => setPendingDiffOverrides(ovs)}
                       />
                     )}
                     {view === "week" && (
@@ -969,6 +1011,10 @@ export default function CalendarPage() {
                         parentAId={schedules[0]?.parent_a_id}
                         parentABg={parentABg}
                         parentBBg={parentBBg}
+                        parentASwatch={parentASwatch}
+                        parentBSwatch={parentBSwatch}
+                        getPendingForDate={getPendingForDate}
+                        onPendingClick={(ovs) => setPendingDiffOverrides(ovs)}
                       />
                     )}
                   </>
@@ -1646,6 +1692,44 @@ export default function CalendarPage() {
             setShowCustodyOverrides(false);
             await refetchCustody();
           }}
+        />
+      )}
+
+      {pendingDiffOverrides && pendingDiffOverrides.length > 0 && (
+        <PendingDiffPopover
+          overrides={pendingDiffOverrides}
+          kids={kids}
+          members={members}
+          schedules={schedules}
+          approvedOverrides={approvedOverridesForRender}
+          currentUserId={user?.id ?? ""}
+          onRespond={async (ids, status, note, userId) => {
+            const ok = await respondToOverrides(ids, status, note, userId);
+            if (ok) {
+              const first = pendingDiffOverrides[0];
+              notifyCustodyChange({
+                action: status as "approved" | "disputed" | "withdrawn",
+                override: {
+                  start_date: first.start_date,
+                  end_date: first.end_date,
+                  parent_id: first.parent_id,
+                  reason: first.reason,
+                  response_note: note,
+                  note: first.note,
+                },
+                kidIds: pendingDiffOverrides.map((o) => o.kid_id),
+                familyId: first.family_id,
+                changedBy: userId,
+              });
+              await refetchCustody();
+            }
+            return ok;
+          }}
+          onViewAllRequests={() => {
+            setPendingDiffOverrides(null);
+            setShowCustodyOverrides(true);
+          }}
+          onClose={() => setPendingDiffOverrides(null)}
         />
       )}
 

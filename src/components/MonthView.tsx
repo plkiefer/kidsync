@@ -2,6 +2,7 @@
 
 import {
   CalendarEvent,
+  CustodyOverride,
   Kid,
   getEventKidIds,
   getEventTypeColor,
@@ -50,6 +51,13 @@ interface MonthViewProps {
   /** Map of profile id → display name. Powers the parent-name text in
    *  split-day kid pills (e.g. "E → Patrick 7:00p"). */
   memberNames?: Record<string, string>;
+  /** Pending overrides covering the given date — drives the dashed
+   *  top-edge "pending" stripe on the day cell. */
+  getPendingForDate?: (date: Date) => CustodyOverride[];
+  /** Click handler when the user taps the dashed cell stripe OR a
+   *  dashed pending event chip. Receives the pending overrides
+   *  to feed into the diff popover. */
+  onPendingClick?: (overrides: CustodyOverride[]) => void;
 }
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -369,6 +377,8 @@ export default function MonthView({
   parentASwatch,
   parentBSwatch,
   memberNames,
+  getPendingForDate,
+  onPendingClick,
 }: MonthViewProps) {
   const days = getCalendarDays(currentDate);
   const weeks: Date[][] = [];
@@ -850,6 +860,50 @@ export default function MonthView({
                       </div>
                     )}
 
+                    {/* Pending-change stripe — dashed top-edge band in
+                        the proposed parent's color when an in-flight
+                        request would change ownership of this day.
+                        Time-only requests (same parent, new time) get
+                        the dashed event chip but no stripe — the chip
+                        already carries that signal. */}
+                    {(() => {
+                      if (!getPendingForDate || !onPendingClick) return null;
+                      const pending = getPendingForDate(day);
+                      if (pending.length === 0) return null;
+                      const currentCustody = getCustodyForDate
+                        ? getCustodyForDate(day)
+                        : {};
+                      const ownershipChanging = pending.filter((o) => {
+                        const cur = currentCustody[o.kid_id]?.parentId;
+                        return cur && cur !== o.parent_id;
+                      });
+                      if (ownershipChanging.length === 0) return null;
+                      const proposedParentIds = new Set(
+                        ownershipChanging.map((o) => o.parent_id)
+                      );
+                      const stripeColor =
+                        proposedParentIds.size === 1
+                          ? Array.from(proposedParentIds)[0] === parentAId
+                            ? parentASwatch ?? "var(--accent-amber)"
+                            : parentBSwatch ?? "var(--accent-amber)"
+                          : "var(--accent-amber)";
+                      return (
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onPendingClick(pending);
+                          }}
+                          title="Pending custody change request — click for details"
+                          aria-label="Pending custody change request"
+                          className="absolute top-0 left-0 right-0 h-[6px] z-[3] cursor-pointer focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                          style={{
+                            background: `repeating-linear-gradient(90deg, ${stripeColor} 0px, ${stripeColor} 6px, transparent 6px, transparent 10px)`,
+                          }}
+                        />
+                      );
+                    })()}
+
                     {/* Day number — flow */}
                     <div
                       className={`
@@ -975,6 +1029,7 @@ export default function MonthView({
                         showTime && !zonesEquivalent(evtTz, browserTz)
                           ? tzAbbreviation(evtTz, evtInstant)
                           : null;
+                      const pendingIds = evt._pendingOverrideIds;
                       return (
                         <div
                           key={evt.id}
@@ -985,6 +1040,21 @@ export default function MonthView({
                           }}
                           onClick={(ev) => {
                             ev.stopPropagation();
+                            if (
+                              pendingIds &&
+                              pendingIds.length > 0 &&
+                              onPendingClick &&
+                              getPendingForDate
+                            ) {
+                              const dayPending = getPendingForDate(day);
+                              const matched = dayPending.filter((o) =>
+                                pendingIds.includes(o.id)
+                              );
+                              onPendingClick(
+                                matched.length > 0 ? matched : dayPending
+                              );
+                              return;
+                            }
                             onEventClick(evt);
                           }}
                           className={`

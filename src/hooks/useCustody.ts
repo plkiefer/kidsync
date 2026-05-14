@@ -28,9 +28,21 @@ type OverrideInput = Omit<CustodyOverride, "id" | "created_at" | "compliance_che
 interface CustodyState {
   schedules: CustodySchedule[];
   overrides: CustodyOverride[];
+  /** Subset of `overrides` with status === 'pending'. Drives the
+   *  pending diff visuals on the calendar (dashed event chips +
+   *  cell stripes). Excluded from `getCustodyForDate` so the
+   *  approved truth still drives day colors. */
+  pendingOverrides: CustodyOverride[];
   agreements: CustodyAgreement[];
   loading: boolean;
+  /** Custody using ONLY approved overrides — the source of truth
+   *  for day-cell colors and standard turnover events. */
   getCustodyForDate: (date: Date) => DayCustodyInfo;
+  /** What custody WOULD be on this day if every pending override
+   *  were approved. Used by the diff popover to show "proposed". */
+  getProjectedCustodyForDate: (date: Date) => DayCustodyInfo;
+  /** Pending overrides that cover the given date (any kid). */
+  getPendingForDate: (date: Date) => CustodyOverride[];
   /** Insert one or more overrides in a single DB call, refetch once */
   createOverrides: (overrides: OverrideInput[]) => Promise<CustodyOverride[]>;
   /** Update status on one or more overrides in a single DB call, refetch once */
@@ -105,15 +117,45 @@ export function useCustody(ready = true): CustodyState {
     fetchCustody();
   }, [fetchCustody, ready]);
 
+  // Approved-only custody — what the schedule actually IS today.
+  // Pending overrides are deliberately excluded so requesting a
+  // change doesn't pre-flip the calendar before the other parent
+  // has approved.
+  const approvedOverrides = overrides.filter((o) => o.status === "approved");
+  const pendingOverrides = overrides.filter((o) => o.status === "pending");
+
   const getCustodyForDate = useCallback(
     (date: Date): DayCustodyInfo => {
       if (schedules.length === 0) return {};
-      const activeOverrides = overrides.filter(
-        (o) => o.status === "approved" || o.status === "pending"
-      );
-      return computeCustodyForDate(date, schedules, activeOverrides);
+      return computeCustodyForDate(date, schedules, approvedOverrides);
     },
-    [schedules, overrides]
+    [schedules, approvedOverrides]
+  );
+
+  // What custody would be if every pending override were approved.
+  // Used by the diff popover to show the "proposed" column.
+  const getProjectedCustodyForDate = useCallback(
+    (date: Date): DayCustodyInfo => {
+      if (schedules.length === 0) return {};
+      return computeCustodyForDate(date, schedules, [
+        ...approvedOverrides,
+        ...pendingOverrides,
+      ]);
+    },
+    [schedules, approvedOverrides, pendingOverrides]
+  );
+
+  // Pending overrides that cover the given date (any kid). Sorted
+  // by created_at desc so the popover shows the freshest request first.
+  const getPendingForDate = useCallback(
+    (date: Date): CustodyOverride[] => {
+      if (pendingOverrides.length === 0) return [];
+      const dStr = formatDateStr(date);
+      return pendingOverrides
+        .filter((o) => o.start_date <= dStr && dStr <= o.end_date)
+        .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+    },
+    [pendingOverrides]
   );
 
   // ── Batch create ──────────────────────────────────────────
@@ -362,9 +404,12 @@ export function useCustody(ready = true): CustodyState {
   return {
     schedules,
     overrides,
+    pendingOverrides,
     agreements,
     loading,
     getCustodyForDate,
+    getProjectedCustodyForDate,
+    getPendingForDate,
     createOverrides,
     respondToOverrides,
     withdrawOverlapping,

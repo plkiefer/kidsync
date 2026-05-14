@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CalendarEvent, Kid, getEventKidIds, getEventTypeColor } from "@/lib/types";
+import { CalendarEvent, CustodyOverride, Kid, getEventKidIds, getEventTypeColor } from "@/lib/types";
 import {
   isToday,
   formatTime,
@@ -31,6 +31,17 @@ interface WeekViewProps {
   parentABg?: string;
   /** Resolved bg tint (hex) for parent_b's day cells. Defaults to --you-bg. */
   parentBBg?: string;
+  /** Saturated swatch (hex) for parent_a — used for the dashed
+   *  pending-change top stripe on a column. */
+  parentASwatch?: string;
+  /** Saturated swatch (hex) for parent_b — same purpose. */
+  parentBSwatch?: string;
+  /** Pending overrides covering the given date — drives the dashed
+   *  top-edge "pending" stripe on the day column. */
+  getPendingForDate?: (date: Date) => CustodyOverride[];
+  /** Click handler for the dashed cell stripe OR a dashed pending
+   *  event chip. Receives the pending overrides for the diff popover. */
+  onPendingClick?: (overrides: CustodyOverride[]) => void;
 }
 
 const HOUR_HEIGHT = 56;
@@ -71,6 +82,10 @@ export default function WeekView({
   parentAId,
   parentABg,
   parentBBg,
+  parentASwatch,
+  parentBSwatch,
+  getPendingForDate,
+  onPendingClick,
 }: WeekViewProps) {
   const days = getWeekDays(currentDate);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -292,6 +307,31 @@ export default function WeekView({
           {days.map((date, i) => {
             const timedEvents = getEventsForDay(date, false);
             const custodyBg = custodyBgFor(date, timedEvents);
+            // Pending stripe — same logic as MonthView. Only show when
+            // an in-flight request would change ownership of this day;
+            // time-only requests are signalled by the dashed event chip.
+            const dayPending = getPendingForDate
+              ? getPendingForDate(date)
+              : [];
+            let pendingStripeColor: string | null = null;
+            if (dayPending.length > 0 && getCustodyForDate) {
+              const cur = getCustodyForDate(date);
+              const ownershipChanging = dayPending.filter((o) => {
+                const c = cur[o.kid_id]?.parentId;
+                return c && c !== o.parent_id;
+              });
+              if (ownershipChanging.length > 0) {
+                const proposedSet = new Set(
+                  ownershipChanging.map((o) => o.parent_id)
+                );
+                pendingStripeColor =
+                  proposedSet.size === 1
+                    ? Array.from(proposedSet)[0] === parentAId
+                      ? parentASwatch ?? "var(--accent-amber)"
+                      : parentBSwatch ?? "var(--accent-amber)"
+                    : "var(--accent-amber)";
+              }
+            }
 
             return (
               <div
@@ -300,6 +340,21 @@ export default function WeekView({
                 style={custodyBg ? { background: custodyBg } : undefined}
                 onClick={() => onDayClick?.(date)}
               >
+                {pendingStripeColor && onPendingClick && (
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onPendingClick(dayPending);
+                    }}
+                    title="Pending custody change request — click for details"
+                    aria-label="Pending custody change request"
+                    className="absolute top-0 left-0 right-0 h-[6px] z-30 cursor-pointer focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                    style={{
+                      background: `repeating-linear-gradient(90deg, ${pendingStripeColor} 0px, ${pendingStripeColor} 6px, transparent 6px, transparent 10px)`,
+                    }}
+                  />
+                )}
                 {/* Hour gridlines */}
                 {hours.map((hour) => (
                   <div
@@ -315,6 +370,7 @@ export default function WeekView({
                   const kidBadge = singleKidIndicator(evt);
                   const { top, height } = getTopAndHeight(evt);
                   const dashed = evt._tentative;
+                  const pendingIds = evt._pendingOverrideIds;
                   const browserTz = getBrowserTimezone();
                   const evtTz = evt.time_zone || browserTz;
                   const evtInstant = parseTimestamp(evt.starts_at);
@@ -326,7 +382,25 @@ export default function WeekView({
                   return (
                     <div
                       key={evt.id}
-                      onClick={(e) => { e.stopPropagation(); onEventClick(evt); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          pendingIds &&
+                          pendingIds.length > 0 &&
+                          onPendingClick &&
+                          getPendingForDate
+                        ) {
+                          const pendingForDay = getPendingForDate(date);
+                          const matched = pendingForDay.filter((o) =>
+                            pendingIds.includes(o.id)
+                          );
+                          onPendingClick(
+                            matched.length > 0 ? matched : pendingForDay
+                          );
+                          return;
+                        }
+                        onEventClick(evt);
+                      }}
                       className={`
                         absolute left-0.5 right-0.5 px-1 py-0.5 overflow-hidden
                         bg-white text-[var(--ink)]

@@ -283,6 +283,9 @@ export interface CalendarEvent {
   _virtual?: boolean;
   // Tentative flag for events based on pending (not yet approved) overrides
   _tentative?: boolean;
+  // The custody_overrides.id(s) that introduced this tentative event.
+  // Drives the click→PendingDiffPopover wiring on dashed turnover chips.
+  _pendingOverrideIds?: string[];
   // Parent event ID for recurrence instances
   _recurrence_parent?: string;
   // Joined relations (optional)
