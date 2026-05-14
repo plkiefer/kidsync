@@ -392,9 +392,23 @@ export function useCustody(ready = true): CustodyState {
         return false;
       }
 
-      const standard = findStandardTurnoverDates(refDate, schedule);
+      // Pass approvedOverrides so the function returns the EFFECTIVE
+      // turnover positions (what the chip the user clicked is actually
+      // anchored to). Without this, moveTurnover compares the user's
+      // newDate against a base-schedule date that may differ from the
+      // calendar — e.g. an approved override has shifted Patrick's
+      // pickup from Fri to Thu, the user clicks Thu, and the function
+      // would still report standard.pickupDate=Fri. Result: dateChanged
+      // is computed against the wrong baseline and a real date move
+      // gets treated as a same-date time-only change, which silently
+      // creates an override on the wrong row.
+      const standard = findStandardTurnoverDates(
+        refDate,
+        schedule,
+        approvedOverrides
+      );
       if (!standard) {
-        console.error("[custody] could not find standard turnover dates");
+        console.error("[custody] could not find effective turnover dates");
         return false;
       }
 
@@ -451,52 +465,91 @@ export function useCustody(ready = true): CustodyState {
       await withdrawOverlapping(params.kidIds, withdrawalRanges);
 
       if (dateChanged) {
-        // Date changed — create override for the gap-day custody
-        // range. NO override_time on this row: the gap days are
-        // owned by the OTHER parent and don't have a turnover, so
-        // hanging override_time on them puts the new time on the
-        // wrong row (the post-approval `detectTransitions` looks
-        // for override_time at the NEW turnover date and won't find
-        // it). The time, if any, lives on its own same-day override
-        // below.
-        await createOverrides(params.kidIds.map((kidId) => ({
-          family_id: params.familyId,
-          kid_id: kidId,
-          start_date: rangeStart,
-          end_date: rangeEnd,
-          parent_id: overrideParent,
-          note: params.note,
-          reason: params.reason,
-          compliance_status: "unchecked" as const,
-          compliance_issues: null,
-          status: "pending" as OverrideStatus,
-          created_by: params.userId,
-          override_time: null,
-        })));
+        // Three sub-cases when the date changed. The merging logic
+        // matters because issuing two overlapping pending overrides
+        // in separate createOverrides calls would trigger the
+        // auto-supersede inside createOverrides — the second insert
+        // would mark the first as superseded.
+        //
+        //   EXTENDING (gap parent === parent_a, the receiving parent):
+        //     Pickup earlier OR drop-off later. Gap range and the
+        //     new turnover day are both with parent_a, so the time
+        //     deviation can ride on the gap row itself. ONE override.
+        //
+        //   SHRINKING (gap parent === parent_b, the other parent):
+        //     Pickup later OR drop-off earlier. Gap range goes to
+        //     parent_b; the new pickup/drop-off still happens with
+        //     parent_a on newDate. Need TWO overrides — emit them in
+        //     one batch insert so they both survive auto-supersede.
+        //
+        //   No time change: just the gap override.
+        const isExtending = overrideParent === schedule.parent_a_id;
+        const inputs: OverrideInput[] = [];
 
-        // If the user also changed the time, anchor it on the NEW
-        // turnover date — that's where the post-approval transition
-        // will be detected and where override_time needs to live.
-        // Parent for this row is the parent who'll have custody on
-        // that day after the move (parent_a for both pickup and
-        // drop-off — they're the alternating-weekend parent doing
-        // both handoffs).
-        if (timeChanged && params.newTime) {
-          await createOverrides(params.kidIds.map((kidId) => ({
-            family_id: params.familyId,
-            kid_id: kidId,
-            start_date: params.newDate,
-            end_date: params.newDate,
-            parent_id: schedule.parent_a_id,
-            note: params.note,
-            reason: params.reason,
-            compliance_status: "unchecked" as const,
-            compliance_issues: null,
-            status: "pending" as OverrideStatus,
-            created_by: params.userId,
-            override_time: params.newTime,
-          })));
+        if (isExtending && timeChanged && params.newTime) {
+          // Merged: gap range carries the time. The new turnover
+          // day is the boundary of this range so override_time on
+          // any day in [rangeStart, rangeEnd] is found by
+          // detectTransitions when it looks up `start_date === dateStr`.
+          inputs.push(
+            ...params.kidIds.map((kidId) => ({
+              family_id: params.familyId,
+              kid_id: kidId,
+              start_date: rangeStart,
+              end_date: rangeEnd,
+              parent_id: overrideParent,
+              note: params.note,
+              reason: params.reason,
+              compliance_status: "unchecked" as const,
+              compliance_issues: null,
+              status: "pending" as OverrideStatus,
+              created_by: params.userId,
+              override_time: params.newTime,
+            }))
+          );
+        } else {
+          // Gap override carries no time — its days are owned by the
+          // other parent and have no turnover for the time to attach
+          // to.
+          inputs.push(
+            ...params.kidIds.map((kidId) => ({
+              family_id: params.familyId,
+              kid_id: kidId,
+              start_date: rangeStart,
+              end_date: rangeEnd,
+              parent_id: overrideParent,
+              note: params.note,
+              reason: params.reason,
+              compliance_status: "unchecked" as const,
+              compliance_issues: null,
+              status: "pending" as OverrideStatus,
+              created_by: params.userId,
+              override_time: null,
+            }))
+          );
+          if (timeChanged && params.newTime) {
+            // Same-day time override at the new turnover date,
+            // owned by the parent who's doing the handoff (parent_a).
+            inputs.push(
+              ...params.kidIds.map((kidId) => ({
+                family_id: params.familyId,
+                kid_id: kidId,
+                start_date: params.newDate,
+                end_date: params.newDate,
+                parent_id: schedule.parent_a_id,
+                note: params.note,
+                reason: params.reason,
+                compliance_status: "unchecked" as const,
+                compliance_issues: null,
+                status: "pending" as OverrideStatus,
+                created_by: params.userId,
+                override_time: params.newTime,
+              }))
+            );
+          }
         }
+
+        await createOverrides(inputs);
       } else if (timeChanged) {
         // Time-only change (date matches standard) — create a same-day override
         // on the turnover date to carry the new time.
@@ -522,7 +575,7 @@ export function useCustody(ready = true): CustodyState {
 
       return true;
     },
-    [schedules, withdrawOverlapping, createOverrides]
+    [schedules, approvedOverrides, withdrawOverlapping, createOverrides]
   );
 
   // ── Compact (manual sweep — invoked from Custody Settings) ────

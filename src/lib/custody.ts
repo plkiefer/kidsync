@@ -99,15 +99,27 @@ export function parseLocalDate(dateStr: string): Date {
 }
 
 /**
- * Find the standard (no-override) pickup and dropoff dates for the custody
- * block nearest to a reference date. Scans ±7 days using only the base
- * schedule to find where custody naturally transitions.
+ * Find the pickup and dropoff dates for the custody block nearest a
+ * reference date. Scans ±7 days for transitions.
  *
- * Returns null if no transitions found (e.g., fixed_days with no alternating).
+ * Pass `effectiveOverrides` to find the EFFECTIVE turnover positions
+ * (what's actually rendered on the calendar today). Pass `[]` to find
+ * the base-schedule positions (the "standard" the override system
+ * was designed against).
+ *
+ * The default is `[]` for backward compatibility, but every caller
+ * editing an existing turnover should pass the approved overrides —
+ * otherwise the function will lock onto the base-schedule date even
+ * when the chip the user clicked is at an override-shifted position,
+ * and downstream logic treats a real date change as a no-op.
+ *
+ * Returns null if no transitions found (e.g., fixed_days with no
+ * alternating).
  */
 export function findStandardTurnoverDates(
   referenceDate: Date,
-  schedule: CustodySchedule
+  schedule: CustodySchedule,
+  effectiveOverrides: CustodyOverride[] = []
 ): { pickupDate: Date; dropoffDate: Date } | null {
   const scanStart = addDays(referenceDate, -7);
   const scanEnd = addDays(referenceDate, 7);
@@ -116,10 +128,9 @@ export function findStandardTurnoverDates(
   let pickupDate: Date | null = null;
   let dropoffDate: Date | null = null;
 
-  // Compute standard custody (no overrides) for consecutive days
   for (let i = 1; i < days.length; i++) {
-    const prev = computeCustodyForDate(days[i - 1], [schedule], []);
-    const curr = computeCustodyForDate(days[i], [schedule], []);
+    const prev = computeCustodyForDate(days[i - 1], [schedule], effectiveOverrides);
+    const curr = computeCustodyForDate(days[i], [schedule], effectiveOverrides);
     const kidId = schedule.kid_id;
 
     if (prev[kidId] && curr[kidId] && prev[kidId].parentId !== curr[kidId].parentId) {
