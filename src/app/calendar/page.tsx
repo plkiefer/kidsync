@@ -122,6 +122,7 @@ export default function CalendarPage() {
     moveTurnover,
     notifyCustodyChange,
     refetchCustody,
+    compactOverrides,
   } = useCustody(dataReady);
   const {
     trips,
@@ -1671,6 +1672,7 @@ export default function CalendarPage() {
           currentUserId={user?.id ?? ""}
           agreements={agreements}
           schedules={schedules}
+          onCompactOverrides={compactOverrides}
           onClose={() => {
             setShowCustodySettings(false);
             refetchCustody();
@@ -1702,6 +1704,7 @@ export default function CalendarPage() {
           members={members}
           schedules={schedules}
           approvedOverrides={approvedOverridesForRender}
+          agreements={agreements}
           currentUserId={user?.id ?? ""}
           onRespond={async (ids, status, note, userId) => {
             const ok = await respondToOverrides(ids, status, note, userId);

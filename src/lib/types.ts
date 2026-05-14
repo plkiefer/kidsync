@@ -429,7 +429,24 @@ export interface CustodySchedule {
   updated_at: string;
 }
 
-export type OverrideStatus = "pending" | "approved" | "disputed" | "withdrawn";
+/**
+ * `superseded` is a "soft-deleted" status — the row stays for audit
+ * but is filtered out of every active rendering path. Set when:
+ *   - a newer pending override on the same kid+date overlap arrives
+ *     (the older pending becomes moot)
+ *   - a newer approved override fully covers an older one (same kid,
+ *     same dates)
+ *   - the Compact action sweeps no-op approved overrides (parent_id
+ *     matches the standard schedule, no time deviation)
+ * Distinct from `withdrawn`, which is an explicit user/system action
+ * to cancel an in-flight request.
+ */
+export type OverrideStatus =
+  | "pending"
+  | "approved"
+  | "disputed"
+  | "withdrawn"
+  | "superseded";
 export type ComplianceStatus = "unchecked" | "compliant" | "flagged";
 
 export interface CustodyOverride {

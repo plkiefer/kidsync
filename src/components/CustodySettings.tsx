@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { X, Upload, FileText, CheckCircle, AlertTriangle, Loader2, ExternalLink, Shield } from "lucide-react";
+import { X, Upload, FileText, CheckCircle, AlertTriangle, Loader2, ExternalLink, Shield, Archive } from "lucide-react";
 import { getSupabase } from "@/lib/supabase";
 import { withBasePath } from "@/lib/basePath";
 import { Kid, Profile, ParsedCustodyTerms, CustodyAgreement, CustodySchedule } from "@/lib/types";
+import type { CompactReport } from "@/hooks/useCustody";
 
 interface CustodySettingsProps {
   familyId: string;
@@ -14,6 +15,10 @@ interface CustodySettingsProps {
   agreements: CustodyAgreement[];
   schedules: CustodySchedule[];
   onClose: () => void;
+  /** Optional — when supplied, renders a "Compact change history"
+   *  control on the current-agreement screen. Sweeps redundant /
+   *  no-op / stale overrides into `superseded`. Non-destructive. */
+  onCompactOverrides?: (familyId: string) => Promise<CompactReport>;
 }
 
 type Step = "current" | "upload" | "parsing" | "review" | "done" | "error";
@@ -26,7 +31,13 @@ export default function CustodySettings({
   agreements,
   schedules,
   onClose,
+  onCompactOverrides,
 }: CustodySettingsProps) {
+  const [compacting, setCompacting] = useState(false);
+  const [compactReport, setCompactReport] = useState<CompactReport | null>(
+    null
+  );
+  const [compactError, setCompactError] = useState("");
   const latestAgreement = agreements.length > 0 ? agreements[0] : null;
   const hasSchedule = schedules.length > 0;
 
@@ -328,6 +339,134 @@ export default function CustodySettings({
 
               {/* Parsed terms */}
               {renderTermsSummary(existingTerms)}
+
+              {/* ── Custody change history compaction ──
+                  Optional surface — only renders when the parent
+                  passes onCompactOverrides. Marks redundant approved
+                  rows + no-op approved rows + stale (>30 day) pending
+                  rows as superseded/withdrawn. Non-destructive: rows
+                  stay in the DB for audit, just hidden from active
+                  rendering. */}
+              {onCompactOverrides && (
+                <div className="bg-[var(--bg-sunken)] border border-[var(--border)] rounded-sm p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Archive size={14} className="text-[var(--color-text-muted)]" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-[var(--color-text)]">
+                        Change-Request History
+                      </div>
+                      <div className="text-[10px] text-[var(--color-text-faint)] leading-snug">
+                        Old change requests pile up over time. Compacting
+                        hides redundant, no-op, and stale rows from the
+                        Changes list. Nothing is deleted.
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!onCompactOverrides || compacting) return;
+                        setCompactError("");
+                        setCompactReport(null);
+                        setCompacting(true);
+                        try {
+                          const r = await onCompactOverrides(familyId);
+                          setCompactReport(r);
+                        } catch (err) {
+                          setCompactError(
+                            err instanceof Error ? err.message : "Compact failed"
+                          );
+                        } finally {
+                          setCompacting(false);
+                        }
+                      }}
+                      disabled={compacting}
+                      className="px-2.5 py-1.5 rounded-sm border border-[var(--border)] bg-[var(--bg)] text-[10px] font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-sunken)] hover:text-[var(--ink)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 shrink-0"
+                    >
+                      {compacting ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Archive size={11} />
+                      )}
+                      {compacting ? "Compacting..." : "Compact"}
+                    </button>
+                  </div>
+                  {compactReport && (
+                    <div
+                      className="text-[10.5px] leading-relaxed pt-2 border-t"
+                      style={{ borderColor: "var(--border)" }}
+                    >
+                      {(() => {
+                        const total =
+                          compactReport.redundantApproved +
+                          compactReport.noopApproved +
+                          compactReport.stalePending;
+                        if (total === 0) {
+                          return (
+                            <div
+                              className="flex items-center gap-1.5"
+                              style={{ color: "#3D7A4F" }}
+                            >
+                              <CheckCircle size={11} />
+                              Already clean — nothing to compact.
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="space-y-0.5">
+                            <div
+                              className="flex items-center gap-1.5 font-semibold"
+                              style={{ color: "#3D7A4F" }}
+                            >
+                              <CheckCircle size={11} />
+                              Compacted {total} row{total === 1 ? "" : "s"}.
+                            </div>
+                            <ul className="text-[var(--color-text-muted)] ml-4 list-disc">
+                              {compactReport.redundantApproved > 0 && (
+                                <li>
+                                  {compactReport.redundantApproved} redundant
+                                  approved override
+                                  {compactReport.redundantApproved === 1
+                                    ? ""
+                                    : "s"}
+                                </li>
+                              )}
+                              {compactReport.noopApproved > 0 && (
+                                <li>
+                                  {compactReport.noopApproved} no-op approved
+                                  override
+                                  {compactReport.noopApproved === 1 ? "" : "s"}{" "}
+                                  (matched standard schedule)
+                                </li>
+                              )}
+                              {compactReport.stalePending > 0 && (
+                                <li>
+                                  {compactReport.stalePending} stale pending
+                                  request
+                                  {compactReport.stalePending === 1
+                                    ? ""
+                                    : "s"}{" "}
+                                  (older than 30 days)
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                  {compactError && (
+                    <div
+                      className="text-[10.5px] leading-relaxed pt-2 border-t flex items-center gap-1.5"
+                      style={{
+                        borderColor: "var(--border)",
+                        color: "var(--accent-red)",
+                      }}
+                    >
+                      <AlertTriangle size={11} />
+                      {compactError}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-3 pt-2">

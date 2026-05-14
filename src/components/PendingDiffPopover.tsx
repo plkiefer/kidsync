@@ -11,7 +11,9 @@ import {
 } from "lucide-react";
 import {
   CustodyOverride,
+  CustodyAgreement,
   Kid,
+  ParsedCustodyTerms,
   Profile,
   CustodySchedule,
   OverrideStatus,
@@ -19,10 +21,10 @@ import {
 import { computeCustodyForDate } from "@/lib/custody";
 import { eachDayOfInterval } from "date-fns";
 
-// Diff popover that opens from any pending visual on the calendar
-// (dashed event chip OR dashed cell stripe). Shows the current
-// (approved) custody side-by-side with what the request proposes,
-// then lets the responder approve/dispute or the requester withdraw.
+// Diff popover that opens from the day-cell pending pill OR a dashed
+// event chip. Shows the current (approved) state side-by-side with
+// what the request proposes, then lets the responder approve/dispute
+// or the requester withdraw.
 
 interface PendingDiffPopoverProps {
   /** All overrides that make up ONE logical request. Multi-kid
@@ -35,6 +37,9 @@ interface PendingDiffPopoverProps {
   /** Approved overrides — used to compute the "Currently" column so
    *  it reflects the real schedule, not the projected one. */
   approvedOverrides: CustodyOverride[];
+  /** Latest agreement(s) — used to read the standard pickup/drop-off
+   *  times for the "Currently" column. */
+  agreements?: CustodyAgreement[];
   currentUserId: string;
   onRespond: (
     overrideIds: string[],
@@ -46,12 +51,70 @@ interface PendingDiffPopoverProps {
   onClose: () => void;
 }
 
+// ── Note normalization ────────────────────────────────────────
+// The DB stores auto-generated descriptions in the `note` field
+// (QuickCustodyChange's "Pickup for X moved from Y to Z at HH:MM",
+// custom-custody's "Custom custody: ... ", cancel-exchange's
+// "Cancellation of...", etc). Those duplicate what's already shown
+// in the diff columns — strip them so the popover only displays a
+// note when there's a real user-supplied reason.
+function extractUserNote(rawNote: string | null | undefined): string | null {
+  if (!rawNote) return null;
+  // QuickCustodyChange template — "<Action> for <kids> moved from
+  // YYYY-MM-DD to YYYY-MM-DD at HH:MM[ — user note]"
+  const moveMatch = rawNote.match(
+    /^(?:Pickup|Drop-off) for .+? moved from \d{4}-\d{2}-\d{2} to \d{4}-\d{2}-\d{2} at \d{1,2}:\d{2}(?:\s+—\s+(.+))?$/
+  );
+  if (moveMatch) {
+    return moveMatch[1]?.trim() || null;
+  }
+  // Custom-custody template
+  const customMatch = rawNote.match(
+    /^Custom custody: .+? with .+? — Pickup .+? at .+?, Drop-off .+? at .+?(?:\s+—\s+(.+))?$/
+  );
+  if (customMatch) {
+    return customMatch[1]?.trim() || null;
+  }
+  // Cancellation templates have no user-text portion
+  if (
+    /^(Cancellation of custom exchange|Weekend cancelled) for /.test(rawNote)
+  ) {
+    return null;
+  }
+  // Otherwise treat as user-supplied free text
+  return rawNote;
+}
+
+function readDefaultTurnoverTimes(
+  agreements: CustodyAgreement[] | undefined
+): { pickup: string; dropoff: string } {
+  const latest = agreements && agreements.length > 0 ? agreements[0] : null;
+  const terms = latest?.parsed_terms as ParsedCustodyTerms | null;
+  return {
+    pickup: terms?.alternating_weekends?.pickup_time || "3:00 PM",
+    dropoff: terms?.alternating_weekends?.dropoff_time || "5:00 PM",
+  };
+}
+
+/** "09:00" → "9:00 AM", "21:30" → "9:30 PM", passthrough for AM/PM input. */
+function prettyTime(t: string): string {
+  if (/[ap]m$/i.test(t.trim())) return t;
+  const m = t.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return t;
+  const h = parseInt(m[1], 10);
+  const min = m[2];
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${min} ${period}`;
+}
+
 export default function PendingDiffPopover({
   overrides,
   kids,
   members,
   schedules,
   approvedOverrides,
+  agreements,
   currentUserId,
   onRespond,
   onViewAllRequests,
@@ -156,71 +219,113 @@ export default function PendingDiffPopover({
             </div>
           </div>
 
-          {/* Current → Proposed diff */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="border border-[var(--border)] bg-[var(--bg-sunken)] p-3">
-              <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-[0.08em] font-semibold mb-2">
-                Currently
-              </div>
-              {currentByKid.map(({ kidId, kidName, parentName }) => (
-                <div
-                  key={kidId}
-                  className="text-xs text-[var(--color-text)] py-0.5"
-                >
-                  <span className="text-[var(--color-text-muted)]">
-                    {kidName}:
-                  </span>{" "}
-                  {parentName}
-                </div>
-              ))}
-            </div>
+          {/* Current → Proposed diff. Both columns carry the same
+              fields (Custody / Pickup / Drop-off) so the eye can
+              compare row-by-row instead of hunting for what's
+              different. */}
+          {(() => {
+            const stdTimes = readDefaultTurnoverTimes(agreements);
+            const proposedPickup = primary.override_time
+              ? prettyTime(primary.override_time)
+              : prettyTime(stdTimes.pickup);
+            const currentPickup = prettyTime(stdTimes.pickup);
+            const currentDropoff = prettyTime(stdTimes.dropoff);
+            const proposedDropoff = currentDropoff; // dropoff time isn't editable today
 
-            <div
-              className="border border-dashed p-3"
-              style={{
-                borderColor:
-                  "color-mix(in srgb, var(--accent-amber) 50%, transparent)",
-                background: "var(--accent-amber-tint)",
-              }}
-            >
-              <div
-                className="text-[10px] uppercase tracking-[0.08em] font-semibold mb-2 flex items-center gap-1"
-                style={{ color: "var(--accent-amber)" }}
-              >
-                <ArrowRight size={10} />
-                Proposed
-              </div>
-              {overrides.map((o) => (
-                <div
-                  key={o.id}
-                  className="text-xs text-[var(--color-text)] py-0.5"
-                >
-                  <span className="text-[var(--color-text-muted)]">
-                    {kids.find((k) => k.id === o.kid_id)?.name || "Kid"}:
-                  </span>{" "}
-                  {proposedName}
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="border border-[var(--border)] bg-[var(--bg-sunken)] p-3 space-y-2">
+                  <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-[0.08em] font-semibold">
+                    Currently
+                  </div>
+                  <DiffField label="Custody">
+                    {currentByKid.map(({ kidId, kidName, parentName }) => (
+                      <div
+                        key={kidId}
+                        className="text-xs text-[var(--color-text)]"
+                      >
+                        <span className="text-[var(--color-text-muted)]">
+                          {kidName}:
+                        </span>{" "}
+                        {parentName}
+                      </div>
+                    ))}
+                  </DiffField>
+                  <DiffField label="Pickup">
+                    <span className="text-xs text-[var(--color-text)]">
+                      {currentPickup}
+                    </span>
+                  </DiffField>
+                  <DiffField label="Drop-off">
+                    <span className="text-xs text-[var(--color-text)]">
+                      {currentDropoff}
+                    </span>
+                  </DiffField>
                 </div>
-              ))}
-              {primary.override_time && (
+
                 <div
-                  className="text-[11px] text-[var(--color-text-muted)] mt-2 pt-2 border-t"
+                  className="border border-dashed p-3 space-y-2"
                   style={{
                     borderColor:
-                      "color-mix(in srgb, var(--accent-amber) 30%, transparent)",
+                      "color-mix(in srgb, var(--accent-amber) 50%, transparent)",
+                    background: "var(--accent-amber-tint)",
                   }}
                 >
-                  Pickup time: {primary.override_time}
+                  <div
+                    className="text-[10px] uppercase tracking-[0.08em] font-semibold flex items-center gap-1"
+                    style={{ color: "var(--accent-amber)" }}
+                  >
+                    <ArrowRight size={10} />
+                    Proposed
+                  </div>
+                  <DiffField label="Custody">
+                    {overrides.map((o) => (
+                      <div
+                        key={o.id}
+                        className="text-xs text-[var(--color-text)]"
+                      >
+                        <span className="text-[var(--color-text-muted)]">
+                          {kids.find((k) => k.id === o.kid_id)?.name || "Kid"}:
+                        </span>{" "}
+                        {proposedName}
+                      </div>
+                    ))}
+                  </DiffField>
+                  <DiffField label="Pickup">
+                    <span
+                      className="text-xs"
+                      style={{
+                        color:
+                          proposedPickup !== currentPickup
+                            ? "var(--accent-amber)"
+                            : "var(--color-text)",
+                        fontWeight:
+                          proposedPickup !== currentPickup ? 700 : 400,
+                      }}
+                    >
+                      {proposedPickup}
+                    </span>
+                  </DiffField>
+                  <DiffField label="Drop-off">
+                    <span className="text-xs text-[var(--color-text)]">
+                      {proposedDropoff}
+                    </span>
+                  </DiffField>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            );
+          })()}
 
-          {primary.note && (
-            <div className="text-xs text-[var(--color-text)] bg-[var(--bg-sunken)] p-3 border border-[var(--border)]">
-              <span className="text-[var(--color-text-faint)]">Note: </span>
-              {primary.note}
-            </div>
-          )}
+          {(() => {
+            const userNote = extractUserNote(primary.note);
+            if (!userNote) return null;
+            return (
+              <div className="text-xs text-[var(--color-text)] bg-[var(--bg-sunken)] p-3 border border-[var(--border)]">
+                <span className="text-[var(--color-text-faint)]">Note: </span>
+                {userNote}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Footer — actions vary by requester vs responder */}
@@ -297,4 +402,24 @@ function formatDate(dateStr: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// Tiny labeled-row primitive used by both diff columns. Keeps both
+// sides aligned vertically — Custody / Pickup / Drop-off rows stack
+// in the same order in each column so the eye reads top-to-bottom.
+function DiffField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-[9.5px] uppercase tracking-[0.06em] font-semibold text-[var(--color-text-faint)] mb-0.5">
+        {label}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
 }

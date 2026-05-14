@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Clock } from "lucide-react";
 import { CalendarEvent, CustodyOverride, Kid, getEventKidIds, getEventTypeColor } from "@/lib/types";
 import {
   isToday,
@@ -234,6 +235,19 @@ export default function WeekView({
           {days.map((date, i) => {
             const today = isToday(date);
             const allDayEvents = getEventsForDay(date, true);
+            const headerPending = getPendingForDate
+              ? getPendingForDate(date)
+              : [];
+            const headerPendingCount = headerPending.length
+              ? new Set(
+                  headerPending.map(
+                    (o) =>
+                      `${o.start_date}|${o.end_date}|${o.parent_id}|${
+                        o.override_time ?? ""
+                      }|${o.note ?? ""}`
+                  )
+                ).size
+              : 0;
             return (
               <div
                 key={i}
@@ -250,6 +264,31 @@ export default function WeekView({
                 >
                   {date.getDate()}
                 </div>
+                {headerPendingCount > 0 && onPendingClick && (
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      onPendingClick(headerPending);
+                    }}
+                    title={`${headerPendingCount} pending custody change request${
+                      headerPendingCount === 1 ? "" : "s"
+                    } — click for details`}
+                    aria-label={`${headerPendingCount} pending custody change request${
+                      headerPendingCount === 1 ? "" : "s"
+                    }`}
+                    className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[9.5px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                    style={{
+                      color: "var(--accent-amber)",
+                      background: "var(--accent-amber-tint)",
+                      border:
+                        "1px solid color-mix(in srgb, var(--accent-amber) 50%, transparent)",
+                    }}
+                  >
+                    <Clock size={9} strokeWidth={2.5} />
+                    {headerPendingCount > 1 ? headerPendingCount : "Pending"}
+                  </button>
+                )}
                 {/* All-day events */}
                 {allDayEvents.length > 0 && (
                   <div className="mt-1 space-y-0.5">
@@ -303,38 +342,12 @@ export default function WeekView({
             ))}
           </div>
 
-          {/* Day columns */}
+          {/* Day columns. Pending-request indicator lives in the day
+              HEADER (above) so it doesn't fight the hour gridlines or
+              custody background. */}
           {days.map((date, i) => {
             const timedEvents = getEventsForDay(date, false);
             const custodyBg = custodyBgFor(date, timedEvents);
-            // Pending stripe — same logic as MonthView. Shows on any
-            // day a pending request covers; color-encodes the proposed
-            // parent for ownership changes, falls back to amber for
-            // time-only requests.
-            const dayPending = getPendingForDate
-              ? getPendingForDate(date)
-              : [];
-            let pendingStripeColor: string | null = null;
-            if (dayPending.length > 0) {
-              const cur = getCustodyForDate ? getCustodyForDate(date) : {};
-              const ownershipChanging = dayPending.filter((o) => {
-                const c = cur[o.kid_id]?.parentId;
-                return c && c !== o.parent_id;
-              });
-              if (ownershipChanging.length > 0) {
-                const proposedSet = new Set(
-                  ownershipChanging.map((o) => o.parent_id)
-                );
-                pendingStripeColor =
-                  proposedSet.size === 1
-                    ? Array.from(proposedSet)[0] === parentAId
-                      ? parentASwatch ?? "var(--accent-amber)"
-                      : parentBSwatch ?? "var(--accent-amber)"
-                    : "var(--accent-amber)";
-              } else {
-                pendingStripeColor = "var(--accent-amber)";
-              }
-            }
 
             return (
               <div
@@ -343,21 +356,6 @@ export default function WeekView({
                 style={custodyBg ? { background: custodyBg } : undefined}
                 onClick={() => onDayClick?.(date)}
               >
-                {pendingStripeColor && onPendingClick && (
-                  <button
-                    type="button"
-                    onClick={(ev) => {
-                      ev.stopPropagation();
-                      onPendingClick(dayPending);
-                    }}
-                    title="Pending custody change request — click for details"
-                    aria-label="Pending custody change request"
-                    className="absolute top-0 left-0 right-0 h-[6px] z-30 cursor-pointer focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
-                    style={{
-                      background: `repeating-linear-gradient(90deg, ${pendingStripeColor} 0px, ${pendingStripeColor} 6px, transparent 6px, transparent 10px)`,
-                    }}
-                  />
-                )}
                 {/* Hour gridlines */}
                 {hours.map((hour) => (
                   <div

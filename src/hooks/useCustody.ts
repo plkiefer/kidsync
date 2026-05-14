@@ -63,6 +63,23 @@ interface CustodyState {
   }) => Promise<boolean>;
   notifyCustodyChange: (params: NotifyCustodyParams) => void;
   refetchCustody: () => Promise<void>;
+  /** Sweep redundant overrides into the `superseded` graveyard. Safe
+   *  to run repeatedly. Returns counts so the UI can show what it did. */
+  compactOverrides: (familyId: string) => Promise<CompactReport>;
+}
+
+export interface CompactReport {
+  redundantApproved: number;
+  noopApproved: number;
+  stalePending: number;
+}
+
+// ── Date helper ───────────────────────────────────────────────
+
+/** "2026-05-22" → "2026-05-23". Used by the compact pass to walk
+ *  contiguous coverage spans without going through Date objects. */
+function nextDayStr(dateStr: string): string {
+  return formatDateStr(addDays(parseLocalDate(dateStr), 1));
 }
 
 // ── Timeout helper ────────────────────────────────────────────
@@ -90,7 +107,14 @@ export function useCustody(ready = true): CustodyState {
     try {
       const [schedRes, overRes, agreeRes] = await Promise.all([
         supabase.from("custody_schedules").select("*"),
-        supabase.from("custody_overrides").select("*").neq("status", "withdrawn").order("start_date"),
+        // Exclude both terminal "soft-deleted" statuses from the active
+        // result set. `superseded` rows stay in the DB for audit but
+        // are invisible to every rendering path.
+        supabase
+          .from("custody_overrides")
+          .select("*")
+          .not("status", "in", "(withdrawn,superseded)")
+          .order("start_date"),
         supabase.from("custody_agreements").select("*").order("created_at", { ascending: false }),
       ]);
 
@@ -165,6 +189,56 @@ export function useCustody(ready = true): CustodyState {
       if (inputs.length === 0) return [];
 
       try {
+        // Auto-supersede any prior PENDING overrides from the same
+        // requester that overlap on the same kid+date-range. Stops
+        // pending stacks ("overrides on overrides") at the request
+        // layer. Cross-user pending requests are deliberately left
+        // alone — different parties' wishes shouldn't auto-resolve.
+        const pendingInputs = inputs.filter(
+          (i) => i.status === "pending"
+        );
+        if (pendingInputs.length > 0) {
+          // Group by created_by + kid_id, compute the union date span
+          // per group, and mark older pending rows in that span as
+          // superseded.
+          type Span = {
+            createdBy: string;
+            kidId: string;
+            start: string;
+            end: string;
+          };
+          const spans: Span[] = [];
+          for (const inp of pendingInputs) {
+            if (!inp.created_by) continue;
+            const existing = spans.find(
+              (s) => s.createdBy === inp.created_by && s.kidId === inp.kid_id
+            );
+            if (existing) {
+              if (inp.start_date < existing.start) existing.start = inp.start_date;
+              if (inp.end_date > existing.end) existing.end = inp.end_date;
+            } else {
+              spans.push({
+                createdBy: inp.created_by,
+                kidId: inp.kid_id,
+                start: inp.start_date,
+                end: inp.end_date,
+              });
+            }
+          }
+          await Promise.all(
+            spans.map((s) =>
+              supabase
+                .from("custody_overrides")
+                .update({ status: "superseded" })
+                .eq("status", "pending")
+                .eq("kid_id", s.kidId)
+                .eq("created_by", s.createdBy)
+                .lte("start_date", s.end)
+                .gte("end_date", s.start)
+            )
+          );
+        }
+
         const { data, error } = await withTimeout(
           supabase.from("custody_overrides").insert(inputs).select(),
           15000,
@@ -195,6 +269,30 @@ export function useCustody(ready = true): CustodyState {
       if (overrideIds.length === 0) return true;
 
       try {
+        // When approving, also pull in the rows being approved so we
+        // can find OTHER pending overrides on the same kid+date-range
+        // and supersede them — they're moot once this one is active.
+        let toSupersedeSpans:
+          | { kidId: string; start: string; end: string }[]
+          | null = null;
+        if (status === "approved") {
+          const { data: targetRows } = await supabase
+            .from("custody_overrides")
+            .select("kid_id, start_date, end_date")
+            .in("id", overrideIds);
+          if (targetRows && targetRows.length > 0) {
+            toSupersedeSpans = (targetRows as Array<{
+              kid_id: string;
+              start_date: string;
+              end_date: string;
+            }>).map((r) => ({
+              kidId: r.kid_id,
+              start: r.start_date,
+              end: r.end_date,
+            }));
+          }
+        }
+
         const { error } = await withTimeout(
           supabase
             .from("custody_overrides")
@@ -212,6 +310,21 @@ export function useCustody(ready = true): CustodyState {
         if (error) {
           console.error("[custody] batch respond error:", error);
           return false;
+        }
+
+        if (toSupersedeSpans && toSupersedeSpans.length > 0) {
+          await Promise.all(
+            toSupersedeSpans.map((s) =>
+              supabase
+                .from("custody_overrides")
+                .update({ status: "superseded" })
+                .eq("status", "pending")
+                .eq("kid_id", s.kidId)
+                .lte("start_date", s.end)
+                .gte("end_date", s.start)
+                .not("id", "in", `(${overrideIds.join(",")})`)
+            )
+          );
         }
 
         await withTimeout(fetchCustody(), 10000, "refetch after respond");
@@ -381,6 +494,154 @@ export function useCustody(ready = true): CustodyState {
     [schedules, withdrawOverlapping, createOverrides]
   );
 
+  // ── Compact (manual sweep — invoked from Custody Settings) ────
+
+  /**
+   * Sweep redundant overrides into `superseded`. Three passes, all
+   * non-destructive (audit rows preserved):
+   *
+   *   1. Stale pending  — rows older than 30 days with no response.
+   *      Marked `withdrawn` so they're indistinguishable from a user
+   *      cancel; if you ever want a separate auto-expired status,
+   *      that's a one-line change here.
+   *
+   *   2. Redundant approved  — for each (kid, day), keep only the
+   *      most recently approved row that covers it. Older approved
+   *      rows whose entire date range is covered by newer approved
+   *      rows on the same kid get marked superseded. (Single-day
+   *      overrides on a day already covered by a multi-day override
+   *      are also superseded.)
+   *
+   *   3. No-op approved  — rows where parent_id matches the standard
+   *      schedule for every day in the range AND there's no
+   *      override_time deviation. These overrides have zero effect on
+   *      computed custody; they're pure clutter.
+   *
+   * Pulls fresh data from the DB (don't trust the local cache for an
+   * audit pass).
+   */
+  const compactOverrides = useCallback(
+    async (familyId: string): Promise<CompactReport> => {
+      const report: CompactReport = {
+        redundantApproved: 0,
+        noopApproved: 0,
+        stalePending: 0,
+      };
+
+      // Fresh full read — including superseded so we don't try to mark
+      // a row twice if the function is run repeatedly.
+      const { data: allRows, error: readErr } = await supabase
+        .from("custody_overrides")
+        .select("*")
+        .eq("family_id", familyId);
+      if (readErr || !allRows) {
+        console.error("[compact] read failed:", readErr);
+        return report;
+      }
+      const rows = allRows as CustodyOverride[];
+
+      // ── Pass 1: stale pending ─────────────────────────────
+      const staleCutoffMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      const staleIds = rows
+        .filter(
+          (r) =>
+            r.status === "pending" &&
+            r.created_at &&
+            new Date(r.created_at).getTime() < staleCutoffMs
+        )
+        .map((r) => r.id);
+      if (staleIds.length > 0) {
+        await supabase
+          .from("custody_overrides")
+          .update({ status: "withdrawn" })
+          .in("id", staleIds);
+        report.stalePending = staleIds.length;
+      }
+
+      // ── Pass 2: redundant approved ────────────────────────
+      // Per kid: sort approved rows by created_at desc. Walk; for
+      // each row, if every day in its range is already covered by an
+      // EARLIER-WALKED (i.e. newer) row on the same kid, mark it
+      // superseded.
+      const approvedByKid = new Map<string, CustodyOverride[]>();
+      for (const r of rows) {
+        if (r.status !== "approved") continue;
+        const list = approvedByKid.get(r.kid_id);
+        if (list) list.push(r);
+        else approvedByKid.set(r.kid_id, [r]);
+      }
+      const redundantIds: string[] = [];
+      for (const list of approvedByKid.values()) {
+        list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+        const covered: { start: string; end: string }[] = [];
+        for (const r of list) {
+          // Is r.start_date..r.end_date fully covered by the union of
+          // earlier-walked rows? Day-string compare is safe (YYYY-MM-DD).
+          let cursor = r.start_date;
+          let isCovered = true;
+          while (cursor <= r.end_date) {
+            const seg = covered.find((s) => s.start <= cursor && cursor <= s.end);
+            if (!seg) {
+              isCovered = false;
+              break;
+            }
+            cursor = nextDayStr(seg.end);
+          }
+          if (isCovered) {
+            redundantIds.push(r.id);
+          } else {
+            covered.push({ start: r.start_date, end: r.end_date });
+          }
+        }
+      }
+      if (redundantIds.length > 0) {
+        await supabase
+          .from("custody_overrides")
+          .update({ status: "superseded" })
+          .in("id", redundantIds);
+        report.redundantApproved = redundantIds.length;
+      }
+
+      // ── Pass 3: no-op approved ────────────────────────────
+      // For each remaining approved row, walk its date range and
+      // check if base-schedule custody (no overrides) already gives
+      // those days to the override's parent_id. If yes for every day
+      // AND there's no override_time, the row has zero effect.
+      const noopIds: string[] = [];
+      const remainingApproved = rows.filter(
+        (r) => r.status === "approved" && !redundantIds.includes(r.id)
+      );
+      for (const r of remainingApproved) {
+        if (r.override_time) continue; // time deviation = real effect
+        const sched = schedules.find((s) => s.kid_id === r.kid_id);
+        if (!sched) continue;
+        let cursor = parseLocalDate(r.start_date);
+        const end = parseLocalDate(r.end_date);
+        let isNoop = true;
+        while (cursor <= end) {
+          const base = computeCustodyForDate(cursor, [sched], []);
+          if (base[r.kid_id]?.parentId !== r.parent_id) {
+            isNoop = false;
+            break;
+          }
+          cursor = addDays(cursor, 1);
+        }
+        if (isNoop) noopIds.push(r.id);
+      }
+      if (noopIds.length > 0) {
+        await supabase
+          .from("custody_overrides")
+          .update({ status: "superseded" })
+          .in("id", noopIds);
+        report.noopApproved = noopIds.length;
+      }
+
+      await fetchCustody();
+      return report;
+    },
+    [supabase, schedules, fetchCustody]
+  );
+
   // ── Notify (fire and forget) ──────────────────────────────
 
   const notifyCustodyChange = useCallback(
@@ -415,6 +676,7 @@ export function useCustody(ready = true): CustodyState {
     withdrawOverlapping,
     moveTurnover,
     notifyCustodyChange,
+    compactOverrides,
     refetchCustody: fetchCustody,
   };
 }

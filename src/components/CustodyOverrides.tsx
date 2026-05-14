@@ -67,6 +67,15 @@ const STATUS_CONFIG: Record<
     bg: "bg-[var(--bg-sunken)] border-[var(--border)]",
     icon: XCircle,
   },
+  // `superseded` rows are filtered out of the modal at the data
+  // layer, but the type system requires every status be enumerated.
+  // Same visual as withdrawn in case a row ever slips through.
+  superseded: {
+    label: "Superseded",
+    color: "text-[var(--text-muted)]",
+    bg: "bg-[var(--bg-sunken)] border-[var(--border)]",
+    icon: XCircle,
+  },
 };
 
 const COMPLIANCE_CONFIG: Record<
@@ -182,6 +191,7 @@ export default function CustodyOverrides({
       disputed: 1,
       approved: 2,
       withdrawn: 3,
+      superseded: 4,
     };
     const sDiff = statusOrder[a.primary.status] - statusOrder[b.primary.status];
     if (sDiff !== 0) return sDiff;

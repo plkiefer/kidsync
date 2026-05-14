@@ -1,5 +1,6 @@
 "use client";
 
+import { Clock } from "lucide-react";
 import {
   CalendarEvent,
   CustodyOverride,
@@ -860,38 +861,29 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Pending-change stripe — dashed top-edge band on
-                        any day a pending request covers. Color-encodes
-                        the proposed parent when the request would
-                        change ownership; falls back to amber for
-                        time-only requests (where the proposed parent
-                        is the same as the current owner, so a parent
-                        color would blend into the cell). */}
+                    {/* Pending-change indicator — explicit amber pill
+                        in the day-cell top-right with a clock icon and
+                        the count of pending requests on this day. The
+                        previous decorative top-edge stripe was unclear;
+                        this matches the conventions used by Notion /
+                        Linear / Outlook for "needs review / tentative"
+                        states (icon + count + accessible text). */}
                     {(() => {
                       if (!getPendingForDate || !onPendingClick) return null;
                       const pending = getPendingForDate(day);
                       if (pending.length === 0) return null;
-                      const currentCustody = getCustodyForDate
-                        ? getCustodyForDate(day)
-                        : {};
-                      const ownershipChanging = pending.filter((o) => {
-                        const cur = currentCustody[o.kid_id]?.parentId;
-                        return cur && cur !== o.parent_id;
-                      });
-                      let stripeColor: string;
-                      if (ownershipChanging.length > 0) {
-                        const proposedParentIds = new Set(
-                          ownershipChanging.map((o) => o.parent_id)
-                        );
-                        stripeColor =
-                          proposedParentIds.size === 1
-                            ? Array.from(proposedParentIds)[0] === parentAId
-                              ? parentASwatch ?? "var(--accent-amber)"
-                              : parentBSwatch ?? "var(--accent-amber)"
-                            : "var(--accent-amber)";
-                      } else {
-                        stripeColor = "var(--accent-amber)";
-                      }
+                      // Group per-kid override rows that share the same
+                      // logical request, so the count reflects requests
+                      // not raw rows (1 multi-kid request = 1 pill).
+                      const requestKeys = new Set(
+                        pending.map(
+                          (o) =>
+                            `${o.start_date}|${o.end_date}|${o.parent_id}|${
+                              o.override_time ?? ""
+                            }|${o.note ?? ""}`
+                        )
+                      );
+                      const count = requestKeys.size;
                       return (
                         <button
                           type="button"
@@ -899,13 +891,23 @@ export default function MonthView({
                             ev.stopPropagation();
                             onPendingClick(pending);
                           }}
-                          title="Pending custody change request — click for details"
-                          aria-label="Pending custody change request"
-                          className="absolute top-0 left-0 right-0 h-[6px] z-[3] cursor-pointer focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                          title={`${count} pending custody change request${
+                            count === 1 ? "" : "s"
+                          } — click for details`}
+                          aria-label={`${count} pending custody change request${
+                            count === 1 ? "" : "s"
+                          }`}
+                          className="absolute top-1 right-1 z-[3] inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
                           style={{
-                            background: `repeating-linear-gradient(90deg, ${stripeColor} 0px, ${stripeColor} 6px, transparent 6px, transparent 10px)`,
+                            color: "var(--accent-amber)",
+                            background: "var(--accent-amber-tint)",
+                            border:
+                              "1px solid color-mix(in srgb, var(--accent-amber) 50%, transparent)",
                           }}
-                        />
+                        >
+                          <Clock size={9} strokeWidth={2.5} />
+                          {count > 1 ? count : "Pending"}
+                        </button>
                       );
                     })()}
 

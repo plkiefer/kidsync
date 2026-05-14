@@ -1313,8 +1313,12 @@ function getOverrideStatusBadge(
         bg: "var(--accent-red-tint)",
       };
     case "withdrawn":
+    case "superseded":
+      // Same visual as withdrawn — superseded rows are normally
+      // filtered upstream, but the switch needs to enumerate every
+      // OverrideStatus to satisfy the return-type contract.
       return {
-        label: "withdrawn",
+        label: status,
         color: "var(--text-faint)",
         bg: "var(--bg-sunken)",
       };

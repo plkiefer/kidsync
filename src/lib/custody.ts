@@ -25,7 +25,14 @@ export function computeCustodyForDate(
     const matchingOverrides = overrides
       .filter((o) => {
         if (o.kid_id !== schedule.kid_id) return false;
-        if (o.status === "disputed" || o.status === "withdrawn") return false;
+        // Skip terminal/inactive statuses. `superseded` rows stay in
+        // the DB for audit but never affect computed custody.
+        if (
+          o.status === "disputed" ||
+          o.status === "withdrawn" ||
+          o.status === "superseded"
+        )
+          return false;
         const start = parseLocalDate(o.start_date);
         const end = parseLocalDate(o.end_date);
         return date >= start && date <= end;
