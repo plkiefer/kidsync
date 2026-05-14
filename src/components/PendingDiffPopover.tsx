@@ -108,6 +108,82 @@ function prettyTime(t: string): string {
   return `${h12}:${min} ${period}`;
 }
 
+// ── Request semantics ─────────────────────────────────────────
+// What did the user actually request? The override row alone can't
+// tell us — `start_date` + `parent_id` + `override_time` describes
+// the END STATE, not which side(s) of the turnover changed. The
+// auto-generated `note` field carries that intent ("Pickup for X
+// moved from <orig> to <new> at <time>" etc), so we parse it and
+// fall back to a "show everything" default for unknown formats.
+
+type RequestSemantics =
+  | {
+      kind: "pickup";
+      origDate: string;
+      newDate: string;
+      newTime: string; // "09:00" / "9:00 AM" — already in source format
+    }
+  | {
+      kind: "dropoff";
+      origDate: string;
+      newDate: string;
+      newTime: string;
+    }
+  | {
+      kind: "custom";
+      pickupDate: string;
+      pickupTime: string;
+      dropoffDate: string;
+      dropoffTime: string;
+    }
+  | { kind: "unknown" };
+
+function parseRequestSemantics(
+  override: CustodyOverride
+): RequestSemantics {
+  if (!override.note) return { kind: "unknown" };
+
+  // QuickCustodyChange template
+  const move = override.note.match(
+    /^(Pickup|Drop-off) for .+? moved from (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2}) at (\d{1,2}:\d{2})/
+  );
+  if (move) {
+    return {
+      kind: move[1] === "Pickup" ? "pickup" : "dropoff",
+      origDate: move[2],
+      newDate: move[3],
+      newTime: move[4],
+    };
+  }
+
+  // Custom-custody template
+  const custom = override.note.match(
+    /^Custom custody: .+? with .+? — Pickup (\d{4}-\d{2}-\d{2}) at (.+?), Drop-off (\d{4}-\d{2}-\d{2}) at ([^—]+?)(?:\s+—|$)/
+  );
+  if (custom) {
+    return {
+      kind: "custom",
+      pickupDate: custom[1],
+      pickupTime: custom[2].trim(),
+      dropoffDate: custom[3],
+      dropoffTime: custom[4].trim(),
+    };
+  }
+
+  return { kind: "unknown" };
+}
+
+/** Compact "Fri, May 22 · 9:00 AM" — used inside diff cells. */
+function formatDateTime(dateStr: string, timeStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  const dayLabel = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return `${dayLabel} · ${prettyTime(timeStr)}`;
+}
+
 export default function PendingDiffPopover({
   overrides,
   kids,
@@ -219,26 +295,36 @@ export default function PendingDiffPopover({
             </div>
           </div>
 
-          {/* Current → Proposed diff. Both columns carry the same
-              fields (Custody / Pickup / Drop-off) so the eye can
-              compare row-by-row instead of hunting for what's
-              different. */}
+          {/* Current → Proposed diff. Only renders rows for fields
+              that ACTUALLY change — pickup-only requests don't show a
+              drop-off row, drop-off-only requests don't show pickup,
+              custom-custody (which sets both) shows both. Custody row
+              shows when the proposed parent differs from the current
+              parent for any kid. */}
           {(() => {
             const stdTimes = readDefaultTurnoverTimes(agreements);
-            const proposedPickup = primary.override_time
-              ? prettyTime(primary.override_time)
-              : prettyTime(stdTimes.pickup);
-            const currentPickup = prettyTime(stdTimes.pickup);
-            const currentDropoff = prettyTime(stdTimes.dropoff);
-            const proposedDropoff = currentDropoff; // dropoff time isn't editable today
+            const semantics = parseRequestSemantics(primary);
 
-            return (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="border border-[var(--border)] bg-[var(--bg-sunken)] p-3 space-y-2">
-                  <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-[0.08em] font-semibold">
-                    Currently
-                  </div>
-                  <DiffField label="Custody">
+            // Build the row set we'll render. Each row carries
+            // pre-rendered "current" and "proposed" strings, plus a
+            // flag for whether the proposed value should be amber-
+            // highlighted (changed values).
+            type Row = {
+              label: string;
+              current: React.ReactNode;
+              proposed: React.ReactNode;
+              changed: boolean;
+            };
+            const rows: Row[] = [];
+
+            const custodyChanged = currentByKid.some(
+              ({ parentName }) => parentName !== proposedName
+            );
+            if (custodyChanged) {
+              rows.push({
+                label: "Custody",
+                current: (
+                  <>
                     {currentByKid.map(({ kidId, kidName, parentName }) => (
                       <div
                         key={kidId}
@@ -250,17 +336,149 @@ export default function PendingDiffPopover({
                         {parentName}
                       </div>
                     ))}
-                  </DiffField>
-                  <DiffField label="Pickup">
+                  </>
+                ),
+                proposed: (
+                  <>
+                    {overrides.map((o) => (
+                      <div
+                        key={o.id}
+                        className="text-xs text-[var(--color-text)]"
+                      >
+                        <span className="text-[var(--color-text-muted)]">
+                          {kids.find((k) => k.id === o.kid_id)?.name || "Kid"}:
+                        </span>{" "}
+                        {proposedName}
+                      </div>
+                    ))}
+                  </>
+                ),
+                changed: true,
+              });
+            }
+
+            // Pickup / Drop-off rows depend on what the request
+            // actually changed (parsed from the auto-gen note).
+            if (semantics.kind === "pickup") {
+              rows.push({
+                label: "Pickup",
+                current: (
+                  <span className="text-xs text-[var(--color-text)]">
+                    {formatDateTime(semantics.origDate, stdTimes.pickup)}
+                  </span>
+                ),
+                proposed: (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: "var(--accent-amber)" }}
+                  >
+                    {formatDateTime(semantics.newDate, semantics.newTime)}
+                  </span>
+                ),
+                changed: true,
+              });
+            } else if (semantics.kind === "dropoff") {
+              rows.push({
+                label: "Drop-off",
+                current: (
+                  <span className="text-xs text-[var(--color-text)]">
+                    {formatDateTime(semantics.origDate, stdTimes.dropoff)}
+                  </span>
+                ),
+                proposed: (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: "var(--accent-amber)" }}
+                  >
+                    {formatDateTime(semantics.newDate, semantics.newTime)}
+                  </span>
+                ),
+                changed: true,
+              });
+            } else if (semantics.kind === "custom") {
+              rows.push(
+                {
+                  label: "Pickup",
+                  current: (
                     <span className="text-xs text-[var(--color-text)]">
-                      {currentPickup}
+                      {formatDateTime(primary.start_date, stdTimes.pickup)}
                     </span>
-                  </DiffField>
-                  <DiffField label="Drop-off">
+                  ),
+                  proposed: (
+                    <span
+                      className="text-xs font-bold"
+                      style={{ color: "var(--accent-amber)" }}
+                    >
+                      {formatDateTime(
+                        semantics.pickupDate,
+                        semantics.pickupTime
+                      )}
+                    </span>
+                  ),
+                  changed: true,
+                },
+                {
+                  label: "Drop-off",
+                  current: (
                     <span className="text-xs text-[var(--color-text)]">
-                      {currentDropoff}
+                      {formatDateTime(primary.end_date, stdTimes.dropoff)}
                     </span>
-                  </DiffField>
+                  ),
+                  proposed: (
+                    <span
+                      className="text-xs font-bold"
+                      style={{ color: "var(--accent-amber)" }}
+                    >
+                      {formatDateTime(
+                        semantics.dropoffDate,
+                        semantics.dropoffTime
+                      )}
+                    </span>
+                  ),
+                  changed: true,
+                }
+              );
+            } else {
+              // Fallback for unparseable notes (trip overrides, manual
+              // SQL, etc) — show the override window as a single row
+              // since we can't tell what specifically changed.
+              rows.push({
+                label: "Period",
+                current: (
+                  <span className="text-xs text-[var(--color-text)]">
+                    Standard schedule
+                  </span>
+                ),
+                proposed: (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: "var(--accent-amber)" }}
+                  >
+                    {primary.start_date === primary.end_date
+                      ? formatDate(primary.start_date)
+                      : `${formatDate(primary.start_date)} – ${formatDate(
+                          primary.end_date
+                        )}`}
+                    {primary.override_time
+                      ? ` · ${prettyTime(primary.override_time)}`
+                      : ""}
+                  </span>
+                ),
+                changed: true,
+              });
+            }
+
+            return (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="border border-[var(--border)] bg-[var(--bg-sunken)] p-3 space-y-2">
+                  <div className="text-[10px] text-[var(--color-text-faint)] uppercase tracking-[0.08em] font-semibold">
+                    Currently
+                  </div>
+                  {rows.map((r) => (
+                    <DiffField key={r.label} label={r.label}>
+                      {r.current}
+                    </DiffField>
+                  ))}
                 </div>
 
                 <div
@@ -278,39 +496,11 @@ export default function PendingDiffPopover({
                     <ArrowRight size={10} />
                     Proposed
                   </div>
-                  <DiffField label="Custody">
-                    {overrides.map((o) => (
-                      <div
-                        key={o.id}
-                        className="text-xs text-[var(--color-text)]"
-                      >
-                        <span className="text-[var(--color-text-muted)]">
-                          {kids.find((k) => k.id === o.kid_id)?.name || "Kid"}:
-                        </span>{" "}
-                        {proposedName}
-                      </div>
-                    ))}
-                  </DiffField>
-                  <DiffField label="Pickup">
-                    <span
-                      className="text-xs"
-                      style={{
-                        color:
-                          proposedPickup !== currentPickup
-                            ? "var(--accent-amber)"
-                            : "var(--color-text)",
-                        fontWeight:
-                          proposedPickup !== currentPickup ? 700 : 400,
-                      }}
-                    >
-                      {proposedPickup}
-                    </span>
-                  </DiffField>
-                  <DiffField label="Drop-off">
-                    <span className="text-xs text-[var(--color-text)]">
-                      {proposedDropoff}
-                    </span>
-                  </DiffField>
+                  {rows.map((r) => (
+                    <DiffField key={r.label} label={r.label}>
+                      {r.proposed}
+                    </DiffField>
+                  ))}
                 </div>
               </div>
             );
