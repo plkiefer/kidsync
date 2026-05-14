@@ -1,5 +1,5 @@
 import { CalendarEvent, CustodySchedule, CustodyOverride, CustodyAgreement, ParsedCustodyTerms, Kid } from "./types";
-import { computeCustodyForDate, DayCustodyInfo } from "./custody";
+import { computeCustodyForDate, DayCustodyInfo, parseLocalDate } from "./custody";
 import { getHolidaysForYear } from "./holidays";
 import { formatAllDayTimestamp } from "./allDay";
 import { eachDayOfInterval, addDays, format } from "date-fns";
@@ -129,10 +129,17 @@ function transitionToEvent(
   const baseTitle = t.isPickup ? `Pickup — ${receivingName}` : `Drop-off — ${receivingName}`;
   const title = options.tentative ? `${baseTitle} (proposed)` : baseTitle;
 
+  // Tentative chips include the first contributing override id so two
+  // pending requests on the same day don't share an id (React key
+  // collisions, click routing ambiguity).
+  const tentativeSuffix =
+    options.tentative && options.pendingOverrideIds?.[0]
+      ? `-pending-${options.pendingOverrideIds[0].slice(0, 8)}`
+      : options.tentative
+      ? "-pending"
+      : "";
   return {
-    id: `turnover-${t.dateStr}-${t.isPickup ? "pickup" : "dropoff"}${
-      options.tentative ? "-pending" : ""
-    }`,
+    id: `turnover-${t.dateStr}-${t.isPickup ? "pickup" : "dropoff"}${tentativeSuffix}`,
     family_id: t.familyId,
     kid_id: t.kidIds[0],
     kid_ids: t.kidIds,
@@ -194,14 +201,24 @@ export function generateTurnoverEvents(
 }
 
 /**
- * Pending-diff turnover events. Computes the projected transitions
- * (approved + pending) and emits ONLY the ones that don't already
- * appear in the approved-only set — by key AND time, so a same-day
- * same-parent time-only change emits a second chip.
+ * Pending turnover events — emitted DIRECTLY from each pending
+ * override row, not via transition arithmetic on the projected
+ * schedule. The diff approach was brittle in scenarios where
+ * approved overrides had already absorbed the underlying transition
+ * (e.g. Patrick already has Thu via approved override, so a pending
+ * Fri time-change has no transition to "shift" against).
  *
- * Each emitted event is `_tentative` and tagged with the
- * `_pendingOverrideIds` that contributed to its date — the calendar
- * uses that to open the PendingDiffPopover when the chip is clicked.
+ * Per pending request (overrides grouped by date+parent+time+note,
+ * collapsing N per-kid rows into one logical chip):
+ *   - Ownership-change request → emit a "(proposed)" pickup chip on
+ *     start_date. (We skip the matching dropoff for now to keep the
+ *     calendar uncluttered; the popover surfaces the full diff.)
+ *   - Time-only request → emit a "(proposed)" pickup chip on
+ *     start_date at override_time, alongside the still-solid
+ *     standard chip.
+ *
+ * Both stripe + chip click route to the PendingDiffPopover via
+ * `_pendingOverrideIds`.
  */
 export function generatePendingTurnoverEvents(
   rangeStart: Date,
@@ -214,50 +231,69 @@ export function generatePendingTurnoverEvents(
 ): CalendarEvent[] {
   if (schedules.length === 0 || pendingOverrides.length === 0) return [];
 
-  const approvedTransitions = detectTransitions(
-    rangeStart,
-    rangeEnd,
-    schedules,
-    approvedOverrides
-  );
-  const projectedTransitions = detectTransitions(
-    rangeStart,
-    rangeEnd,
-    schedules,
-    [...approvedOverrides, ...pendingOverrides]
-  );
-
   const { pickupTime, dropoffTime } = defaultTurnoverTimes(agreements);
 
-  // Build a "key|time" set of approved transitions so we can detect
-  // which projected transitions are genuinely new (date and/or time
-  // shifts). Time is included so a same-day, same-parent time-only
-  // change still shows up as a pending-diff chip.
-  const approvedSig = new Set<string>();
-  for (const t of approvedTransitions.values()) {
-    const tStr = t.overrideTime || (t.isPickup ? pickupTime : dropoffTime);
-    approvedSig.add(`${t.key}|${tStr}`);
+  // Group per-kid override rows that belong to the same logical
+  // request — same date range, same proposed parent, same time, same
+  // note. The popover deals in this grouped form too.
+  const groupKey = (o: CustodyOverride) =>
+    `${o.start_date}|${o.end_date}|${o.parent_id}|${o.override_time ?? ""}|${
+      o.note ?? ""
+    }`;
+  const groups = new Map<string, CustodyOverride[]>();
+  for (const o of pendingOverrides) {
+    const k = groupKey(o);
+    const list = groups.get(k);
+    if (list) list.push(o);
+    else groups.set(k, [o]);
   }
 
   const events: CalendarEvent[] = [];
-  for (const t of projectedTransitions.values()) {
-    const tStr = t.overrideTime || (t.isPickup ? pickupTime : dropoffTime);
-    const sig = `${t.key}|${tStr}`;
-    if (approvedSig.has(sig)) continue;
+  for (const group of groups.values()) {
+    const primary = group[0];
+    const startDate = parseLocalDate(primary.start_date);
+    const endDate = parseLocalDate(primary.end_date);
+    // Skip groups entirely outside the visible range
+    if (endDate < rangeStart || startDate > rangeEnd) continue;
 
-    // Find which pending override(s) cover this transition's date for
-    // the involved kids — this is the click target for the popover.
-    const overrideIds = pendingOverrides
-      .filter(
-        (o) =>
-          t.kidIds.includes(o.kid_id) &&
-          o.start_date <= t.dateStr &&
-          t.dateStr <= o.end_date
-      )
-      .map((o) => o.id);
+    const kidIds = group.map((o) => o.kid_id);
+    const overrideIds = group.map((o) => o.id);
 
+    // Detect ownership change at the request's start date — if
+    // approved-only custody for any of these kids has a different
+    // parent than what's being proposed, this is an ownership change.
+    const startCustody = computeCustodyForDate(
+      startDate,
+      schedules,
+      approvedOverrides
+    );
+    const ownershipChange = kidIds.some((kidId) => {
+      const cur = startCustody[kidId]?.parentId;
+      return cur && cur !== primary.parent_id;
+    });
+
+    // No-op request (same parent, no time change). Don't emit a chip
+    // — the dashed cell stripe is still drawn by the view since the
+    // override exists.
+    if (!ownershipChange && !primary.override_time) continue;
+
+    // Both branches emit a pickup-style chip on start_date. For
+    // ownership changes the chip carries the proposed parent's name
+    // ("Pick Up — Patrick (proposed)"); for time-only changes it
+    // carries the same parent and the proposed time. The popover
+    // handles the full semantic detail.
+    const transition: TurnoverTransition = {
+      eventDate: startDate,
+      dateStr: primary.start_date,
+      toParentId: primary.parent_id,
+      isPickup: true,
+      kidIds,
+      familyId: primary.family_id,
+      overrideTime: primary.override_time || null,
+      key: `pending-${primary.id}`,
+    };
     events.push(
-      transitionToEvent(t, pickupTime, dropoffTime, members, {
+      transitionToEvent(transition, pickupTime, dropoffTime, members, {
         tentative: true,
         pendingOverrideIds: overrideIds,
       })

@@ -860,12 +860,13 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Pending-change stripe — dashed top-edge band in
-                        the proposed parent's color when an in-flight
-                        request would change ownership of this day.
-                        Time-only requests (same parent, new time) get
-                        the dashed event chip but no stripe — the chip
-                        already carries that signal. */}
+                    {/* Pending-change stripe — dashed top-edge band on
+                        any day a pending request covers. Color-encodes
+                        the proposed parent when the request would
+                        change ownership; falls back to amber for
+                        time-only requests (where the proposed parent
+                        is the same as the current owner, so a parent
+                        color would blend into the cell). */}
                     {(() => {
                       if (!getPendingForDate || !onPendingClick) return null;
                       const pending = getPendingForDate(day);
@@ -877,16 +878,20 @@ export default function MonthView({
                         const cur = currentCustody[o.kid_id]?.parentId;
                         return cur && cur !== o.parent_id;
                       });
-                      if (ownershipChanging.length === 0) return null;
-                      const proposedParentIds = new Set(
-                        ownershipChanging.map((o) => o.parent_id)
-                      );
-                      const stripeColor =
-                        proposedParentIds.size === 1
-                          ? Array.from(proposedParentIds)[0] === parentAId
-                            ? parentASwatch ?? "var(--accent-amber)"
-                            : parentBSwatch ?? "var(--accent-amber)"
-                          : "var(--accent-amber)";
+                      let stripeColor: string;
+                      if (ownershipChanging.length > 0) {
+                        const proposedParentIds = new Set(
+                          ownershipChanging.map((o) => o.parent_id)
+                        );
+                        stripeColor =
+                          proposedParentIds.size === 1
+                            ? Array.from(proposedParentIds)[0] === parentAId
+                              ? parentASwatch ?? "var(--accent-amber)"
+                              : parentBSwatch ?? "var(--accent-amber)"
+                            : "var(--accent-amber)";
+                      } else {
+                        stripeColor = "var(--accent-amber)";
+                      }
                       return (
                         <button
                           type="button"

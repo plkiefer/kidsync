@@ -307,15 +307,16 @@ export default function WeekView({
           {days.map((date, i) => {
             const timedEvents = getEventsForDay(date, false);
             const custodyBg = custodyBgFor(date, timedEvents);
-            // Pending stripe — same logic as MonthView. Only show when
-            // an in-flight request would change ownership of this day;
-            // time-only requests are signalled by the dashed event chip.
+            // Pending stripe — same logic as MonthView. Shows on any
+            // day a pending request covers; color-encodes the proposed
+            // parent for ownership changes, falls back to amber for
+            // time-only requests.
             const dayPending = getPendingForDate
               ? getPendingForDate(date)
               : [];
             let pendingStripeColor: string | null = null;
-            if (dayPending.length > 0 && getCustodyForDate) {
-              const cur = getCustodyForDate(date);
+            if (dayPending.length > 0) {
+              const cur = getCustodyForDate ? getCustodyForDate(date) : {};
               const ownershipChanging = dayPending.filter((o) => {
                 const c = cur[o.kid_id]?.parentId;
                 return c && c !== o.parent_id;
@@ -330,6 +331,8 @@ export default function WeekView({
                       ? parentASwatch ?? "var(--accent-amber)"
                       : parentBSwatch ?? "var(--accent-amber)"
                     : "var(--accent-amber)";
+              } else {
+                pendingStripeColor = "var(--accent-amber)";
               }
             }
 
