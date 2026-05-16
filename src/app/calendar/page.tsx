@@ -58,6 +58,7 @@ import {
   detectTripCustodyConflict,
   getTripLinkedOverrides,
 } from "@/lib/tripCustody";
+import { expandAllToRequestGroups } from "@/lib/overrideGrouping";
 import { localTimeToUtc } from "@/lib/timezones";
 import QuickCustodyChange from "@/components/QuickCustodyChange";
 import KidFilter from "@/components/KidFilter";
@@ -997,7 +998,11 @@ export default function CalendarPage() {
                         parentBSwatch={parentBSwatch}
                         memberNames={memberNames}
                         getPendingForDate={getPendingForDate}
-                        onPendingClick={(ovs) => setPendingDiffOverrides(ovs)}
+                        onPendingClick={(ovs) =>
+                          setPendingDiffOverrides(
+                            expandAllToRequestGroups(ovs, pendingOverrides)
+                          )
+                        }
                       />
                     )}
                     {view === "week" && (
@@ -1015,7 +1020,11 @@ export default function CalendarPage() {
                         parentASwatch={parentASwatch}
                         parentBSwatch={parentBSwatch}
                         getPendingForDate={getPendingForDate}
-                        onPendingClick={(ovs) => setPendingDiffOverrides(ovs)}
+                        onPendingClick={(ovs) =>
+                          setPendingDiffOverrides(
+                            expandAllToRequestGroups(ovs, pendingOverrides)
+                          )
+                        }
                       />
                     )}
                   </>

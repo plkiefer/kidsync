@@ -279,24 +279,47 @@ export function PendingDiffContent({
 
   if (overrides.length === 0) return null;
 
-  const primary = overrides[0];
+  // Pick primary deterministically: prefer rows carrying the
+  // override_time (they encode the "new turnover" intent), then by
+  // earliest start_date. For a date+time pickup move, this lands on
+  // the row whose parent_id is the receiving parent (Patrick), not
+  // the gap row whose parent_id is the parent giving up the days
+  // (Danielle) — which is what the user means by "proposed".
+  const sortedOverrides = [...overrides].sort((a, b) => {
+    if (a.override_time && !b.override_time) return -1;
+    if (!a.override_time && b.override_time) return 1;
+    return a.start_date.localeCompare(b.start_date);
+  });
+  const primary = sortedOverrides[0];
   const requesterId = primary.created_by || "";
   const isMyRequest = requesterId === currentUserId;
   const proposedParent = members.find((m) => m.id === primary.parent_id);
   const proposedName =
     proposedParent?.full_name?.split(" ")[0] || "Co-parent";
 
-  // Walk the date range and capture which approved parent(s) currently
-  // own each kid. If custody splits across the range, join with " / ".
+  // Date range that the WHOLE request covers — for a multi-row
+  // request (gap row + time row from a date+time move) the rows
+  // sit on different days, so we union them. min(start)..max(end).
+  const groupStart = overrides
+    .map((o) => o.start_date)
+    .sort()[0];
+  const groupEnd = overrides
+    .map((o) => o.end_date)
+    .sort()
+    .slice(-1)[0];
   const days = eachDayOfInterval({
-    start: new Date(primary.start_date + "T12:00:00"),
-    end: new Date(primary.end_date + "T12:00:00"),
+    start: new Date(groupStart + "T12:00:00"),
+    end: new Date(groupEnd + "T12:00:00"),
   });
-  const currentByKid = overrides.map((o) => {
+  // Dedupe kids — a date+time move emits 2 rows per kid (gap + time)
+  // and a multi-kid request multiplies further. Render one
+  // "Currently" entry per UNIQUE kid, not per row.
+  const uniqueKidIds = Array.from(new Set(overrides.map((o) => o.kid_id)));
+  const currentByKid = uniqueKidIds.map((kidId) => {
     const parentIds = new Set<string>();
     for (const day of days) {
       const c = computeCustodyForDate(day, schedules, approvedOverrides);
-      const pid = c[o.kid_id]?.parentId;
+      const pid = c[kidId]?.parentId;
       if (pid) parentIds.add(pid);
     }
     const names = Array.from(parentIds).map(
@@ -305,8 +328,8 @@ export function PendingDiffContent({
         "Co-parent"
     );
     return {
-      kidId: o.kid_id,
-      kidName: kids.find((k) => k.id === o.kid_id)?.name || "Kid",
+      kidId,
+      kidName: kids.find((k) => k.id === kidId)?.name || "Kid",
       parentName: names.join(" / ") || "—",
     };
   });
@@ -351,10 +374,10 @@ export function PendingDiffContent({
       ),
       proposed: (
         <>
-          {overrides.map((o) => (
-            <div key={o.id} className="text-xs text-[var(--color-text)]">
+          {uniqueKidIds.map((kidId) => (
+            <div key={kidId} className="text-xs text-[var(--color-text)]">
               <span className="text-[var(--color-text-muted)]">
-                {kids.find((k) => k.id === o.kid_id)?.name || "Kid"}:
+                {kids.find((k) => k.id === kidId)?.name || "Kid"}:
               </span>{" "}
               {proposedName}
             </div>
@@ -591,18 +614,28 @@ export default function PendingDiffPopover({
 }: PendingDiffPopoverProps) {
   if (overrides.length === 0) return null;
 
-  const primary = overrides[0];
-  const requesterId = primary.created_by || "";
-  const isMyRequest = requesterId === currentUserId;
-  const requester = members.find((m) => m.id === requesterId);
-  const kidNames = overrides
-    .map((o) => kids.find((k) => k.id === o.kid_id)?.name)
+  // Dedupe kids — see PendingDiffContent for the same logic. A
+  // date+time move emits 2 rows per kid; multi-kid requests
+  // multiply further. The header should read "Ethan & Harrison",
+  // not "Ethan & Harrison & Ethan & Harrison".
+  const uniqueKidIds = Array.from(new Set(overrides.map((o) => o.kid_id)));
+  const kidNames = uniqueKidIds
+    .map((kidId) => kids.find((k) => k.id === kidId)?.name)
     .filter(Boolean)
     .join(" & ");
+
+  // Date range that the WHOLE request covers (union across rows).
+  const groupStart = overrides.map((o) => o.start_date).sort()[0];
+  const groupEnd = overrides.map((o) => o.end_date).sort().slice(-1)[0];
   const dateRange =
-    primary.start_date === primary.end_date
-      ? formatDate(primary.start_date)
-      : `${formatDate(primary.start_date)} – ${formatDate(primary.end_date)}`;
+    groupStart === groupEnd
+      ? formatDate(groupStart)
+      : `${formatDate(groupStart)} – ${formatDate(groupEnd)}`;
+
+  // Requester is the same across all rows in a request group.
+  const requesterId = overrides[0].created_by || "";
+  const isMyRequest = requesterId === currentUserId;
+  const requester = members.find((m) => m.id === requesterId);
 
   return (
     <div

@@ -21,6 +21,7 @@ import {
   ComplianceStatus,
 } from "@/lib/types";
 import { PendingDiffContent } from "@/components/PendingDiffPopover";
+import { partitionByRequest } from "@/lib/overrideGrouping";
 
 interface CustodyOverridesProps {
   familyId: string;
@@ -163,34 +164,36 @@ export default function CustodyOverrides({
     return true;
   });
 
-  // Group overrides with same note+date+status+parent (quick changes for multiple kids)
+  // Group overrides into logical request groups using the
+  // shared note + created_at heuristic. This collapses BOTH:
+  //   - Multi-kid quick changes (one row per kid, same note + same
+  //     batch insert)
+  //   - Multi-row date+time moves (gap row + time row for shrinking
+  //     pickup/drop-off moves, where the two rows have different
+  //     start_date/end_date/parent_id but share note + created_at)
+  // Status must also match — pending and approved versions of the
+  // same request shouldn't merge.
   interface OverrideGroup {
     primary: CustodyOverride;
     all: CustodyOverride[];
     kidIds: string[];
   }
   const groupedOverrides: OverrideGroup[] = [];
-  const seen = new Set<string>();
+  const byStatus = new Map<string, CustodyOverride[]>();
   for (const o of visibleOverrides) {
-    if (seen.has(o.id)) continue;
-    // Find matching overrides (same note, date, status, parent)
-    const matches = visibleOverrides.filter(
-      (other) =>
-        other.id !== o.id &&
-        !seen.has(other.id) &&
-        other.note === o.note &&
-        other.start_date === o.start_date &&
-        other.end_date === o.end_date &&
-        other.parent_id === o.parent_id &&
-        other.status === o.status
-    );
-    const all = [o, ...matches];
-    all.forEach((m) => seen.add(m.id));
-    groupedOverrides.push({
-      primary: o,
-      all,
-      kidIds: all.map((m) => m.kid_id),
-    });
+    const list = byStatus.get(o.status);
+    if (list) list.push(o);
+    else byStatus.set(o.status, [o]);
+  }
+  for (const list of byStatus.values()) {
+    for (const reqGroup of partitionByRequest(list)) {
+      const kidIds = Array.from(new Set(reqGroup.map((m) => m.kid_id)));
+      groupedOverrides.push({
+        primary: reqGroup[0],
+        all: reqGroup,
+        kidIds,
+      });
+    }
   }
 
   // Sort: pending first, then by date
