@@ -18,7 +18,12 @@ import {
   CustodySchedule,
   OverrideStatus,
 } from "@/lib/types";
-import { computeCustodyForDate } from "@/lib/custody";
+import {
+  computeCustodyForDate,
+  findStandardTurnoverDates,
+  formatDateStr,
+  parseLocalDate,
+} from "@/lib/custody";
 import { eachDayOfInterval } from "date-fns";
 
 // Two exports from this file:
@@ -346,6 +351,62 @@ export function PendingDiffContent({
   const stdTimes = readDefaultTurnoverTimes(agreements);
   const semantics = parseRequestSemantics(primary);
 
+  // Compute the EFFECTIVE current pickup/dropoff — what the calendar
+  // actually shows today after all approved overrides are applied.
+  // The note tells us what the user originally clicked (semantics.
+  // origDate) but that's the click context at submit time, not
+  // necessarily the current state. Use the live schedule so the
+  // "Currently" column reflects reality:
+  //   - If a vacation override has shifted Patrick's pickup to Thu
+  //     at 7pm, "Currently" shows "Thu, May 21 · 7:00 PM" — not the
+  //     base-schedule "Fri, May 22 · 3:00 PM" pulled from the
+  //     agreement.
+  //   - Falls back to (semantics.origDate, stdTimes.*) when no
+  //     effective transition can be found.
+  const refKidId = uniqueKidIds[0];
+  const refSchedule = schedules.find((s) => s.kid_id === refKidId);
+  const refDateForLookup = parseLocalDate(primary.start_date);
+  const effective = refSchedule
+    ? findStandardTurnoverDates(
+        refDateForLookup,
+        refSchedule,
+        approvedOverrides
+      )
+    : null;
+
+  function effectiveTime(date: Date | null, fallback: string): string {
+    if (!date) return fallback;
+    const dStr = formatDateStr(date);
+    // Look for an approved override on this exact date with an
+    // override_time set — same logic detectTransitions uses to render
+    // the calendar chip time.
+    const o = approvedOverrides.find(
+      (o) =>
+        o.start_date === dStr &&
+        !!o.override_time &&
+        uniqueKidIds.includes(o.kid_id)
+    );
+    return o?.override_time || fallback;
+  }
+  const currentPickupDate = effective?.pickupDate
+    ? formatDateStr(effective.pickupDate)
+    : semantics.kind === "pickup"
+    ? semantics.origDate
+    : null;
+  const currentPickupTime = effectiveTime(
+    effective?.pickupDate ?? null,
+    stdTimes.pickup
+  );
+  const currentDropoffDate = effective?.dropoffDate
+    ? formatDateStr(effective.dropoffDate)
+    : semantics.kind === "dropoff"
+    ? semantics.origDate
+    : null;
+  const currentDropoffTime = effectiveTime(
+    effective?.dropoffDate ?? null,
+    stdTimes.dropoff
+  );
+
   // Build the row set we'll render. Only renders rows for fields that
   // actually change — pickup-only requests don't show a drop-off row,
   // drop-off-only requests don't show pickup, etc.
@@ -392,7 +453,9 @@ export function PendingDiffContent({
       label: "Pickup",
       current: (
         <span className="text-xs text-[var(--color-text)]">
-          {formatDateTime(semantics.origDate, stdTimes.pickup)}
+          {currentPickupDate
+            ? formatDateTime(currentPickupDate, currentPickupTime)
+            : "—"}
         </span>
       ),
       proposed: (
@@ -409,7 +472,9 @@ export function PendingDiffContent({
       label: "Drop-off",
       current: (
         <span className="text-xs text-[var(--color-text)]">
-          {formatDateTime(semantics.origDate, stdTimes.dropoff)}
+          {currentDropoffDate
+            ? formatDateTime(currentDropoffDate, currentDropoffTime)
+            : "—"}
         </span>
       ),
       proposed: (
@@ -427,7 +492,9 @@ export function PendingDiffContent({
         label: "Pickup",
         current: (
           <span className="text-xs text-[var(--color-text)]">
-            {formatDateTime(primary.start_date, stdTimes.pickup)}
+            {currentPickupDate
+              ? formatDateTime(currentPickupDate, currentPickupTime)
+              : formatDateTime(primary.start_date, stdTimes.pickup)}
           </span>
         ),
         proposed: (
@@ -443,7 +510,9 @@ export function PendingDiffContent({
         label: "Drop-off",
         current: (
           <span className="text-xs text-[var(--color-text)]">
-            {formatDateTime(primary.end_date, stdTimes.dropoff)}
+            {currentDropoffDate
+              ? formatDateTime(currentDropoffDate, currentDropoffTime)
+              : formatDateTime(primary.end_date, stdTimes.dropoff)}
           </span>
         ),
         proposed: (
