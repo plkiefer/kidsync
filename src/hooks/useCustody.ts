@@ -455,18 +455,21 @@ export function useCustody(ready = true): CustodyState {
       const dateChanged = rangeStart <= rangeEnd;
       const timeChanged = !!params.newTime;
 
-      // Always withdraw overrides that cover the current turnover date (so old
-      // overrides that created the current non-standard position get cleared),
-      // plus the standard custody block range when we know both ends of it.
-      const withdrawalRanges = [
+      // Withdraw ONLY the overrides we know are about to be replaced.
+      // Earlier versions of this function also withdrew the entire
+      // "standard custody block range" (pickup..dropoff anchors).
+      // That was safe when the anchors came from the BASE schedule
+      // (a typical 3-day weekend) but became destructive once we
+      // started anchoring effectively — long approved overrides
+      // chain into multi-week blocks, and withdrawing across the
+      // full block nukes user vacation overrides that have nothing
+      // to do with this change. Newest-wins in custody.ts handles
+      // any remaining conflicts; createOverrides' auto-supersede
+      // cleans up redundant pending; the Compact tool cleans up
+      // redundant approved.
+      const withdrawalRanges: { start: string; end: string }[] = [
         { start: params.currentDate, end: params.currentDate },
       ];
-      if (standard.pickupDate && standard.dropoffDate) {
-        withdrawalRanges.push({
-          start: formatDateStr(standard.pickupDate),
-          end: formatDateStr(standard.dropoffDate),
-        });
-      }
 
       if (dateChanged) {
         withdrawalRanges.push({ start: rangeStart, end: rangeEnd });
