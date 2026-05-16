@@ -394,50 +394,60 @@ export function useCustody(ready = true): CustodyState {
 
       // Pass approvedOverrides so the function returns the EFFECTIVE
       // turnover positions (what the chip the user clicked is actually
-      // anchored to). Without this, moveTurnover compares the user's
-      // newDate against a base-schedule date that may differ from the
-      // calendar — e.g. an approved override has shifted Patrick's
-      // pickup from Fri to Thu, the user clicks Thu, and the function
-      // would still report standard.pickupDate=Fri. Result: dateChanged
-      // is computed against the wrong baseline and a real date move
-      // gets treated as a same-date time-only change, which silently
-      // creates an override on the wrong row.
+      // anchored to). Without this, moveTurnover compares newDate
+      // against a base-schedule date that may differ from the calendar
+      // and silently treats a real date move as a same-date time-only
+      // change.
       const standard = findStandardTurnoverDates(
         refDate,
         schedule,
         approvedOverrides
       );
       if (!standard) {
-        console.error("[custody] could not find effective turnover dates");
+        console.error("[custody] no turnover transitions in scan window");
         return false;
       }
+      // Pickup and dropoff are returned independently — for long
+      // custody blocks (multi-week extensions) one side may be
+      // outside the scan window. Only the side the user is editing
+      // is actually required.
+      if (params.isPickup && !standard.pickupDate) {
+        console.error("[custody] no pickup transition found near refDate");
+        return false;
+      }
+      if (!params.isPickup && !standard.dropoffDate) {
+        console.error("[custody] no dropoff transition found near refDate");
+        return false;
+      }
+      const pickupAnchor = standard.pickupDate!;
+      const dropoffAnchor = standard.dropoffDate!;
 
       let rangeStart: string;
       let rangeEnd: string;
       let overrideParent: string;
 
       if (params.isPickup) {
-        if (targetDate < standard.pickupDate) {
+        if (targetDate < pickupAnchor) {
           // Extending: pickup earlier than standard → give parent_a these gap days
           rangeStart = params.newDate;
-          rangeEnd = formatDateStr(addDays(standard.pickupDate, -1));
+          rangeEnd = formatDateStr(addDays(pickupAnchor, -1));
           overrideParent = schedule.parent_a_id;
         } else {
           // Shrinking: pickup later than standard → give parent_b these gap days
-          rangeStart = formatDateStr(standard.pickupDate);
+          rangeStart = formatDateStr(pickupAnchor);
           rangeEnd = formatDateStr(addDays(targetDate, -1));
           overrideParent = schedule.parent_b_id;
         }
       } else {
-        if (targetDate > standard.dropoffDate) {
+        if (targetDate > dropoffAnchor) {
           // Extending: dropoff later than standard → give parent_a these gap days
-          rangeStart = formatDateStr(addDays(standard.dropoffDate, 1));
+          rangeStart = formatDateStr(addDays(dropoffAnchor, 1));
           rangeEnd = params.newDate;
           overrideParent = schedule.parent_a_id;
         } else {
           // Shrinking: dropoff earlier than standard → give parent_b these gap days
           rangeStart = formatDateStr(addDays(targetDate, 1));
-          rangeEnd = formatDateStr(standard.dropoffDate);
+          rangeEnd = formatDateStr(dropoffAnchor);
           overrideParent = schedule.parent_b_id;
         }
       }
@@ -447,11 +457,16 @@ export function useCustody(ready = true): CustodyState {
 
       // Always withdraw overrides that cover the current turnover date (so old
       // overrides that created the current non-standard position get cleared),
-      // plus the standard custody block range.
+      // plus the standard custody block range when we know both ends of it.
       const withdrawalRanges = [
         { start: params.currentDate, end: params.currentDate },
-        { start: formatDateStr(standard.pickupDate), end: formatDateStr(standard.dropoffDate) },
       ];
+      if (standard.pickupDate && standard.dropoffDate) {
+        withdrawalRanges.push({
+          start: formatDateStr(standard.pickupDate),
+          end: formatDateStr(standard.dropoffDate),
+        });
+      }
 
       if (dateChanged) {
         withdrawalRanges.push({ start: rangeStart, end: rangeEnd });

@@ -100,33 +100,37 @@ export function parseLocalDate(dateStr: string): Date {
 
 /**
  * Find the pickup and dropoff dates for the custody block nearest a
- * reference date. Scans ±7 days for transitions.
+ * reference date. Scans ±21 days for transitions — wide enough to
+ * span multi-week custody blocks created by long approved overrides
+ * (e.g. a 9-day Patrick-keeps stretch via two stacked overrides).
  *
  * Pass `effectiveOverrides` to find the EFFECTIVE turnover positions
  * (what's actually rendered on the calendar today). Pass `[]` to find
- * the base-schedule positions (the "standard" the override system
- * was designed against).
+ * the base-schedule positions.
  *
- * The default is `[]` for backward compatibility, but every caller
- * editing an existing turnover should pass the approved overrides —
- * otherwise the function will lock onto the base-schedule date even
- * when the chip the user clicked is at an override-shifted position,
- * and downstream logic treats a real date change as a no-op.
- *
- * Returns null if no transitions found (e.g., fixed_days with no
- * alternating).
+ * Returns whichever sides were found within the scan window. A
+ * pickup-only or dropoff-only result is valid — the caller takes
+ * only the side it needs, and `null` is returned ONLY when no
+ * transitions of either kind exist in the window (e.g. a fixed-days
+ * schedule with no alternation).
  */
 export function findStandardTurnoverDates(
   referenceDate: Date,
   schedule: CustodySchedule,
   effectiveOverrides: CustodyOverride[] = []
-): { pickupDate: Date; dropoffDate: Date } | null {
-  const scanStart = addDays(referenceDate, -7);
-  const scanEnd = addDays(referenceDate, 7);
+): { pickupDate: Date | null; dropoffDate: Date | null } | null {
+  const scanStart = addDays(referenceDate, -21);
+  const scanEnd = addDays(referenceDate, 21);
   const days = eachDayOfInterval({ start: scanStart, end: scanEnd });
 
+  // Closest-to-refDate wins when multiple transitions are found in
+  // the wide scan — otherwise a stretch with two pickup transitions
+  // would lock onto whichever was iterated last.
+  const refTime = referenceDate.getTime();
   let pickupDate: Date | null = null;
+  let pickupDist = Infinity;
   let dropoffDate: Date | null = null;
+  let dropoffDist = Infinity;
 
   for (let i = 1; i < days.length; i++) {
     const prev = computeCustodyForDate(days[i - 1], [schedule], effectiveOverrides);
@@ -136,18 +140,25 @@ export function findStandardTurnoverDates(
     if (prev[kidId] && curr[kidId] && prev[kidId].parentId !== curr[kidId].parentId) {
       if (curr[kidId].isParentA) {
         // Transition to parent_a = pickup day
-        pickupDate = days[i];
+        const dist = Math.abs(days[i].getTime() - refTime);
+        if (dist < pickupDist) {
+          pickupDate = days[i];
+          pickupDist = dist;
+        }
       } else {
-        // Transition away from parent_a = dropoff is the day BEFORE (last day parent_a has custody)
-        dropoffDate = days[i - 1];
+        // Transition away from parent_a = dropoff is the day BEFORE
+        // (last day parent_a has custody)
+        const dist = Math.abs(days[i - 1].getTime() - refTime);
+        if (dist < dropoffDist) {
+          dropoffDate = days[i - 1];
+          dropoffDist = dist;
+        }
       }
     }
   }
 
-  if (pickupDate && dropoffDate) {
-    return { pickupDate, dropoffDate };
-  }
-  return null;
+  if (!pickupDate && !dropoffDate) return null;
+  return { pickupDate, dropoffDate };
 }
 
 /** Format a date as YYYY-MM-DD */
