@@ -1,5 +1,6 @@
 import { CalendarEvent, CustodySchedule, CustodyOverride, CustodyAgreement, ParsedCustodyTerms, Kid } from "./types";
 import { computeCustodyForDate, DayCustodyInfo, parseLocalDate } from "./custody";
+import { partitionByRequest } from "./overrideGrouping";
 import { getHolidaysForYear } from "./holidays";
 import { formatAllDayTimestamp } from "./allDay";
 import { eachDayOfInterval, addDays, format } from "date-fns";
@@ -233,35 +234,38 @@ export function generatePendingTurnoverEvents(
 
   const { pickupTime, dropoffTime } = defaultTurnoverTimes(agreements);
 
-  // Group per-kid override rows that belong to the same logical
-  // request — same date range, same proposed parent, same time, same
-  // note. The popover deals in this grouped form too.
-  const groupKey = (o: CustodyOverride) =>
-    `${o.start_date}|${o.end_date}|${o.parent_id}|${o.override_time ?? ""}|${
-      o.note ?? ""
-    }`;
-  const groups = new Map<string, CustodyOverride[]>();
-  for (const o of pendingOverrides) {
-    const k = groupKey(o);
-    const list = groups.get(k);
-    if (list) list.push(o);
-    else groups.set(k, [o]);
-  }
+  // Group all pending overrides into LOGICAL request groups using the
+  // shared note + created_at heuristic. A "shrinking date+time move"
+  // emits two rows (gap row + time row); both end up in the same
+  // group here, so we render ONE chip for the whole request.
+  const groups = partitionByRequest(pendingOverrides);
 
   const events: CalendarEvent[] = [];
-  for (const group of groups.values()) {
-    const primary = group[0];
-    const startDate = parseLocalDate(primary.start_date);
-    const endDate = parseLocalDate(primary.end_date);
-    // Skip groups entirely outside the visible range
-    if (endDate < rangeStart || startDate > rangeEnd) continue;
+  for (const group of groups) {
+    // Anchor the chip on the row that represents the user's intent.
+    // Time row (carries override_time) wins — its parent + date are
+    // the "new turnover" the user proposed. Falls back to first row
+    // when no row has override_time (pure ownership move).
+    const anchor =
+      group.find((o) => o.override_time) ??
+      [...group].sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
 
-    const kidIds = group.map((o) => o.kid_id);
+    const startDate = parseLocalDate(anchor.start_date);
+    if (
+      parseLocalDate(anchor.end_date) < rangeStart ||
+      startDate > rangeEnd
+    ) {
+      continue;
+    }
+
+    // Dedupe kids — multi-kid request has one row per kid per
+    // override type, so the kidIds list might contain duplicates.
+    const kidIds = Array.from(new Set(group.map((o) => o.kid_id)));
     const overrideIds = group.map((o) => o.id);
 
-    // Detect ownership change at the request's start date — if
-    // approved-only custody for any of these kids has a different
-    // parent than what's being proposed, this is an ownership change.
+    // Detect ownership change at the anchor's date. Compared against
+    // approved-only custody, this tells us if the request is purely
+    // a time change vs an actual move.
     const startCustody = computeCustodyForDate(
       startDate,
       schedules,
@@ -269,30 +273,26 @@ export function generatePendingTurnoverEvents(
     );
     const ownershipChange = kidIds.some((kidId) => {
       const cur = startCustody[kidId]?.parentId;
-      return cur && cur !== primary.parent_id;
+      return cur && cur !== anchor.parent_id;
     });
 
-    // No-op request (same parent, no time change). Don't emit a chip
-    // — the dashed cell stripe is still drawn by the view since the
-    // override exists.
-    if (!ownershipChange && !primary.override_time) continue;
+    // No-op request — neither ownership nor time changes. Skip the
+    // chip; the cell stripe is enough signal.
+    if (!ownershipChange && !anchor.override_time) continue;
 
-    // Direction (pickup vs drop-off) lives in the auto-gen note —
-    // QuickCustodyChange writes "Pickup for ..." or "Drop-off for ...".
-    // Default to pickup for unparseable / ownership-change-only
-    // requests since that's the more common case and the popover
-    // surfaces the precise semantics anyway.
-    const isPickup = !/^Drop-off for /i.test(primary.note ?? "");
+    // Direction parsed from the auto-gen note ("Pickup for ..." vs
+    // "Drop-off for ..."). Defaults to pickup for unparseable notes.
+    const isPickup = !/^Drop-off for /i.test(anchor.note ?? "");
 
     const transition: TurnoverTransition = {
       eventDate: startDate,
-      dateStr: primary.start_date,
-      toParentId: primary.parent_id,
+      dateStr: anchor.start_date,
+      toParentId: anchor.parent_id,
       isPickup,
       kidIds,
-      familyId: primary.family_id,
-      overrideTime: primary.override_time || null,
-      key: `pending-${primary.id}`,
+      familyId: anchor.family_id,
+      overrideTime: anchor.override_time || null,
+      key: `pending-${anchor.id}`,
     };
     events.push(
       transitionToEvent(transition, pickupTime, dropoffTime, members, {

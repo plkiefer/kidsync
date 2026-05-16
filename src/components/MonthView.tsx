@@ -616,6 +616,9 @@ export default function MonthView({
     const turnoverGroups = new Map<string, TurnoverPill>();
     dayEvents.forEach((evt) => {
       if (!evt.id.startsWith("turnover-")) return;
+      // Tentative (pending-request) turnovers render via the regular
+      // event-chip path above, NOT as pills — see nonTurnoverEvents.
+      if (evt._tentative) return;
       const evtKidIds =
         evt.kid_ids && evt.kid_ids.length > 0 ? evt.kid_ids : [evt.kid_id];
       if (evtKidIds.length === 0) return;
@@ -730,9 +733,17 @@ export default function MonthView({
                 // Strip out turnovers AND multi-day events. Multi-day events
                 // render at the week level as ribbons overlaid below this map.
                 // Turnovers render as the pill(s) on the split line(s).
+                // Tentative turnover chips (pending custody requests)
+                // route through the regular event-chip path so they
+                // pick up dashed styling AND render the parent name
+                // from the event's stored title (the proposed parent),
+                // not the recomputed pill parent (which reads from
+                // current approved custody and would show the wrong
+                // name for proposed-but-not-yet-applied changes).
                 const nonTurnoverEvents = dayEvents.filter(
                   (e) =>
-                    !e.id.startsWith("turnover-") && !isMultiDayEvent(e)
+                    (!e.id.startsWith("turnover-") || e._tentative) &&
+                    !isMultiDayEvent(e)
                 );
 
                 // ─── Cell layout (single IIFE) ──────────────────────
