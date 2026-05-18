@@ -285,10 +285,10 @@ export default function WeekView({
                     }`}
                     className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[9.5px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
                     style={{
-                      color: "var(--accent-amber)",
-                      background: "var(--accent-amber-tint)",
+                      color: "var(--accent-red)",
+                      background: "var(--accent-red-tint)",
                       border:
-                        "1px solid color-mix(in srgb, var(--accent-amber) 50%, transparent)",
+                        "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
                     }}
                   >
                     <Clock size={9} strokeWidth={2.5} />
@@ -410,17 +410,24 @@ export default function WeekView({
                       }}
                       className={`
                         absolute left-0.5 right-0.5 px-1 py-0.5 overflow-hidden
-                        bg-white text-[var(--ink)]
-                        border-l-[3px]
-                        ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                        shadow-[0_0_0_1px_var(--border)]
+                        text-[var(--ink)]
+                        ${dashed
+                          ? "font-semibold"
+                          : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
                         cursor-pointer hover:translate-x-[1px] transition-transform
                       `}
                       style={{
                         top,
                         height,
-                        borderLeftColor: typeColor,
                         zIndex: 10,
+                        // Pending: bold red outline + light red bg;
+                        // standard: type-colored left border + white bg.
+                        ...(dashed
+                          ? {
+                              border: "2px solid var(--accent-red)",
+                              background: "var(--accent-red-tint)",
+                            }
+                          : { borderLeftColor: typeColor }),
                       }}
                     >
                       <div className="flex items-center gap-1 text-[11px] font-medium">

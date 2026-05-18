@@ -882,20 +882,19 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Pending-change indicator — explicit amber pill
-                        in the day-cell top-right with a clock icon and
-                        the count of pending requests on this day. The
-                        previous decorative top-edge stripe was unclear;
-                        this matches the conventions used by Notion /
-                        Linear / Outlook for "needs review / tentative"
-                        states (icon + count + accessible text). */}
+                    {/* Day-cell header — day number on the left,
+                        pending-change pill on the right, single flex
+                        row so they share one band of vertical space
+                        (was: absolute pill on top of an in-flow day
+                        number, which left a redundant gap below the
+                        pill when both were present). The pill uses
+                        red ("needs attention") instead of amber to
+                        match the rest of the pending visualization. */}
                     {(() => {
-                      if (!getPendingForDate || !onPendingClick) return null;
-                      const pending = getPendingForDate(day);
-                      if (pending.length === 0) return null;
-                      // Group per-kid override rows that share the same
-                      // logical request, so the count reflects requests
-                      // not raw rows (1 multi-kid request = 1 pill).
+                      const pending =
+                        getPendingForDate && onPendingClick
+                          ? getPendingForDate(day)
+                          : [];
                       const requestKeys = new Set(
                         pending.map(
                           (o) =>
@@ -906,43 +905,45 @@ export default function MonthView({
                       );
                       const count = requestKeys.size;
                       return (
-                        <button
-                          type="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            onPendingClick(pending);
-                          }}
-                          title={`${count} pending custody change request${
-                            count === 1 ? "" : "s"
-                          } — click for details`}
-                          aria-label={`${count} pending custody change request${
-                            count === 1 ? "" : "s"
-                          }`}
-                          className="absolute top-1 right-1 z-[3] inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
-                          style={{
-                            color: "var(--accent-amber)",
-                            background: "var(--accent-amber-tint)",
-                            border:
-                              "1px solid color-mix(in srgb, var(--accent-amber) 50%, transparent)",
-                          }}
-                        >
-                          <Clock size={9} strokeWidth={2.5} />
-                          {count > 1 ? count : "Pending"}
-                        </button>
+                        <div className="relative z-[2] flex items-center justify-between mb-1">
+                          <div
+                            className={`
+                              inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium tabular-nums
+                              ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
+                              ${!today && inMonth ? "text-[var(--ink)]" : ""}
+                              ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
+                            `}
+                          >
+                            {day.getDate()}
+                          </div>
+                          {count > 0 && onPendingClick && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onPendingClick(pending);
+                              }}
+                              title={`${count} pending custody change request${
+                                count === 1 ? "" : "s"
+                              } — click for details`}
+                              aria-label={`${count} pending custody change request${
+                                count === 1 ? "" : "s"
+                              }`}
+                              className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                              style={{
+                                color: "var(--accent-red)",
+                                background: "var(--accent-red-tint)",
+                                border:
+                                  "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
+                              }}
+                            >
+                              <Clock size={9} strokeWidth={2.5} />
+                              {count > 1 ? count : "Pending"}
+                            </button>
+                          )}
+                        </div>
                       );
                     })()}
-
-                    {/* Day number — flow */}
-                    <div
-                      className={`
-                        relative z-[2] inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium mb-1 tabular-nums
-                        ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
-                        ${!today && inMonth ? "text-[var(--ink)]" : ""}
-                        ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
-                      `}
-                    >
-                      {day.getDate()}
-                    </div>
 
                     {/* Ribbon-area spacer — flow */}
                     {ribbonAreaHeight > 0 && (
@@ -1058,13 +1059,23 @@ export default function MonthView({
                           ? tzAbbreviation(evtTz, evtInstant)
                           : null;
                       const pendingIds = evt._pendingOverrideIds;
+                      const isPending = !!dashed;
                       return (
                         <div
                           key={evt.id}
                           style={{
                             ...positionStyle,
                             zIndex: 2,
-                            borderLeftColor: typeColor,
+                            // Pending: bold red outline + light red bg
+                            // (no border-left type color — the all-around
+                            // red border carries the signal). Standard:
+                            // type-colored left border + white bg.
+                            ...(isPending
+                              ? {
+                                  border: "2px solid var(--accent-red)",
+                                  background: "var(--accent-red-tint)",
+                                }
+                              : { borderLeftColor: typeColor }),
                           }}
                           onClick={(ev) => {
                             ev.stopPropagation();
@@ -1088,11 +1099,11 @@ export default function MonthView({
                           className={`
                             flex items-center gap-1
                             text-[11px] font-medium leading-tight
-                            bg-white text-[var(--ink)]
+                            text-[var(--ink)]
                             px-1.5 py-[3px]
-                            border-l-[3px]
-                            ${dashed ? "border-dashed opacity-75" : "border-solid"}
-                            shadow-[0_0_0_1px_var(--border)]
+                            ${isPending
+                              ? "font-semibold"
+                              : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
                             cursor-pointer hover:translate-x-[1px] transition-transform
                             overflow-hidden
                           `}
