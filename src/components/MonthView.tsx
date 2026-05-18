@@ -360,21 +360,22 @@ function computeRibbonSpans(week: Date[], events: CalendarEvent[]): RibbonSpan[]
 
 // Layout constants for the ribbon row inside each week cell. The day cell
 // reserves space at top for: day-number area (24px) + (numSlots × 20px).
-const RIBBON_HEIGHT = 18;
+const RIBBON_HEIGHT = 17;
 const RIBBON_GAP = 2;
 // Pixel band reserved at the top of each cell for the day number
-// (now absolute-positioned at top-0.5 left-0.5, h-[20px]). Ribbons
-// stack starting at this Y. Anything else inside the cell renders
-// below the ribbon stack (computed dynamically per cell).
-const DAY_NUMBER_BLOCK = 24;
+// (absolute top-0.5 left-0.5, h-[17px]). Ribbons stack starting at
+// this Y. Anything else inside the cell renders below the ribbon
+// stack (computed dynamically per cell).
+const DAY_NUMBER_BLOCK = 21;
 // Approximate cell height used to convert pixel offsets to %.
 // Cells in a 6-row month are typically ~110px tall; conservative
 // estimate keeps the layout from drifting too far on shorter cells.
 const APPROX_CELL_HEIGHT_PX = 110;
 // Per-row height for stacked all-day chips (holidays, birthdays,
-// other all-day single-day events). Same compact chip style as
-// timed events, just stacked above them.
-const ALL_DAY_ROW_PX = 18;
+// other all-day single-day events). Tuned to match the timed
+// event chips (py-[2px] + text-[11px] leading-tight ≈ 17px) so
+// the cell reads with one consistent chip height end-to-end.
+const ALL_DAY_ROW_PX = 17;
 const ALL_DAY_GAP_PX = 2;
 // Time-band scale for proportional time-of-day positioning of
 // timed events. Events outside [6am, 10pm] clamp to the band edges
@@ -1016,7 +1017,7 @@ export default function MonthView({
                         <div className="absolute top-0.5 left-0.5 right-0.5 z-[2] flex items-center gap-1">
                           <div
                             className={`
-                              shrink-0 inline-flex items-center justify-center h-[20px] min-w-[20px] px-1 text-[12px] font-medium tabular-nums
+                              shrink-0 inline-flex items-center justify-center h-[17px] min-w-[20px] px-1 text-[12px] font-medium tabular-nums
                               ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
                               ${!today && inMonth ? "text-[var(--ink)]" : ""}
                               ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
@@ -1052,7 +1053,7 @@ export default function MonthView({
                               className={`
                                 flex-1 min-w-0 flex items-center gap-1
                                 text-[11px] font-medium leading-tight text-[var(--ink)]
-                                px-1.5 h-[20px]
+                                px-1.5 h-[17px]
                                 ${inlineDashed
                                   ? "font-semibold"
                                   : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
@@ -1242,7 +1243,7 @@ export default function MonthView({
                                 flex items-center gap-1
                                 text-[11px] font-medium leading-tight
                                 bg-white text-[var(--ink)]
-                                px-1.5 py-[3px]
+                                px-1.5 py-[2px]
                                 border-l-[3px]
                                 shadow-[0_0_0_1px_var(--border)]
                                 cursor-pointer hover:translate-x-[1px] transition-transform
@@ -1357,7 +1358,7 @@ export default function MonthView({
                             flex items-center gap-1
                             text-[11px] font-medium leading-tight
                             text-[var(--ink)]
-                            px-1.5 py-[3px]
+                            px-1.5 py-[2px]
                             ${isPending
                               ? "font-semibold"
                               : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
