@@ -359,19 +359,34 @@ function computeRibbonSpans(week: Date[], events: CalendarEvent[]): RibbonSpan[]
 }
 
 // Layout constants for the ribbon row inside each week cell. The day cell
-// reserves space at top for: day-number area (28px) + (numSlots × 18px).
+// reserves space at top for: day-number area (24px) + (numSlots × 20px).
 const RIBBON_HEIGHT = 18;
 const RIBBON_GAP = 2;
 // Pixel band reserved at the top of each cell for the day number
-// (now absolute-positioned at top-0.5 left-0.5, h-[22px]). Ribbons
+// (now absolute-positioned at top-0.5 left-0.5, h-[20px]). Ribbons
 // stack starting at this Y. Anything else inside the cell renders
 // below the ribbon stack (computed dynamically per cell).
 const DAY_NUMBER_BLOCK = 24;
-// Approximate cell height used to convert the (DAY_NUMBER_BLOCK +
-// ribbon stack) pixel band into a % for ITEMS_START. Cells in a 6-
-// row month are typically ~110px tall; conservative estimate so
-// the dynamic ITEMS_START pushes events safely below the ribbons.
+// Approximate cell height used to convert pixel offsets to %.
+// Cells in a 6-row month are typically ~110px tall; conservative
+// estimate keeps the layout from drifting too far on shorter cells.
 const APPROX_CELL_HEIGHT_PX = 110;
+// Per-row height for stacked all-day chips (holidays, birthdays,
+// other all-day single-day events). Same compact chip style as
+// timed events, just stacked above them.
+const ALL_DAY_ROW_PX = 18;
+const ALL_DAY_GAP_PX = 2;
+// Time-band scale for proportional time-of-day positioning of
+// timed events. Events outside [6am, 10pm] clamp to the band edges
+// — covers ~99% of family events without crowding the corners
+// (per the conversation: 9pm chip at 87.5% looked crammed under
+// the old 24h scale).
+const TIME_BAND_START_HOUR = 6;
+const TIME_BAND_END_HOUR = 22;
+// Minimum vertical gap between consecutive timed events. Nudges
+// the later event down when strict time-of-day positioning would
+// stack them on top of each other.
+const MIN_TIMED_GAP_PCT = (14 / APPROX_CELL_HEIGHT_PX) * 100;
 
 export default function MonthView({
   currentDate,
@@ -755,41 +770,111 @@ export default function MonthView({
                     !isMultiDayEvent(e)
                 );
 
-                // ─── Cell layout (single IIFE) ──────────────────────
-                // Items (events + turnover pills) are sorted chrono and
-                // distributed evenly through the cell. Each pill's
-                // rendered slot pct drives the band boundary, so the
-                // boundary line passes through the pill's middle and
-                // events flow naturally above (pre-handoff) or below
-                // (post-handoff) the pill.
-                //
-                // We don't try to honor exact time-of-day pcts because
-                // a 9pm pickup at 87.5% of the cell looks crammed; even
-                // distribution reads cleaner and still preserves chrono
-                // order top-to-bottom.
-                const sortedEvents = [...nonTurnoverEvents].sort((a, b) =>
-                  a.starts_at.localeCompare(b.starts_at)
+                // ─── Cell layout (two zones, top → bottom) ─────────
+                //   1. All-day zone: holidays, birthdays, regular
+                //      all-day single-day events. Compact chips
+                //      stacked right after the multi-day ribbon
+                //      stack. Each chip is ALL_DAY_ROW_PX tall.
+                //   2. Timed zone: turnover pills + timed events,
+                //      positioned by time-of-day inside a 6am–10pm
+                //      band. Same-time-of-day events on different
+                //      days align horizontally across the week.
+                //      A min-gap nudge prevents two events 30 min
+                //      apart from rendering on top of each other.
+                const sortedNonTurnover = [...nonTurnoverEvents].sort(
+                  (a, b) => a.starts_at.localeCompare(b.starts_at)
                 );
-                const TOTAL_SLOTS = 3;
-                const remainingSlots = Math.max(
+                const allDayEventsForCell = sortedNonTurnover.filter(
+                  (e) => e.all_day
+                );
+                const timedEventsForCell = sortedNonTurnover.filter(
+                  (e) => !e.all_day
+                );
+                // Cap total visible items (pills + events) to keep
+                // cells from overflowing. Pills count first, then
+                // all-day, then timed in chrono order.
+                const TOTAL_SLOTS = 4;
+                const remainingAfterPills = Math.max(
                   0,
                   TOTAL_SLOTS - view.turnoverPills.length
                 );
-                const visibleEvents = sortedEvents.slice(0, remainingSlots);
-                const hiddenCount = sortedEvents.length - visibleEvents.length;
-                type CellItem =
+                const visibleAllDay = allDayEventsForCell.slice(
+                  0,
+                  remainingAfterPills
+                );
+                const remainingAfterAllDay = Math.max(
+                  0,
+                  remainingAfterPills - visibleAllDay.length
+                );
+                const visibleTimed = timedEventsForCell.slice(
+                  0,
+                  remainingAfterAllDay
+                );
+                const hiddenCount =
+                  allDayEventsForCell.length -
+                  visibleAllDay.length +
+                  (timedEventsForCell.length - visibleTimed.length);
+
+                // ── All-day chip positions (top of items zone) ─────
+                const allDayAreaTopPx = DAY_NUMBER_BLOCK + ribbonAreaHeight;
+                type AllDayPlaced = {
+                  evt: CalendarEvent;
+                  topPx: number;
+                };
+                const allDayPlaced: AllDayPlaced[] = visibleAllDay.map(
+                  (evt, idx) => ({
+                    evt,
+                    topPx:
+                      allDayAreaTopPx +
+                      idx * (ALL_DAY_ROW_PX + ALL_DAY_GAP_PX),
+                  })
+                );
+                const allDayAreaBottomPx =
+                  allDayPlaced.length > 0
+                    ? allDayPlaced[allDayPlaced.length - 1].topPx +
+                      ALL_DAY_ROW_PX
+                    : allDayAreaTopPx;
+
+                // ── Timed area: starts after all-day zone ─────────
+                const timedAreaStartPct = Math.min(
+                  60,
+                  ((allDayAreaBottomPx + 4) / APPROX_CELL_HEIGHT_PX) * 100
+                );
+                const TIMED_AREA_END_PCT = 96;
+
+                function timeOfDayToPct(timeIso: string): number {
+                  const d = parseTimestamp(timeIso);
+                  const hour = d.getHours() + d.getMinutes() / 60;
+                  const clamped = Math.max(
+                    TIME_BAND_START_HOUR,
+                    Math.min(TIME_BAND_END_HOUR, hour)
+                  );
+                  const frac =
+                    (clamped - TIME_BAND_START_HOUR) /
+                    (TIME_BAND_END_HOUR - TIME_BAND_START_HOUR);
+                  return (
+                    timedAreaStartPct +
+                    frac * (TIMED_AREA_END_PCT - timedAreaStartPct)
+                  );
+                }
+
+                // Build sorted timed items (pills + visible timed
+                // events, both keyed by timeIso so they interleave
+                // chronologically) and compute positions with
+                // min-gap nudging.
+                type TimedItem =
                   | { kind: "pill"; sortKey: string; pill: TurnoverPill }
                   | { kind: "event"; sortKey: string; evt: CalendarEvent };
-                const items: CellItem[] = [
+                const timedItems: TimedItem[] = [
                   ...view.turnoverPills.map(
-                    (p): CellItem => ({
+                    (p): TimedItem => ({
                       kind: "pill",
                       sortKey: p.timeIso,
                       pill: p,
                     })
                   ),
-                  ...visibleEvents.map(
-                    (e): CellItem => ({
+                  ...visibleTimed.map(
+                    (e): TimedItem => ({
                       kind: "event",
                       sortKey: e.starts_at,
                       evt: e,
@@ -797,40 +882,28 @@ export default function MonthView({
                   ),
                 ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-                // Item layout: distribute space-evenly inside
-                // [START, END]. When this cell has multi-day ribbons
-                // overhead, push ITEMS_START past them — otherwise
-                // the fixed 22% would land items inside the ribbon
-                // band on smaller cells (events visually overlap the
-                // ribbon, the user's #1 complaint about May 22 +
-                // Seattle WA). Capped at 60% so cells with several
-                // ribbons still leave room for at least one event.
-                const ITEMS_START = ribbonAreaHeight > 0
-                  ? Math.min(
-                      60,
-                      ((DAY_NUMBER_BLOCK + ribbonAreaHeight + 6) /
-                        APPROX_CELL_HEIGHT_PX) * 100
-                    )
-                  : 22;
-                const ITEMS_END = 96;
-                const itemPct = (idx: number): number => {
-                  if (items.length === 0) return 50;
-                  return (
-                    ITEMS_START +
-                    ((idx + 1) / (items.length + 1)) *
-                      (ITEMS_END - ITEMS_START)
-                  );
-                };
+                const timedPcts: number[] = [];
+                for (let i = 0; i < timedItems.length; i++) {
+                  let pct = timeOfDayToPct(timedItems[i].sortKey);
+                  if (i > 0) {
+                    pct = Math.max(pct, timedPcts[i - 1] + MIN_TIMED_GAP_PCT);
+                  }
+                  // Don't push past the bottom margin even after nudging.
+                  pct = Math.min(pct, TIMED_AREA_END_PCT);
+                  timedPcts.push(pct);
+                }
 
-                // Build pill timeOfDayPct → renderedPct so we can remap
-                // the time-of-day band boundaries onto the cell's
-                // rendered layout coordinates.
+                // Pills drive the custody-band boundary remap — each
+                // pill's RENDERED pct (after the time-band layout +
+                // gap nudging) is what the band-split line should
+                // pass through, so the line stays anchored to the
+                // pill's actual visible position.
                 const renderedByTodPct = new Map<number, number>();
-                items.forEach((item, idx) => {
+                timedItems.forEach((item, idx) => {
                   if (item.kind === "pill") {
                     renderedByTodPct.set(
                       item.pill.timeOfDayPct,
-                      itemPct(idx)
+                      timedPcts[idx]
                     );
                   }
                 });
@@ -964,16 +1037,97 @@ export default function MonthView({
                       );
                     })()}
 
-                    {/* Ribbon-area spacer — flow */}
-                    {ribbonAreaHeight > 0 && (
-                      <div style={{ height: ribbonAreaHeight }} />
-                    )}
+                    {/* All-day chips — fixed-pixel stack right after
+                        the ribbon area. Same compact chip style as
+                        timed events; positioned at the top so they
+                        read as "today-level context" before the
+                        time-of-day band below. */}
+                    {allDayPlaced.map(({ evt, topPx }) => {
+                      const typeColor = getEventTypeColor(evt);
+                      const kidBadge = singleKidIndicator(evt);
+                      const dashed = evt._tentative;
+                      const isHoliday = evt.id.startsWith("holiday-");
+                      const positionStyle: React.CSSProperties = {
+                        position: "absolute",
+                        left: 6,
+                        right: 6,
+                        top: `${topPx}px`,
+                        height: ALL_DAY_ROW_PX,
+                      };
+                      const pendingIds = evt._pendingOverrideIds;
+                      const isPending = !!dashed;
+                      return (
+                        <div
+                          key={evt.id}
+                          style={{
+                            ...positionStyle,
+                            zIndex: 2,
+                            ...(isPending
+                              ? {
+                                  border: "2px solid var(--accent-red)",
+                                  background: "var(--accent-red-tint)",
+                                }
+                              : isHoliday
+                              ? { borderLeftColor: typeColor }
+                              : { borderLeftColor: typeColor }),
+                          }}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (
+                              pendingIds &&
+                              pendingIds.length > 0 &&
+                              onPendingClick &&
+                              getPendingForDate
+                            ) {
+                              const dayPending = getPendingForDate(day);
+                              const matched = dayPending.filter((o) =>
+                                pendingIds.includes(o.id)
+                              );
+                              onPendingClick(
+                                matched.length > 0 ? matched : dayPending
+                              );
+                              return;
+                            }
+                            onEventClick(evt);
+                          }}
+                          className={`
+                            flex items-center gap-1
+                            text-[11px] font-medium leading-tight
+                            text-[var(--ink)]
+                            px-1.5
+                            ${isPending
+                              ? "font-semibold"
+                              : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
+                            cursor-pointer hover:translate-x-[1px] transition-transform
+                            overflow-hidden
+                          `}
+                        >
+                          {kidBadge && (
+                            <span
+                              className={`
+                                inline-flex items-center justify-center shrink-0
+                                w-[14px] h-[14px] rounded-sm
+                                text-[8px] font-bold text-white
+                                ${kidIndicatorClass[kidBadge]}
+                              `}
+                              title={
+                                kidBadge === "ethan" ? "Ethan" : "Harrison"
+                              }
+                            >
+                              {kidBadge === "ethan" ? "E" : "H"}
+                            </span>
+                          )}
+                          <span className="truncate">{evt.title}</span>
+                        </div>
+                      );
+                    })}
 
-                    {/* Items — absolute by index pct. Pills sit on the
-                        band boundary (boundary pct = pill's itemPct);
-                        events flow above/below in chrono order. */}
-                    {items.map((item, idx) => {
-                      const top = itemPct(idx);
+                    {/* Timed items — positioned by time-of-day (6am-
+                        10pm band) with min-gap nudging when adjacent
+                        events would visually collide. Same chip
+                        markup as before; only the top% changes. */}
+                    {timedItems.map((item, idx) => {
+                      const top = timedPcts[idx];
                       const positionStyle: React.CSSProperties = {
                         position: "absolute",
                         left: 6,
