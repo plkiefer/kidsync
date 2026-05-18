@@ -815,17 +815,23 @@ export default function MonthView({
                   visibleAllDay.length +
                   (timedEventsForCell.length - visibleTimed.length);
 
-                // ── All-day chip positions (top of items zone) ─────
-                const allDayAreaTopPx = DAY_NUMBER_BLOCK + ribbonAreaHeight;
+                // ── All-day chips ─────────────────────────────────
+                // First all-day event rides in the top row alongside
+                // the day number + pending pill (saves a row when the
+                // common case = 1 holiday). Overflow stacks below
+                // the multi-day ribbon area.
+                const inlineAllDayEvent = visibleAllDay[0] ?? null;
+                const stackedAllDay = visibleAllDay.slice(1);
+                const allDayStackTopPx = DAY_NUMBER_BLOCK + ribbonAreaHeight;
                 type AllDayPlaced = {
                   evt: CalendarEvent;
                   topPx: number;
                 };
-                const allDayPlaced: AllDayPlaced[] = visibleAllDay.map(
+                const allDayPlaced: AllDayPlaced[] = stackedAllDay.map(
                   (evt, idx) => ({
                     evt,
                     topPx:
-                      allDayAreaTopPx +
+                      allDayStackTopPx +
                       idx * (ALL_DAY_ROW_PX + ALL_DAY_GAP_PX),
                   })
                 );
@@ -833,7 +839,7 @@ export default function MonthView({
                   allDayPlaced.length > 0
                     ? allDayPlaced[allDayPlaced.length - 1].topPx +
                       ALL_DAY_ROW_PX
-                    : allDayAreaTopPx;
+                    : allDayStackTopPx;
 
                 // ── Timed area: starts after all-day zone ─────────
                 const timedAreaStartPct = Math.min(
@@ -975,65 +981,143 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Day number — pinned absolutely to the top-left
-                        corner so it sits on the same vertical line as
-                        the pending pill (top-right). Taking it out of
-                        flow also frees up the row that the day-number
-                        block used to reserve, leaving more vertical
-                        room for events / ribbons below. */}
-                    <div
-                      className={`
-                        absolute top-0.5 left-0.5 z-[2] inline-flex items-center justify-center h-[20px] min-w-[20px] px-1 text-[12px] font-medium tabular-nums
-                        ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
-                        ${!today && inMonth ? "text-[var(--ink)]" : ""}
-                        ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
-                      `}
-                    >
-                      {day.getDate()}
-                    </div>
-
-                    {/* Pending-change pill — top-right, absolute. Sits
-                        in the same vertical band as the day number on
-                        the opposite side. Red ("needs attention") not
-                        amber, with a 1.5px bordered pill so it reads
-                        as a clear action target. */}
+                    {/* Top row — single flex band containing:
+                          1. Day number (left, fixed width)
+                          2. First all-day event chip (flex-1, truncates)
+                          3. Pending pill (right, when present)
+                        The all-day chip shrinks to fit when the pill
+                        is also visible. Saves a vertical row in the
+                        common case (1 holiday or 0 all-day + pill). */}
                     {(() => {
-                      if (!getPendingForDate || !onPendingClick) return null;
-                      const pending = getPendingForDate(day);
-                      if (pending.length === 0) return null;
+                      const pendingList =
+                        getPendingForDate && onPendingClick
+                          ? getPendingForDate(day)
+                          : [];
                       const requestKeys = new Set(
-                        pending.map(
+                        pendingList.map(
                           (o) =>
                             `${o.start_date}|${o.end_date}|${o.parent_id}|${
                               o.override_time ?? ""
                             }|${o.note ?? ""}`
                         )
                       );
-                      const count = requestKeys.size;
+                      const pendingCount = requestKeys.size;
+
+                      const inlineEvt = inlineAllDayEvent;
+                      const inlineKidBadge = inlineEvt
+                        ? singleKidIndicator(inlineEvt)
+                        : null;
+                      const inlineTypeColor = inlineEvt
+                        ? getEventTypeColor(inlineEvt)
+                        : "var(--ink)";
+                      const inlineDashed = !!inlineEvt?._tentative;
+
                       return (
-                        <button
-                          type="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            onPendingClick(pending);
-                          }}
-                          title={`${count} pending custody change request${
-                            count === 1 ? "" : "s"
-                          } — click for details`}
-                          aria-label={`${count} pending custody change request${
-                            count === 1 ? "" : "s"
-                          }`}
-                          className="absolute top-1 right-1 z-[3] inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
-                          style={{
-                            color: "var(--accent-red)",
-                            background: "var(--accent-red-tint)",
-                            border:
-                              "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
-                          }}
-                        >
-                          <Clock size={9} strokeWidth={2.5} />
-                          {count > 1 ? count : "Pending"}
-                        </button>
+                        <div className="absolute top-0.5 left-0.5 right-0.5 z-[2] flex items-center gap-1">
+                          <div
+                            className={`
+                              shrink-0 inline-flex items-center justify-center h-[20px] min-w-[20px] px-1 text-[12px] font-medium tabular-nums
+                              ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
+                              ${!today && inMonth ? "text-[var(--ink)]" : ""}
+                              ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
+                            `}
+                          >
+                            {day.getDate()}
+                          </div>
+
+                          {inlineEvt && (
+                            <div
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                const pendingIds =
+                                  inlineEvt._pendingOverrideIds;
+                                if (
+                                  pendingIds &&
+                                  pendingIds.length > 0 &&
+                                  onPendingClick &&
+                                  getPendingForDate
+                                ) {
+                                  const dayPending =
+                                    getPendingForDate(day);
+                                  const matched = dayPending.filter((o) =>
+                                    pendingIds.includes(o.id)
+                                  );
+                                  onPendingClick(
+                                    matched.length > 0 ? matched : dayPending
+                                  );
+                                  return;
+                                }
+                                onEventClick(inlineEvt);
+                              }}
+                              className={`
+                                flex-1 min-w-0 flex items-center gap-1
+                                text-[11px] font-medium leading-tight text-[var(--ink)]
+                                px-1.5 h-[20px]
+                                ${inlineDashed
+                                  ? "font-semibold"
+                                  : "bg-white border-l-[3px] border-solid shadow-[0_0_0_1px_var(--border)]"}
+                                cursor-pointer hover:translate-x-[1px] transition-transform
+                                overflow-hidden
+                              `}
+                              style={
+                                inlineDashed
+                                  ? {
+                                      border: "2px solid var(--accent-red)",
+                                      background: "var(--accent-red-tint)",
+                                    }
+                                  : { borderLeftColor: inlineTypeColor }
+                              }
+                              title={inlineEvt.title}
+                            >
+                              {inlineKidBadge && (
+                                <span
+                                  className={`
+                                    inline-flex items-center justify-center shrink-0
+                                    w-[14px] h-[14px] rounded-sm
+                                    text-[8px] font-bold text-white
+                                    ${kidIndicatorClass[inlineKidBadge]}
+                                  `}
+                                  title={
+                                    inlineKidBadge === "ethan"
+                                      ? "Ethan"
+                                      : "Harrison"
+                                  }
+                                >
+                                  {inlineKidBadge === "ethan" ? "E" : "H"}
+                                </span>
+                              )}
+                              <span className="truncate">
+                                {inlineEvt.title}
+                              </span>
+                            </div>
+                          )}
+
+                          {pendingCount > 0 && onPendingClick && (
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onPendingClick(pendingList);
+                              }}
+                              title={`${pendingCount} pending custody change request${
+                                pendingCount === 1 ? "" : "s"
+                              } — click for details`}
+                              aria-label={`${pendingCount} pending custody change request${
+                                pendingCount === 1 ? "" : "s"
+                              }`}
+                              className="shrink-0 inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                              style={{
+                                color: "var(--accent-red)",
+                                background: "var(--accent-red-tint)",
+                                border:
+                                  "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
+                              }}
+                            >
+                              <Clock size={9} strokeWidth={2.5} />
+                              {pendingCount > 1 ? pendingCount : "Pending"}
+                            </button>
+                          )}
+                        </div>
                       );
                     })()}
 
