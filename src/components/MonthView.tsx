@@ -362,7 +362,16 @@ function computeRibbonSpans(week: Date[], events: CalendarEvent[]): RibbonSpan[]
 // reserves space at top for: day-number area (28px) + (numSlots × 18px).
 const RIBBON_HEIGHT = 18;
 const RIBBON_GAP = 2;
-const DAY_NUMBER_BLOCK = 28; // h-[22px] + mb-1 + p-1.5 contribution
+// Pixel band reserved at the top of each cell for the day number
+// (now absolute-positioned at top-0.5 left-0.5, h-[22px]). Ribbons
+// stack starting at this Y. Anything else inside the cell renders
+// below the ribbon stack (computed dynamically per cell).
+const DAY_NUMBER_BLOCK = 24;
+// Approximate cell height used to convert the (DAY_NUMBER_BLOCK +
+// ribbon stack) pixel band into a % for ITEMS_START. Cells in a 6-
+// row month are typically ~110px tall; conservative estimate so
+// the dynamic ITEMS_START pushes events safely below the ribbons.
+const APPROX_CELL_HEIGHT_PX = 110;
 
 export default function MonthView({
   currentDate,
@@ -788,10 +797,21 @@ export default function MonthView({
                   ),
                 ].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 
-                // Item layout: distribute space-evenly inside [START,END]
-                // (top=22% leaves room for the day number; bottom=96%
-                // leaves a small margin for "+N more" if present).
-                const ITEMS_START = 22;
+                // Item layout: distribute space-evenly inside
+                // [START, END]. When this cell has multi-day ribbons
+                // overhead, push ITEMS_START past them — otherwise
+                // the fixed 22% would land items inside the ribbon
+                // band on smaller cells (events visually overlap the
+                // ribbon, the user's #1 complaint about May 22 +
+                // Seattle WA). Capped at 60% so cells with several
+                // ribbons still leave room for at least one event.
+                const ITEMS_START = ribbonAreaHeight > 0
+                  ? Math.min(
+                      60,
+                      ((DAY_NUMBER_BLOCK + ribbonAreaHeight + 6) /
+                        APPROX_CELL_HEIGHT_PX) * 100
+                    )
+                  : 22;
                 const ITEMS_END = 96;
                 const itemPct = (idx: number): number => {
                   if (items.length === 0) return 50;
@@ -890,7 +910,7 @@ export default function MonthView({
                         room for events / ribbons below. */}
                     <div
                       className={`
-                        absolute top-1 left-1 z-[2] inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium tabular-nums
+                        absolute top-0.5 left-0.5 z-[2] inline-flex items-center justify-center h-[20px] min-w-[20px] px-1 text-[12px] font-medium tabular-nums
                         ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
                         ${!today && inMonth ? "text-[var(--ink)]" : ""}
                         ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
