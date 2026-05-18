@@ -882,19 +882,32 @@ export default function MonthView({
                       </div>
                     )}
 
-                    {/* Day-cell header — day number on the left,
-                        pending-change pill on the right, single flex
-                        row so they share one band of vertical space
-                        (was: absolute pill on top of an in-flow day
-                        number, which left a redundant gap below the
-                        pill when both were present). The pill uses
-                        red ("needs attention") instead of amber to
-                        match the rest of the pending visualization. */}
+                    {/* Day number — pinned absolutely to the top-left
+                        corner so it sits on the same vertical line as
+                        the pending pill (top-right). Taking it out of
+                        flow also frees up the row that the day-number
+                        block used to reserve, leaving more vertical
+                        room for events / ribbons below. */}
+                    <div
+                      className={`
+                        absolute top-1 left-1 z-[2] inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium tabular-nums
+                        ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
+                        ${!today && inMonth ? "text-[var(--ink)]" : ""}
+                        ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
+                      `}
+                    >
+                      {day.getDate()}
+                    </div>
+
+                    {/* Pending-change pill — top-right, absolute. Sits
+                        in the same vertical band as the day number on
+                        the opposite side. Red ("needs attention") not
+                        amber, with a 1.5px bordered pill so it reads
+                        as a clear action target. */}
                     {(() => {
-                      const pending =
-                        getPendingForDate && onPendingClick
-                          ? getPendingForDate(day)
-                          : [];
+                      if (!getPendingForDate || !onPendingClick) return null;
+                      const pending = getPendingForDate(day);
+                      if (pending.length === 0) return null;
                       const requestKeys = new Set(
                         pending.map(
                           (o) =>
@@ -905,43 +918,29 @@ export default function MonthView({
                       );
                       const count = requestKeys.size;
                       return (
-                        <div className="relative z-[2] flex items-center justify-between mb-1">
-                          <div
-                            className={`
-                              inline-flex items-center justify-center h-[22px] min-w-[22px] px-1.5 text-[13px] font-medium tabular-nums
-                              ${today ? "bg-action text-action-fg font-semibold rounded-sm" : ""}
-                              ${!today && inMonth ? "text-[var(--ink)]" : ""}
-                              ${!today && !inMonth ? "text-[var(--text-faint)] font-normal" : ""}
-                            `}
-                          >
-                            {day.getDate()}
-                          </div>
-                          {count > 0 && onPendingClick && (
-                            <button
-                              type="button"
-                              onClick={(ev) => {
-                                ev.stopPropagation();
-                                onPendingClick(pending);
-                              }}
-                              title={`${count} pending custody change request${
-                                count === 1 ? "" : "s"
-                              } — click for details`}
-                              aria-label={`${count} pending custody change request${
-                                count === 1 ? "" : "s"
-                              }`}
-                              className="inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
-                              style={{
-                                color: "var(--accent-red)",
-                                background: "var(--accent-red-tint)",
-                                border:
-                                  "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
-                              }}
-                            >
-                              <Clock size={9} strokeWidth={2.5} />
-                              {count > 1 ? count : "Pending"}
-                            </button>
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onPendingClick(pending);
+                          }}
+                          title={`${count} pending custody change request${
+                            count === 1 ? "" : "s"
+                          } — click for details`}
+                          aria-label={`${count} pending custody change request${
+                            count === 1 ? "" : "s"
+                          }`}
+                          className="absolute top-1 right-1 z-[3] inline-flex items-center gap-1 px-1.5 py-[2px] rounded-sm text-[10px] font-bold tabular-nums leading-none cursor-pointer transition-colors hover:opacity-90 focus:outline-none focus-visible:shadow-[0_0_0_2px_var(--action-ring)]"
+                          style={{
+                            color: "var(--accent-red)",
+                            background: "var(--accent-red-tint)",
+                            border:
+                              "1.5px solid color-mix(in srgb, var(--accent-red) 65%, transparent)",
+                          }}
+                        >
+                          <Clock size={9} strokeWidth={2.5} />
+                          {count > 1 ? count : "Pending"}
+                        </button>
                       );
                     })()}
 
