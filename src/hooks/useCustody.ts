@@ -225,18 +225,32 @@ export function useCustody(ready = true): CustodyState {
               });
             }
           }
-          await Promise.all(
-            spans.map((s) =>
-              supabase
-                .from("custody_overrides")
-                .update({ status: "superseded" })
-                .eq("status", "pending")
-                .eq("kid_id", s.kidId)
-                .eq("created_by", s.createdBy)
-                .lte("start_date", s.end)
-                .gte("end_date", s.start)
-            )
-          );
+          // Wrap in withTimeout — if Supabase `.update()` hangs (a
+          // known intermittent issue with the browser client), we
+          // don't want it to block the insert below from running.
+          // Fail-soft: log + continue. The new pending row(s) still
+          // get inserted and win via newest-wins; the stale pending
+          // they would have superseded just persists until Compact.
+          try {
+            await withTimeout(
+              Promise.all(
+                spans.map((s) =>
+                  supabase
+                    .from("custody_overrides")
+                    .update({ status: "superseded" })
+                    .eq("status", "pending")
+                    .eq("kid_id", s.kidId)
+                    .eq("created_by", s.createdBy)
+                    .lte("start_date", s.end)
+                    .gte("end_date", s.start)
+                )
+              ),
+              10000,
+              "createOverrides auto-supersede"
+            );
+          } catch (err) {
+            console.warn("[custody] auto-supersede skipped:", err);
+          }
         }
 
         const { data, error } = await withTimeout(
@@ -272,24 +286,34 @@ export function useCustody(ready = true): CustodyState {
         // When approving, also pull in the rows being approved so we
         // can find OTHER pending overrides on the same kid+date-range
         // and supersede them — they're moot once this one is active.
+        // The lookup is best-effort (timeout-protected); if it fails
+        // we just skip the supersede step.
         let toSupersedeSpans:
           | { kidId: string; start: string; end: string }[]
           | null = null;
         if (status === "approved") {
-          const { data: targetRows } = await supabase
-            .from("custody_overrides")
-            .select("kid_id, start_date, end_date")
-            .in("id", overrideIds);
-          if (targetRows && targetRows.length > 0) {
-            toSupersedeSpans = (targetRows as Array<{
-              kid_id: string;
-              start_date: string;
-              end_date: string;
-            }>).map((r) => ({
-              kidId: r.kid_id,
-              start: r.start_date,
-              end: r.end_date,
-            }));
+          try {
+            const { data: targetRows } = await withTimeout(
+              supabase
+                .from("custody_overrides")
+                .select("kid_id, start_date, end_date")
+                .in("id", overrideIds),
+              10000,
+              "respondToOverrides target lookup"
+            );
+            if (targetRows && targetRows.length > 0) {
+              toSupersedeSpans = (targetRows as Array<{
+                kid_id: string;
+                start_date: string;
+                end_date: string;
+              }>).map((r) => ({
+                kidId: r.kid_id,
+                start: r.start_date,
+                end: r.end_date,
+              }));
+            }
+          } catch (err) {
+            console.warn("[custody] supersede lookup skipped:", err);
           }
         }
 
@@ -313,18 +337,28 @@ export function useCustody(ready = true): CustodyState {
         }
 
         if (toSupersedeSpans && toSupersedeSpans.length > 0) {
-          await Promise.all(
-            toSupersedeSpans.map((s) =>
-              supabase
-                .from("custody_overrides")
-                .update({ status: "superseded" })
-                .eq("status", "pending")
-                .eq("kid_id", s.kidId)
-                .lte("start_date", s.end)
-                .gte("end_date", s.start)
-                .not("id", "in", `(${overrideIds.join(",")})`)
-            )
-          );
+          // Same hang-protection as createOverrides — fail-soft so the
+          // primary update (above) isn't blocked by this cleanup step.
+          try {
+            await withTimeout(
+              Promise.all(
+                toSupersedeSpans.map((s) =>
+                  supabase
+                    .from("custody_overrides")
+                    .update({ status: "superseded" })
+                    .eq("status", "pending")
+                    .eq("kid_id", s.kidId)
+                    .lte("start_date", s.end)
+                    .gte("end_date", s.start)
+                    .not("id", "in", `(${overrideIds.join(",")})`)
+                )
+              ),
+              10000,
+              "respondToOverrides auto-supersede"
+            );
+          } catch (err) {
+            console.warn("[custody] post-approve supersede skipped:", err);
+          }
         }
 
         await withTimeout(fetchCustody(), 10000, "refetch after respond");
@@ -455,32 +489,22 @@ export function useCustody(ready = true): CustodyState {
       const dateChanged = rangeStart <= rangeEnd;
       const timeChanged = !!params.newTime;
 
-      // Withdraw ONLY the overrides we know are about to be replaced.
-      // Earlier versions of this function also withdrew the entire
-      // "standard custody block range" (pickup..dropoff anchors).
-      // That was safe when the anchors came from the BASE schedule
-      // (a typical 3-day weekend) but became destructive once we
-      // started anchoring effectively — long approved overrides
-      // chain into multi-week blocks, and withdrawing across the
-      // full block nukes user vacation overrides that have nothing
-      // to do with this change. Newest-wins in custody.ts handles
-      // any remaining conflicts; createOverrides' auto-supersede
-      // cleans up redundant pending; the Compact tool cleans up
-      // redundant approved.
-      const withdrawalRanges: { start: string; end: string }[] = [
-        { start: params.currentDate, end: params.currentDate },
-      ];
-
-      if (dateChanged) {
-        withdrawalRanges.push({ start: rangeStart, end: rangeEnd });
-      }
-
-      // Also withdraw overrides on the target date (for time-only changes)
-      if (params.newDate !== params.currentDate) {
-        withdrawalRanges.push({ start: params.newDate, end: params.newDate });
-      }
-
-      await withdrawOverlapping(params.kidIds, withdrawalRanges);
+      // Note: no withdrawOverlapping pass here anymore. The earlier
+      // versions called it to "clean up" prior overrides in the
+      // affected range, but Supabase `.update()` calls regularly
+      // hang in the browser client (the same getSession-deadlock
+      // pattern manualTokenRefresh exists to dodge for reads), and
+      // the timeout was making the entire submit feel broken — a
+      // 15-second spinner before any of the actual writes happen.
+      //
+      // Functionally redundant anyway:
+      //   - Pending conflicts: createOverrides auto-supersedes
+      //     overlapping pending rows from the same requester before
+      //     inserting.
+      //   - Approved conflicts: newest-wins in computeCustodyForDate
+      //     means the new approved override naturally takes effect
+      //     without explicitly retiring the prior one.
+      //   - Cleanup: the Compact tool sweeps the long-tail.
 
       if (dateChanged) {
         // Three sub-cases when the date changed. The merging logic
@@ -593,7 +617,7 @@ export function useCustody(ready = true): CustodyState {
 
       return true;
     },
-    [schedules, approvedOverrides, withdrawOverlapping, createOverrides]
+    [schedules, approvedOverrides, createOverrides]
   );
 
   // ── Compact (manual sweep — invoked from Custody Settings) ────
