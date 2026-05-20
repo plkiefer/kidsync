@@ -19,6 +19,15 @@ interface AuthState {
   error: string | null;
 }
 
+/** Auth-flow trace logs. Useful while debugging the manualTokenRefresh /
+ *  setSession / stateChange dance; pure noise in production where the
+ *  flow is stable. Gated on NODE_ENV so the live console stays clean. */
+function debugAuth(...args: unknown[]): void {
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[auth]", ...args);
+  }
+}
+
 /** JS-side cleanup of every sb-<projectRef>-auth-token* cookie at
  *  every plausible path. Supabase auth cookies are NOT HttpOnly
  *  (the browser client has to read them) so document.cookie
@@ -75,13 +84,13 @@ export function useAuth(): AuthState {
     let initializing = true;
 
     const init = async () => {
-      console.log("[auth] manually refreshing token...");
+      debugAuth("manually refreshing token...");
       // Bypass the Supabase client's getSession() which hangs on
       // expired tokens. Call the token refresh API directly.
       const freshSession = await manualTokenRefresh();
 
       if (freshSession && mounted) {
-        console.log("[auth] token refreshed, setting session...");
+        debugAuth("token refreshed, setting session...");
         // Update the Supabase client with fresh tokens
         await supabase.auth.setSession({
           access_token: freshSession.access_token,
@@ -94,7 +103,7 @@ export function useAuth(): AuthState {
         const p = await fetchProfile(freshSession.user.id);
         if (mounted) setProfile(p);
       } else if (mounted) {
-        console.log("[auth] no valid session");
+        debugAuth("no valid session");
         setLoading(false);
         initializing = false;
       }
@@ -108,7 +117,7 @@ export function useAuth(): AuthState {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted || initializing) return;
-      console.log("[auth] stateChange:", event);
+      debugAuth("stateChange:", event);
 
       if (session?.user) {
         setUser(session.user);
