@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import { manualTokenRefresh } from "@/lib/refreshToken";
+import { signOutAction } from "@/lib/actions/auth";
 import { Profile } from "@/lib/types";
 import { BASE_PATH } from "@/lib/basePath";
 
@@ -157,19 +158,14 @@ export function useAuth(): AuthState {
   );
 
   const signOut = useCallback(async () => {
-    // Clear local state immediately so the UI redirects
+    // Clear local state immediately so the UI starts to unmount.
     setUser(null);
     setProfile(null);
-    // Await Supabase signOut so the auth cookie is cleared before the
-    // subsequent router.replace("/login") fires. If we don't await, the
-    // middleware running on /login may still see a valid session cookie
-    // and bounce us back to /calendar, hitting the basePath redirect bug.
-    // Race-time bound to ~3s so we don't hang the UI if Supabase is slow.
-    await Promise.race([
-      supabase.auth.signOut().catch(() => {}),
-      new Promise((resolve) => setTimeout(resolve, 3000)),
-    ]);
-  }, [supabase]);
+    // signOutAction (server-side) deletes the auth cookies via the
+    // Next.js cookies API — the proper way. No browser supabase
+    // client involvement = no getSession deadlock to dodge.
+    await signOutAction();
+  }, []);
 
   return {
     user,

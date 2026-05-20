@@ -119,7 +119,6 @@ export default function CalendarPage() {
     agreements,
     createOverrides,
     respondToOverrides,
-    withdrawOverlapping,
     moveTurnover,
     notifyCustodyChange,
     refetchCustody,
@@ -712,7 +711,18 @@ export default function CalendarPage() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace("/login");
+    // Hard navigation (not router.replace) so the next request hits
+    // middleware with a freshly-reloaded set of cookies. With client-
+    // side routing, stale Supabase client state plus a still-warm
+    // realtime subscription can keep the session "live" in React even
+    // after manualSignOut clears the cookies — middleware then sees
+    // no session and lets /login render, but the page would briefly
+    // bounce. Full reload sidesteps all of it.
+    if (typeof window !== "undefined") {
+      window.location.href = `${BASE_PATH}/login`;
+    } else {
+      router.replace("/login");
+    }
   };
 
   // Only block on auth loading — let calendar render while data loads

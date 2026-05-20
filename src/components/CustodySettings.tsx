@@ -5,7 +5,7 @@ import { X, Upload, FileText, CheckCircle, AlertTriangle, Loader2, ExternalLink,
 import { getSupabase } from "@/lib/supabase";
 import { withBasePath } from "@/lib/basePath";
 import { Kid, Profile, ParsedCustodyTerms, CustodyAgreement, CustodySchedule } from "@/lib/types";
-import type { CompactReport } from "@/hooks/useCustody";
+import type { CompactReport } from "@/lib/types";
 
 interface CustodySettingsProps {
   familyId: string;

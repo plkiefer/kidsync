@@ -447,6 +447,28 @@ export type OverrideStatus =
   | "disputed"
   | "withdrawn"
   | "superseded";
+
+/** Insert shape for the custody_overrides table. Excludes server-
+ *  managed columns (id, created_at, response_* set on respond, etc).
+ *  Shared between the client hook and the server action so the wire
+ *  format stays in one place. */
+export type CustodyOverrideInput = Omit<
+  CustodyOverride,
+  | "id"
+  | "created_at"
+  | "compliance_checked_at"
+  | "responded_by"
+  | "responded_at"
+  | "response_note"
+>;
+
+/** Result of the manual "compact" sweep — counts so the UI can
+ *  render a "compacted N rows" toast. */
+export interface CompactReport {
+  redundantApproved: number;
+  noopApproved: number;
+  stalePending: number;
+}
 export type ComplianceStatus = "unchecked" | "compliant" | "flagged";
 
 export interface CustodyOverride {

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ArrowLeft, Mail, Lock, Check, Loader2, Palette } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getSupabase } from "@/lib/supabase";
-import { updateAuthUser } from "@/lib/refreshToken";
+import { updateUserAction } from "@/lib/actions/auth";
 import { Kid, Profile } from "@/lib/types";
 import { DEFAULT_PARENT_A_COLOR, DEFAULT_PARENT_B_COLOR, resolvePalette } from "@/lib/palette";
 import ColorPicker from "@/components/ColorPicker";
@@ -153,7 +153,11 @@ export default function SettingsPage() {
 
     setEmailLoading(true);
     try {
-      await updateAuthUser({ email: newEmail });
+      const result = await updateUserAction({ email: newEmail });
+      if (!result.ok) {
+        setEmailError(result.error || "Failed to update email.");
+        return;
+      }
       setEmailSuccess(`Confirmation email sent to ${newEmail}`);
       setNewEmail("");
     } catch (err: unknown) {
@@ -182,7 +186,11 @@ export default function SettingsPage() {
 
     setPasswordLoading(true);
     try {
-      await updateAuthUser({ password: newPassword });
+      const result = await updateUserAction({ password: newPassword });
+      if (!result.ok) {
+        setPasswordError(result.error || "Failed to update password.");
+        return;
+      }
       setPasswordSuccess("Password updated successfully.");
       setNewPassword("");
       setConfirmPassword("");
