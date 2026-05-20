@@ -97,5 +97,10 @@ export type ActionResult<T = void> =
 export function actionError(error: unknown): ActionResult<never> {
   const message =
     error instanceof Error ? error.message : "Unknown error";
+  // Log the full error to the server console so Vercel function logs
+  // capture the specific cause. Production responses strip error
+  // messages from thrown errors for security, but a server-side log
+  // is the right channel for diagnostic detail.
+  console.error("[action error]", error);
   return { ok: false, error: message };
 }

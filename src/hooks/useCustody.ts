@@ -197,15 +197,28 @@ export function useCustody(ready = true): CustodyState {
   // logic runs in one execution context, against the request-cookie
   // session, with no navigator.locks contention surface.
 
+  // Every wrapper catches BOTH the action's returned error AND any
+  // throw that bubbles up out of the server boundary. Next.js
+  // production masks thrown error messages with a generic "Server
+  // Components render" string — letting one of those propagate
+  // through onMoveTurnover etc would surface that meaningless text
+  // in the modal. Wrapping here means the UI always sees a clean
+  // boolean / data result; the real error sits in the server log.
+
   const createOverrides = useCallback(
     async (inputs: CustodyOverrideInput[]): Promise<CustodyOverride[]> => {
-      const result = await createOverridesAction(inputs);
-      if (!result.ok) {
-        console.error("[custody] createOverrides failed:", result.error);
+      try {
+        const result = await createOverridesAction(inputs);
+        if (!result.ok) {
+          console.error("[custody] createOverrides failed:", result.error);
+          return [];
+        }
+        await fetchCustody();
+        return result.data;
+      } catch (err) {
+        console.error("[custody] createOverrides threw:", err);
         return [];
       }
-      await fetchCustody();
-      return result.data;
     },
     [fetchCustody]
   );
@@ -220,17 +233,22 @@ export function useCustody(ready = true): CustodyState {
       // authenticated user — this argument is ignored end-to-end.
       _userId: string
     ): Promise<boolean> => {
-      const result = await respondToOverridesAction(
-        overrideIds,
-        status,
-        note
-      );
-      if (!result.ok) {
-        console.error("[custody] respondToOverrides failed:", result.error);
+      try {
+        const result = await respondToOverridesAction(
+          overrideIds,
+          status,
+          note
+        );
+        if (!result.ok) {
+          console.error("[custody] respondToOverrides failed:", result.error);
+          return false;
+        }
+        await fetchCustody();
+        return true;
+      } catch (err) {
+        console.error("[custody] respondToOverrides threw:", err);
         return false;
       }
-      await fetchCustody();
-      return true;
     },
     [fetchCustody]
   );
@@ -247,16 +265,21 @@ export function useCustody(ready = true): CustodyState {
       note: string;
       reason: string;
     }): Promise<boolean> => {
-      // userId stripped — server uses authenticated user.
-      const { userId: _userId, ...serverParams } = params;
-      void _userId;
-      const result = await moveTurnoverAction(serverParams);
-      if (!result.ok) {
-        console.error("[custody] moveTurnover failed:", result.error);
+      try {
+        // userId stripped — server uses authenticated user.
+        const { userId: _userId, ...serverParams } = params;
+        void _userId;
+        const result = await moveTurnoverAction(serverParams);
+        if (!result.ok) {
+          console.error("[custody] moveTurnover failed:", result.error);
+          return false;
+        }
+        await fetchCustody();
+        return true;
+      } catch (err) {
+        console.error("[custody] moveTurnover threw:", err);
         return false;
       }
-      await fetchCustody();
-      return true;
     },
     [fetchCustody]
   );
@@ -268,13 +291,18 @@ export function useCustody(ready = true): CustodyState {
         noopApproved: 0,
         stalePending: 0,
       };
-      const result = await compactOverridesAction(familyId);
-      if (!result.ok) {
-        console.error("[custody] compactOverrides failed:", result.error);
+      try {
+        const result = await compactOverridesAction(familyId);
+        if (!result.ok) {
+          console.error("[custody] compactOverrides failed:", result.error);
+          return empty;
+        }
+        await fetchCustody();
+        return result.data;
+      } catch (err) {
+        console.error("[custody] compactOverrides threw:", err);
         return empty;
       }
-      await fetchCustody();
-      return result.data;
     },
     [fetchCustody]
   );
