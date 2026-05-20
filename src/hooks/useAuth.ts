@@ -19,6 +19,28 @@ interface AuthState {
   error: string | null;
 }
 
+/** JS-side cleanup of every sb-<projectRef>-auth-token* cookie at
+ *  every plausible path. Supabase auth cookies are NOT HttpOnly
+ *  (the browser client has to read them) so document.cookie
+ *  expiration works on them. Defensive layer paired with the
+ *  server-action's Set-Cookie response — if either succeeds, the
+ *  cookie is gone. */
+function deleteSupabaseAuthCookiesClientSide(): void {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) return;
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const prefix = `sb-${projectRef}-auth-token`;
+  const paths = ["/", "/kidsync"];
+  const allCookies = document.cookie.split(";").map((c) => c.trim());
+  for (const cookieStr of allCookies) {
+    const name = cookieStr.split("=")[0];
+    if (!name.startsWith(prefix)) continue;
+    for (const path of paths) {
+      document.cookie = `${name}=; path=${path}; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+    }
+  }
+}
+
 export function useAuth(): AuthState {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -158,13 +180,31 @@ export function useAuth(): AuthState {
   );
 
   const signOut = useCallback(async () => {
-    // Clear local state immediately so the UI starts to unmount.
+    // Two layers of cookie clearing — server-action Set-Cookie
+    // headers AND client-side document.cookie deletion. The server
+    // action is the architecturally correct path (it knows the
+    // exact cookie names + can invalidate sessions), but Supabase
+    // auth cookies are JS-readable by design so the client can
+    // also clear them — that's the defensive layer for any case
+    // where the Set-Cookie response is stripped (proxy / path
+    // mismatch / framework quirk) and would otherwise leave a
+    // still-valid access_token in the browser.
+    //
+    // Run cookie cleanup BEFORE clearing React state. If we cleared
+    // state first the calendar would immediately render its
+    // `if (!user) return null` blank screen while the signOut work
+    // is still pending — a slow or failed action then strands the
+    // user looking at nothing.
+    try {
+      await signOutAction();
+    } catch (err) {
+      console.warn("[useAuth] signOutAction error:", err);
+    }
+    if (typeof document !== "undefined") {
+      deleteSupabaseAuthCookiesClientSide();
+    }
     setUser(null);
     setProfile(null);
-    // signOutAction (server-side) deletes the auth cookies via the
-    // Next.js cookies API — the proper way. No browser supabase
-    // client involvement = no getSession deadlock to dodge.
-    await signOutAction();
   }, []);
 
   return {

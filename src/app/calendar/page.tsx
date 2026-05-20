@@ -710,14 +710,17 @@ export default function CalendarPage() {
   };
 
   const handleSignOut = async () => {
-    await signOut();
+    // Always navigate, even if signOut throws — better to land the
+    // user on a fresh /login that may bounce (if cookies didn't
+    // clear) than to leave them on a blank calendar page indefinitely
+    // waiting for the action's promise to settle.
+    try {
+      await signOut();
+    } catch (err) {
+      console.warn("[handleSignOut] signOut error, navigating anyway:", err);
+    }
     // Hard navigation (not router.replace) so the next request hits
-    // middleware with a freshly-reloaded set of cookies. With client-
-    // side routing, stale Supabase client state plus a still-warm
-    // realtime subscription can keep the session "live" in React even
-    // after manualSignOut clears the cookies — middleware then sees
-    // no session and lets /login render, but the page would briefly
-    // bounce. Full reload sidesteps all of it.
+    // middleware with a freshly-reloaded set of cookies.
     if (typeof window !== "undefined") {
       window.location.href = `${BASE_PATH}/login`;
     } else {
