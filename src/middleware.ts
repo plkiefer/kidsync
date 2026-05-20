@@ -10,6 +10,10 @@ export async function middleware(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Pin path so middleware-set cookies (refresh on each
+      // request) land at the same path as browser-side cookies and
+      // signOut deletions. See src/lib/supabase.ts for rationale.
+      cookieOptions: { path: "/" },
       cookies: {
         getAll() {
           return req.cookies.getAll();
@@ -20,7 +24,7 @@ export async function middleware(req: NextRequest) {
           );
           res = NextResponse.next({ request: req });
           cookiesToSet.forEach(({ name, value, options }) =>
-            res.cookies.set(name, value, options)
+            res.cookies.set(name, value, { ...options, path: "/" })
           );
         },
       },

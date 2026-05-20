@@ -33,6 +33,11 @@ export function getServerSupabase(): SupabaseClient {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Pin to "/" so server-set cookies land at the same path as
+      // browser-set cookies (basePath /kidsync would otherwise
+      // scope cookies to /kidsync, and signOut deletions at /
+      // would silently fail to clear them). See src/lib/supabase.ts.
+      cookieOptions: { path: "/" },
       cookies: {
         getAll() {
           return cookieStore.getAll();
@@ -44,7 +49,7 @@ export function getServerSupabase(): SupabaseClient {
           // benign server-component case.
           try {
             cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, { ...options, path: "/" })
             );
           } catch {
             // server component context — ignore
